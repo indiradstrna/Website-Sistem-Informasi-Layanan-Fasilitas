@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualisasi Alur Sistem</title>
+    <!-- Import Teleport Mermaid -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    </script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #f4f6f8;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        h2 {
+            color: #0066cc;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 40px;
+        }
+
+        .mermaid {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .desc {
+            background: #eef7ff;
+            padding: 15px;
+            border-radius: 5px;
+            color: #444;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+
+        .note {
+            font-size: 0.8em;
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Alur Proses Sistem (Flowchart)</h1>
+        <p style="text-align:center; color:#666;">Diagram visual alur peminjaman dan perbaikan fasilitas.</p>
+
+        <!-- DIAGRAM 1 -->
+        <h2>1. Alur Peminjaman (Kendaraan, Ruangan, Alat, Zoom)</h2>
+        <div class="desc">
+            Alur standar untuk permintaan fasilitas yang memerlukan pengecekan ketersediaan dan persetujuan manajerial.
+        </div>
+
+        <div class="mermaid">
+            graph TD
+            %% Nodes
+            User([User Request]) -->|Status: Pending| Tipe{Tipe Request?}
+
+            %% Cabang Berdasarkan Tipe
+            Tipe -- Kendaraan --> Driver[Admin Pilih Driver]
+            Driver --> Cek[PIC Cek Ketersediaan]
+
+            Tipe -- Ruangan --> PrepRoom[Admin GA / Persiapan]
+            PrepRoom --> Cek
+
+            Tipe -- Alat --> PrepItem[Cek Kondisi & Stok]
+            PrepItem --> Cek
+
+            Tipe -- Zoom --> IT[IT Support / Link Zoom]
+            IT --> Cek
+
+
+            Cek --> Avail{Tersedia?}
+            
+            Avail -- Tidak --> RejectNoAvail([Rejected: Permintaan Tidak Tersedia])
+            
+            Avail -- Ya --> ForwardToMgr[Lanjutkan ke Manager FMD <br/> Status: Waiting Manager FMD]
+            
+            ForwardToMgr --> MgrDecision{Keputusan Manager?}
+            
+            MgrDecision -- Tidak --> RejectMgr([Rejected: Permintaan Ditolak])
+            
+            MgrDecision -- Ya --> Approved[Status: Approved]
+            
+            Approved --> PICFinal[PIC Laporan Check & Recheck <br/> List Kebutuhan / Penanganan]
+            
+            PICFinal --> Finish([Selesai / Permintaan Dipenuhi])
+
+            %% Styling
+            classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+            classDef process fill:#e2e3e5,stroke:#333,stroke-width:1px;
+            classDef decision fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+            classDef reject fill:#f8d7da,stroke:#dc3545,stroke-width:2px;
+
+            class User,Finish,Approved startend;
+            class Cek,Driver,PrepRoom,PrepItem,IT,ForwardToMgr,PICFinal process;
+            class Avail,Tipe,MgrDecision decision;
+            class RejectNoAvail,RejectMgr reject;
+        </div>
+
+        <!-- DIAGRAM 2 -->
+        <h2>2. Alur Perbaikan & Maintenance (Updated)</h2>
+        <div class="desc">
+            Alur perbaikan mencakup jalur <strong>Tanpa Biaya (Non-RAB)</strong> untuk perbaikan ringan/stok tersedia,
+            dan jalur <strong>Dengan Biaya (RAB)</strong> untuk pembelian baru/jasa luar.
+        </div>
+
+        <div class="mermaid">
+            graph TD
+            %% Nodes Start
+            Lapor([User Lapor Kerusakan]) --> Teknisi[PIC Cek Kerusakan]
+
+            Teknisi --> ButuhBiaya{Butuh Beli Baru?}
+
+            %% JALUR 1: NON RAB (Internal / Stok)
+            ButuhBiaya -- "Tidak (Non-RAB)" --> CekStok{Butuh Sparepart?}
+
+            CekStok -- "Ya (Ada di Stok)" --> FormBarang[Isi Form Permintaan Barang]
+            FormBarang --> Ambil[Ambil Barang di Gudang]
+            Ambil --> Kerjakan[Pengerjaan Perbaikan]
+
+            CekStok -- "Tidak (Jasa/Setting)" --> Kerjakan
+
+            %% JALUR 2: RAB (Pengajuan Anggaran)
+            ButuhBiaya -- "Ya (Butuh Dana)" --> BuatRAB[Buat & Ajukan RAB]
+            BuatRAB --> Nominal{Total Biaya?} --> ManagerFMD[Approval FMD Manager]
+
+
+            ManagerFMD -- "> 50 Juta" --> BOD[Approval BOD]
+            BOD --> PPK
+
+            ManagerFMD -- "20 - 50 Juta" --> PPK[Approval PPK]
+            PPK --> MgrFAD
+
+            ManagerFMD -- "< 20 Juta" --> MgrFAD[Approval Manager FAD]
+
+                MgrFAD --> Cairkan[Bendahara Cairkan Dana]
+                Cairkan --> Vendor[Pilih Vendor / Belanja]
+                Vendor --> Kerjakan
+
+                %% FINISHING
+                Kerjakan --> Validasi[Validasi Hasil]
+                Validasi --> Selesai([Selesai])
+
+                %% Styling
+                classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+                classDef process fill:#e2e3e5,stroke:#333,stroke-width:1px;
+                classDef decision fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+
+                class Lapor,Selesai startend;
+                class Teknisi,BuatRAB,BOD,PPK,MgrFAD,Cairkan,Vendor,FormBarang,Ambil,Kerjakan,Validasi process;
+                class ButuhBiaya,Nominal,CekStok decision;
+        </div>
+
+        <div class="note">
+            Catatan: Struktur approval RAB dapat berubah sewaktu-waktu sesuai kebijakan manajemen.
+        </div>
+
+    </div>
+
+</body>
+
+</html>
