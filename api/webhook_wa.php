@@ -7,9 +7,13 @@
 require_once __DIR__ . '/../config.php';
 
 // Fonnte payload can be JSON or Form Data
+$rawInput = file_get_contents('php://input');
+// Log incoming webhook for debugging
+file_put_contents(__DIR__ . '/webhook_log.txt', date('Y-m-d H:i:s') . " - SENDER: " . ($_POST['sender'] ?? 'N/A') . " - MSG: " . ($_POST['message'] ?? 'N/A') . " - RAW: " . $rawInput . "\n", FILE_APPEND);
+
 $contentType = $_SERVER["CONTENT_TYPE"] ?? '';
 if (strpos($contentType, 'application/json') !== false) {
-    $data = json_decode(file_get_contents('php://input'), true);
+    $data = json_decode($rawInput, true);
 } else {
     $data = $_POST;
 }
