@@ -1420,47 +1420,7 @@ async function doSubmitForm() {
     Toast.success(res.message || 'Pengajuan berhasil dikirim!');
     Modal.close('modal-form');
 
-    // --- TELEGRAM NOTIFICATION ---
-    try {
-      // Escape dynamic values for HTML parse mode
-      const eName = typeof escapeHtml === 'function' ? escapeHtml(name) : name;
-      const eUnit = typeof escapeHtml === 'function' ? escapeHtml(unit) : unit;
-      const ePurpose = typeof escapeHtml === 'function' ? escapeHtml(data.purpose) : data.purpose;
-
-      let typeLabel = { vehicle:'Mobil', room:'Ruangan', zoom:'Zoom', repair:'Perbaikan', item:'Barang' }[currentFormType] || currentFormType;
-      let teleMsg = `<b>🔔 PENGAJUAN ${typeLabel.toUpperCase()} BARU</b>\n\n`;
-      teleMsg += `<b>Pemohon:</b> ${eName}\n`;
-      teleMsg += `<b>Unit:</b> ${eUnit}\n`;
-      
-      if (currentFormType === 'repair') {
-        const eLoc = typeof escapeHtml === 'function' ? escapeHtml(data.location_detail) : data.location_detail;
-        const eIssue = typeof escapeHtml === 'function' ? escapeHtml(data.issue_description) : data.issue_description;
-        teleMsg += `<b>Lokasi:</b> ${eLoc}\n`;
-        teleMsg += `<b>Masalah:</b> ${eIssue}\n`;
-        teleMsg += `<b>Prioritas:</b> ${data.priority.toUpperCase()}\n`;
-      } else if (currentFormType === 'item') {
-        const eItemName = typeof escapeHtml === 'function' ? escapeHtml(data.item_name) : data.item_name;
-        teleMsg += `<b>Barang:</b> ${eItemName}\n`;
-        teleMsg += `<b>Keperluan:</b> ${ePurpose}\n`;
-        teleMsg += `<b>Waktu:</b> ${data.loan_date} ${data.loan_time} s/d ${data.return_date} ${data.return_time}\n`;
-      } else {
-        let detail = currentFormType === 'vehicle' ? 'Operasional' : (currentFormType === 'room' ? data.room_id : data.zoom_account_id);
-        const eDetail = typeof escapeHtml === 'function' ? escapeHtml(detail) : detail;
-        teleMsg += `<b>Item:</b> ${eDetail}\n`;
-        teleMsg += `<b>Keperluan:</b> ${ePurpose}\n`;
-        teleMsg += `<b>Waktu:</b> ${data.date_start} ${data.time_start} s/d ${data.date_end} ${data.time_end}\n`;
-      }
-      
-      teleMsg += `\n<i>ID Pengajuan: #${res.data?.id || 'N/A'}</i>\n`;
-      teleMsg += `<i>Silakan cek dashboard FMD untuk tindak lanjut.</i>`;
-      
-      if (typeof sendTelegram === 'function') {
-        // Notifikasi pengajuan baru selalu ke Grup Admin/FMD
-        sendTelegram(teleMsg);
-      }
-    } catch (e) {
-      console.error('TeleNotification Error:', e);
-    }
+    // Notification is now handled entirely by the backend (api/requests.php)
     // ----------------------------
 
     await loadMyData();

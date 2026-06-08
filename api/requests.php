@@ -164,14 +164,63 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         'Zoom'    => '📹',
         'Repair'  => '🛠️',
         'Item'    => '📦'
-    ][$type] ?? '📋';
+    ][$type] ?? '🔔';
+    
+    $typeLabel = [
+        'Vehicle' => 'KENDARAAN DINAS',
+        'Room'    => 'RUANGAN',
+        'Zoom'    => 'ZOOM MEETING',
+        'Repair'  => 'PERBAIKAN',
+        'Item'    => 'PEMINJAMAN BARANG'
+    ][$type] ?? strtoupper($type);
 
-    $msg = "<b>$emoji PENGAJUAN BARU: " . strtoupper($type) . "</b>\n\n";
-    $msg .= "<b>ID:</b> #$id\n";
+    // Fetch details for better formatting
+    $detailTxt = "";
+    $table = [
+        'Vehicle' => 'vehicle_requests',
+        'Room'    => 'room_requests',
+        'Zoom'    => 'zoom_requests',
+        'Repair'  => 'repair_requests',
+        'Item'    => 'item_loan_requests'
+    ][$type] ?? '';
+
+    if ($table) {
+        $res = $conn->query("SELECT * FROM `$table` WHERE id = $id");
+        if ($res && $row = $res->fetch_assoc()) {
+            if ($type === 'Vehicle') {
+                $detailTxt .= "<b>Item:</b> Operasional\n";
+                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
+            } elseif ($type === 'Room') {
+                $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($row['room_id'] ?? '') . "\n";
+                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
+            } elseif ($type === 'Zoom') {
+                $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($row['zoom_account_id'] ?? '') . "\n";
+                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
+            } elseif ($type === 'Repair') {
+                $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '') . "\n";
+                $detailTxt .= "<b>Prioritas:</b> " . strtoupper($row['priority'] ?? 'MEDIUM') . "\n";
+            } elseif ($type === 'Item') {
+                $detailTxt .= "<b>Barang:</b> " . htmlspecialchars($row['item_name'] ?? '') . "\n";
+                $detailTxt .= "<b>Waktu:</b> " . $row['loan_date'] . " " . substr($row['loan_time'], 0, 5) . " s/d " . $row['return_date'] . " " . substr($row['return_time'], 0, 5) . "\n";
+            }
+        }
+    }
+
+    $msg = "<b>$emoji PENGAJUAN BARU: " . $typeLabel . "</b>\n\n";
     $msg .= "<b>Pemohon:</b> " . htmlspecialchars($applicant) . "\n";
     $msg .= "<b>Unit:</b> " . htmlspecialchars($unit) . "\n";
-    $msg .= "<b>Tujuan:</b> " . htmlspecialchars($purpose) . "\n\n";
-    $msg .= "<i>Cek Dashboard Admin untuk verifikasi.</i>";
+    if ($type === 'Repair') {
+        $msg .= "<b>Masalah:</b> " . htmlspecialchars($purpose) . "\n";
+    } else {
+        $msg .= "<b>Keperluan:</b> " . htmlspecialchars($purpose) . "\n";
+    }
+    
+    if ($detailTxt) {
+        $msg .= $detailTxt;
+    }
+
+    $msg .= "\n<i>ID Pengajuan: #$id</i>\n";
+    $msg .= "<i>Silakan cek dashboard FMD untuk tindak lanjut.</i>";
 
     // Kirim ke Group Admin (Telegram)
     sendTelegramPHP($msg);

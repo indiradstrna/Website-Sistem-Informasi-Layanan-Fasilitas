@@ -11,6 +11,10 @@ define('DB_USER', 'if0_40693730');
 define('DB_PASSWORD', 'PSeKatqEN4'); // Masukkan password vPanel Anda di sini
 define('DB_NAME', 'if0_40693730_silatas'); 
 
+define('DB_HOST', 'localhost');
+define('DB_USER', 'biotrop26');
+define('DB_PASSWORD', 'Biotrop2026!'); // Masukkan password vPanel Anda di sini
+define('DB_NAME', 'db_gabungan'); 
 // ============================================================
 // Path & URL Configuration
 // ============================================================
