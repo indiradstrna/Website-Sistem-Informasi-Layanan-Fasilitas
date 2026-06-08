@@ -2,6 +2,8 @@ SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';
 START TRANSACTION;
 SET time_zone = '+00:00';
 
+CREATE DATABASE IF NOT EXISTS `db_gabungan`;
+USE `db_gabungan`;
 
 CREATE TABLE `assessments` (
   `id` int NOT NULL,
@@ -3388,6 +3390,256 @@ INSERT INTO `zoom_requests` (`id`, `user_id`, `zoom_account_id`, `applicant_name
 (20, 133, 'zoom_01', 'Fitri Junaedy, SEI', 'HRAD', '2026-03-12', '13:31:00', '2026-03-12', '16:31:00', '0', 52, 'Rapat Triwulan', '', 'approved', '2026-03-12 06:31:40', '2026-03-12 06:32:59', '[12 Mar 2026 13:32] [Indra Septian, A.Md] - APPROVED: Zoom Info: gudiagiwchafoieafa. ok'),
 (21, 1, 'zoom_01', 'Indira Destriana Anjani', 'FMD', '2026-05-18', '09:03:00', '2026-05-18', '12:03:00', '0', 8, 'Wawancara narsum podcast', 'Live Youtube', 'completed', '2026-05-18 02:03:47', '2026-05-21 02:50:51', '[18 May 2026 14:52] [Indra Septian, A.Md] - WAITING_MANAGER_FMD: Zoom Info: 📌 Zoom Link : https://zoom.us/j/96533279699 📌 Meeting ID: 965 3327 9699. zoom_01 tersedia, diteruskan kepada Manager FMD untuk approval permohonan\n[18 May 2026 14:53] [Slamet Widodo Sugiarto] - APPROVED: Disetujui oleh Manager FMD. Silakan PIC Akun Zoom/Link menyiapkan permintaan dan memberikan laporan Check & Recheck.\n[18 May 2026 14:53] [Indra Septian, A.Md] - READY_FOR_USER: PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Zoom/Virtual telah siap untuk diserahkan/dilaksanakan.\n[21 May 2026 09:50] [Indira Destriana Anjani] - COMPLETED: Pengajuan diselesaikan oleh Pemohon.'),
 (22, 1, 'zoom_02', 'Indira Destriana Anjani', 'FMD', '2026-06-04', '12:36:00', '2026-06-04', '18:36:00', '0', 450, 'ICTB 5th 2026', 'Live Youtube', 'approved', '2026-06-04 05:37:06', '2026-06-04 05:38:37', '[04 Jun 2026 12:37] [Indra Septian, A.Md] - WAITING_MANAGER_FMD: zoom_02 tersedia, diteruskan kepada Manager FMD untuk approval permohonan\n[04 Jun 2026 12:38] [Slamet Widodo Sugiarto] - APPROVED: Disetujui oleh Manager FMD. Silakan PIC Akun Zoom/Link menyiapkan permintaan dan memberikan laporan Check & Recheck.');
+
+
+ALTER TABLE `employees`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `nip_nik` (`nip_nik`),
+  ADD KEY `idx_department` (`department`),
+  ADD KEY `idx_position` (`position`),
+  ADD KEY `idx_active` (`is_active`);
+
+
+ALTER TABLE `item_loan_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `fk_item_loan_requests_user_id` (`user_id`);
+
+
+ALTER TABLE `master_rooms`
+  ADD PRIMARY KEY (`id`);
+
+
+ALTER TABLE `master_vehicles`
+  ADD PRIMARY KEY (`id`);
+
+
+ALTER TABLE `notifications`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_is_read` (`is_read`),
+  ADD KEY `idx_req` (`request_id`,`request_type`),
+  ADD KEY `idx_resource` (`resource_id`,`resource_type`);
+
+
+ALTER TABLE `repair_budgets`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `repair_request_id` (`repair_request_id`);
+
+
+ALTER TABLE `repair_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`),
+  ADD KEY `idx_priority` (`priority`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `fk_repair_requests_user_id` (`user_id`);
+
+
+ALTER TABLE `room_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `fk_room_requests_user_id` (`user_id`);
+
+
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_employee_id` (`employee_id`);
+
+
+ALTER TABLE `vehicle_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `fk_vehicle_requests_user_id` (`user_id`);
+
+
+ALTER TABLE `zoom_requests`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `fk_zoom_requests_user_id` (`user_id`);
+
+
+ALTER TABLE `employees`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=199;
+
+
+ALTER TABLE `item_loan_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+
+
+ALTER TABLE `notifications`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
+
+
+ALTER TABLE `repair_budgets`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=48;
+
+
+ALTER TABLE `repair_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
+
+
+ALTER TABLE `room_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=76;
+
+
+ALTER TABLE `users`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=92;
+
+
+ALTER TABLE `vehicle_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+
+
+ALTER TABLE `zoom_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+
+
+ALTER TABLE `repair_budgets`
+  ADD CONSTRAINT `repair_budgets_ibfk_1` FOREIGN KEY (`repair_request_id`) REFERENCES `repair_requests` (`id`) ON DELETE CASCADE;
+
+
+ALTER TABLE `repair_requests`
+  ADD CONSTRAINT `fk_repair_requests_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+ALTER TABLE `room_requests`
+  ADD CONSTRAINT `fk_room_requests_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+ALTER TABLE `repair_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+
+
+ALTER TABLE `room_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+
+
+ALTER TABLE `vehicle_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
+
+
+ALTER TABLE `zoom_requests`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+
+
+ALTER TABLE `assessments`
+  ADD PRIMARY KEY (`id`);
+
+
+ALTER TABLE `attendance`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_attendance_daily` (`user_id`,`date`);
+
+
+ALTER TABLE `employees`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_emp` (`full_name`,`nik`);
+
+
+ALTER TABLE `employee_targets`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_target` (`employee_id`,`year`);
+
+
+ALTER TABLE `evidence`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `session_id` (`session_id`);
+
+
+ALTER TABLE `gps_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `session_id` (`session_id`);
+
+
+ALTER TABLE `login_logs`
+  ADD PRIMARY KEY (`id`);
+
+
+ALTER TABLE `qr_tokens`
+  ADD PRIMARY KEY (`token`);
+
+
+ALTER TABLE `task_assignments`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `user_id` (`user_id`);
+
+
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `employee_id` (`employee_id`);
+
+
+ALTER TABLE `work_sessions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `user_id` (`user_id`);
+
+
+ALTER TABLE `assessments`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=96;
+
+
+ALTER TABLE `attendance`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=181;
+
+
+ALTER TABLE `employees`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=207;
+
+
+ALTER TABLE `employee_targets`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=75;
+
+
+ALTER TABLE `evidence`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=249;
+
+
+ALTER TABLE `gps_logs`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2258;
+
+
+ALTER TABLE `login_logs`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+
+
+ALTER TABLE `task_assignments`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+
+
+ALTER TABLE `users`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=245;
+
+
+ALTER TABLE `work_sessions`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=252;
+
+
+ALTER TABLE `attendance`
+  ADD CONSTRAINT `attendance_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+
+ALTER TABLE `employee_targets`
+  ADD CONSTRAINT `employee_targets_ibfk_1` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`) ON DELETE CASCADE;
+
+
+ALTER TABLE `evidence`
+  ADD CONSTRAINT `evidence_ibfk_1` FOREIGN KEY (`session_id`) REFERENCES `work_sessions` (`id`);
+
+
+ALTER TABLE `gps_logs`
+  ADD CONSTRAINT `gps_logs_ibfk_1` FOREIGN KEY (`session_id`) REFERENCES `work_sessions` (`id`);
+
+
+ALTER TABLE `task_assignments`
+  ADD CONSTRAINT `task_assignments_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+
+ALTER TABLE `work_sessions`
+  ADD CONSTRAINT `work_sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 
 
 COMMIT;
