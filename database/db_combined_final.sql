@@ -4,7 +4,6 @@ SET time_zone = '+00:00';
 
 CREATE DATABASE IF NOT EXISTS `db_gabungan`;
 USE `db_gabungan`;
-
 CREATE TABLE `assessments` (
   `id` int NOT NULL,
   `employee_id` int DEFAULT NULL,

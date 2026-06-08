@@ -22,10 +22,10 @@ if (!$username || !$password) {
 // 1. Cari user berdasarkan nik (identitas karyawan)
 try {
     $stmt = $conn->prepare("
-        SELECT u.id, e.nik as username, u.full_name, u.password, u.role, u.employee_id, u.telegram_chat_id, u.whatsapp_number, u.callmebot_apikey 
+        SELECT u.id, e.nip_nik as username, u.full_name, u.password, u.role, u.employee_id, u.telegram_chat_id, u.whatsapp_number, u.callmebot_apikey 
         FROM users u 
         INNER JOIN employees e ON u.employee_id = e.id 
-        WHERE e.nik = ?
+        WHERE e.nip_nik = ?
     ");
     if (!$stmt) {
         throw new Exception($conn->error);

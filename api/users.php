@@ -24,7 +24,7 @@ switch ($action) {
 
     case 'get_all':
         $res = $conn->query("
-            SELECT u.id, u.employee_id, e.nik, u.full_name, u.role, u.created_at 
+            SELECT u.id, u.employee_id, e.nip_nik, u.full_name, u.role, u.created_at 
             FROM users u 
             LEFT JOIN employees e ON u.employee_id = e.id 
             ORDER BY u.created_at DESC

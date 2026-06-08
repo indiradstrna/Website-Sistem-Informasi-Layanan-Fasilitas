@@ -104,7 +104,7 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         if (isset($picMap[$type])) {
             $usernames = $picMap[$type];
             $placeholders = implode(',', array_fill(0, count($usernames), '?'));
-            $stmt = $conn->prepare("SELECT u.whatsapp_number FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nik IN ($placeholders) AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''");
+            $stmt = $conn->prepare("SELECT u.whatsapp_number FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders) AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''");
             if ($stmt) {
                 $types = str_repeat('s', count($usernames));
                 $stmt->bind_param($types, ...$usernames);
@@ -130,7 +130,7 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     if ($targetRole) {
         $sql = "SELECT u.whatsapp_number FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.role = ? AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''";
         if ($newStatus === 'waiting_manager_fmd') {
-            $sql = "SELECT u.whatsapp_number FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE (u.role = ? OR e.nik = '197707072025211067') AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''";
+            $sql = "SELECT u.whatsapp_number FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE (u.role = ? OR e.nip_nik = '197707072025211067') AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''";
         }
         
         $stmt = $conn->prepare($sql);

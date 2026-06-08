@@ -1086,7 +1086,7 @@ function renderUserRows(data, page) {
   return paged.map(u => `
     <tr>
       <td data-label="Nama" style="font-weight:600;">${u.full_name}</td>
-      <td data-label="NIP/NIK" style="font-family:monospace;font-size:.82rem;">${u.nik || '-'}</td>
+      <td data-label="NIP/NIK" style="font-family:monospace;font-size:.82rem;">${u.nip_nik || '-'}</td>
       <td data-label="Role"><span class="badge ${u.role === 'admin' ? 'badge-approved' : u.role === 'supervisor' ? 'badge-verified' : 'badge-pending'}">${u.role}</span></td>
       <td data-label="Dibuat" style="font-size:.78rem;color:var(--color-slate-400);">${formatDate(u.created_at)}</td>
       <td data-label="Aksi">
@@ -2868,7 +2868,7 @@ window.openAddUser = function() {
     const existingEmpIds = allUsers.map(u => String(u.employee_id));
     allEmployees.forEach(e => {
         if (!existingEmpIds.includes(String(e.id))) {
-            empSelect.innerHTML += `<option value="${e.id}">${e.full_name} (${e.nik})</option>`;
+            empSelect.innerHTML += `<option value="${e.id}">${e.full_name} (${e.nip_nik})</option>`;
         }
     });
     empSelect.disabled = false;
@@ -2908,7 +2908,7 @@ window.openEditUser = function(id) {
   if(hint)  hint.textContent = '(kosongkan jika tidak diubah)';
 
   if (empSelect) {
-      empSelect.innerHTML = `<option value="${user.employee_id}">${user.full_name} (${user.nik || '???'})</option>`;
+      empSelect.innerHTML = `<option value="${user.employee_id}">${user.full_name} (${user.nip_nik || '???'})</option>`;
       empSelect.value = user.employee_id;
       empSelect.disabled = true; // Cannot change employee for existing account
   }

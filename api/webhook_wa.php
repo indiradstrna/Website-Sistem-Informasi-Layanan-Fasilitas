@@ -42,7 +42,7 @@ if (strlen($cleanSender) < 8) {
 }
 
 // 1. Cari user di DB berdasarkan nomor WA
-$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, e.nik as username FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ?");
+$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, e.nip_nik as username FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ?");
 $likeSender = "%$cleanSender%";
 $stmt->bind_param("s", $likeSender);
 $stmt->execute();
