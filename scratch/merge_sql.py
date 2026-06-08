@@ -4,16 +4,8 @@ def parse_dump(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Split by double newlines since mysqldump separates statements by \n\n usually
-    # or we can do a simple character-by-character parser
-    
     tables = {}
-    current_table = None
-    statement_type = None
     buffer = []
-    
-    in_string = False
-    escape_next = False
     
     for line in content.splitlines(True):
         if not buffer and (line.startswith('--') or line.startswith('/*')):
@@ -23,11 +15,7 @@ def parse_dump(file_path):
             
         buffer.append(line)
         
-        # We need to know if the statement has ended.
-        # A statement ends with ';' not inside a string.
-        # Let's just do a naive check: if the line ends with ';' and we are not doing anything crazy.
         if line.strip().endswith(';'):
-            # check if it's a complete statement roughly
             stmt = ''.join(buffer)
             if stmt.startswith('CREATE TABLE'):
                 match = re.search(r'CREATE TABLE `([^`]+)`', stmt)
@@ -49,12 +37,13 @@ def parse_dump(file_path):
             
     return tables
 
-silatas = parse_dump('silatas.sql')
-db_kdr = parse_dump('db_kdr.sql')
+silatas = parse_dump('../database/silatas.sql')
+db_kdr = parse_dump('../database/db_kdr.sql')
+if0_silatas = parse_dump('../database/if0_40693730_silatas.sql')
 
-all_tables = set(list(silatas.keys()) + list(db_kdr.keys()))
+all_tables = set(list(silatas.keys()) + list(db_kdr.keys()) + list(if0_silatas.keys()))
 
-with open('db_combined_final.sql', 'w', encoding='utf-8') as out:
+with open('../database/db_combined_final.sql', 'w', encoding='utf-8') as out:
     out.write("SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n")
     out.write("START TRANSACTION;\n")
     out.write("SET time_zone = '+00:00';\n\n")
@@ -63,7 +52,7 @@ with open('db_combined_final.sql', 'w', encoding='utf-8') as out:
     out.write("USE `db_gabungan`;\n\n")
 
     for t in sorted(all_tables):
-        schema = silatas[t]['schema'] if t in silatas and silatas[t]['schema'] else (db_kdr[t]['schema'] if t in db_kdr else '')
+        schema = silatas[t]['schema'] if t in silatas and silatas[t]['schema'] else (db_kdr[t]['schema'] if t in db_kdr else (if0_silatas[t]['schema'] if t in if0_silatas else ''))
         if schema:
             out.write(schema + "\n\n")
 
@@ -71,7 +60,9 @@ with open('db_combined_final.sql', 'w', encoding='utf-8') as out:
         inserts = []
         if t in ['attendance', 'evidence', 'assessments', 'work_sessions', 'employee_targets', 'login_logs', 'qr_tokens', 'performance_assessments', 'monthly_assessments']:
             inserts = db_kdr.get(t, {}).get('inserts', [])
-        elif t in ['repair_requests', 'zoom_requests', 'item_loan_requests', 'vehicle_requests', 'room_requests', 'repair_budgets']:
+        elif t in ['repair_requests', 'vehicle_requests', 'room_requests']:
+            inserts = if0_silatas.get(t, {}).get('inserts', [])
+        elif t in ['zoom_requests', 'item_loan_requests', 'repair_budgets']:
             inserts = silatas.get(t, {}).get('inserts', [])
         elif t in ['employees', 'users']:
             inserts = silatas.get(t, {}).get('inserts', [])
@@ -82,6 +73,8 @@ with open('db_combined_final.sql', 'w', encoding='utf-8') as out:
                 inserts = silatas[t]['inserts']
             elif t in db_kdr and db_kdr[t]['inserts']:
                 inserts = db_kdr[t]['inserts']
+            elif t in if0_silatas and if0_silatas[t]['inserts']:
+                inserts = if0_silatas[t]['inserts']
         
         for ins in inserts:
             out.write(ins + "\n\n")
@@ -91,3 +84,4 @@ with open('db_combined_final.sql', 'w', encoding='utf-8') as out:
 print("Done generating db_combined_final.sql. Sizes:")
 print("silatas tables:", len(silatas))
 print("db_kdr tables:", len(db_kdr))
+print("if0_silatas tables:", len(if0_silatas))
