@@ -65,8 +65,21 @@ $iRes = $conn->query("
 ");
 $items = $iRes->fetch_all(MYSQLI_ASSOC);
 
+// 5. Ambil dari dormitory_requests
+$dRes = $conn->query("
+    SELECT id, 'Dormitory' as type, occupant_name as applicant_name, applicant_unit, 
+           DATE_FORMAT(date_start, '%Y-%m-%d') as date_start, time_start, 
+           DATE_FORMAT(date_end, '%Y-%m-%d') as date_end, time_end, 
+           purpose, status, dormitory_id as sub_title, participants as info_extra
+    FROM dormitory_requests 
+    WHERE (status IN ('approved', 'in-progress')) 
+      AND (date_start >= '$today' OR date_end >= '$today')
+    ORDER BY date_start ASC, time_start ASC
+");
+$dormitories = $dRes->fetch_all(MYSQLI_ASSOC);
+
 // Gabungkan semua
-$all = array_merge($vehicles, $rooms, $zooms, $items);
+$all = array_merge($vehicles, $rooms, $zooms, $items, $dormitories);
 
 // Sortir berdasarkan tanggal dan waktu
 usort($all, function($a, $b) {

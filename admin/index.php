@@ -416,6 +416,7 @@ const PIC_MAP = {
   'Item':    ['198902222025211044'], // Indra Septian
   'Zoom':    ['198902222025211044'], // Indra Septian
   'Room':    ['199008092025212052', '198902222025211044'], // Lastiah, Indra
+  'Dormitory':['199008092025212052', '198902222025211044'],
   'Repair':  ['198605082025211053', '197212162014091003'] // Alfi, Agus Sujadi
 };
 
@@ -427,9 +428,10 @@ window._adminCalSelected = null;
 // ===== LOAD ALL DATA =====
 async function loadAllData(silent = false) {
   try {
-    const [vehicles, rooms, zooms, repairs, items, users, employees] = await Promise.all([
+    const [vehicles, rooms, dormitories, zooms, repairs, items, users, employees] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle'),
       api(API_BASE + 'requests.php?action=get_room'),
+      api(API_BASE + 'requests.php?action=get_dormitory'),
       api(API_BASE + 'requests.php?action=get_zoom'),
       api(API_BASE + 'requests.php?action=get_repair'),
       api(API_BASE + 'requests.php?action=get_item'),
@@ -448,6 +450,7 @@ async function loadAllData(silent = false) {
       note: item.note || '',
       details: type === 'Vehicle' ? (VEHICLE_MAP[item.vehicle_id] || item.vehicle_id) :
                type === 'Room'    ? `${ROOM_MAP[item.room_id] || item.room_id} (${item.participants||0} org)` :
+               type === 'Dormitory'? `${item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
                type === 'Zoom'    ? item.zoom_account_id :
                type === 'Repair'  ? `${item.location_detail}: ${item.issue_description}` :
                type === 'Item'    ? `${item.item_name} (${item.item_quantity})` : '-',
@@ -463,6 +466,8 @@ async function loadAllData(silent = false) {
       special_needs:   item.special_needs  || '',
       participants:    item.participants   || '',
       room_id:         item.room_id        || '',
+      dormitory_id:    item.dormitory_id   || '',
+      occupant_name:   item.occupant_name  || '',
       location_detail: item.location_detail || '',
       item_name:       item.item_name      || '',
     }));
@@ -486,6 +491,7 @@ async function loadAllData(silent = false) {
     allRequests = [
       ...norm(vehicles || [], 'Vehicle'),
       ...norm(rooms    || [], 'Room'),
+      ...norm(dormitories|| [], 'Dormitory'),
       ...norm(zooms    || [], 'Zoom'),
       ...norm(repairs  || [], 'Repair'),
       ...norm(items    || [], 'Item'),
@@ -760,6 +766,7 @@ function renderRequestManagement() {
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
+          <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
           <option value="Repair">Perbaikan</option>
           <option value="Item">Barang</option>
@@ -918,6 +925,7 @@ function renderTrackReports() {
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
+          <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
           <option value="Repair">Perbaikan</option>
           <option value="Item">Barang</option>
@@ -1164,9 +1172,15 @@ function renderAnalytics() {
   const currentYear = document.getElementById('stat-year')?.value || new Date().getFullYear();
 
   const html = `
-  <div class="page-header mb-4">
-    <h1 class="h3 mb-0 text-gray-800">Laporan & Statistik</h1>
-    <p class="text-muted">Analisis data pengajuan dan unduh dokumen laporan (.pdf)</p>
+  <div class="page-header mb-4" style="display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <h1 class="h3 mb-0 text-gray-800">Laporan & Statistik</h1>
+      <p class="text-muted">Analisis data pengajuan dan unduh dokumen laporan (.csv)</p>
+    </div>
+    <button class="btn btn-primary" onclick="exportExcel()" style="display:flex; align-items:center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export Excel
+    </button>
   </div>
 
   <div class="grid-dashboard-top mb-4" style="display: grid; grid-template-columns: 3fr 1fr; gap: 1.5rem;">
@@ -1246,6 +1260,7 @@ function renderAnalytics() {
               <option value="all">Semua Tipe</option>
               <option value="Vehicle">Kendaraan</option>
               <option value="Room">Ruangan</option>
+          <option value="Dormitory">Dormitory</option>
               <option value="Zoom">Zoom</option>
               <option value="Repair">Perbaikan</option>
               <option value="Item">Barang</option>
@@ -1385,6 +1400,10 @@ function renderAnalytics() {
           <div class="tile-icon icon-room"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
           <div class="tile-label">Ruangan</div>
         </div>
+        <div class="export-tile" onclick="exportPDF('Dormitory')">
+          <div class="tile-icon icon-room"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="tile-label">Dormitory</div>
+        </div>
         <div class="export-tile" onclick="exportPDF('Zoom')">
           <div class="tile-icon icon-zoom"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
           <div class="tile-label">Virtual (Zoom)</div>
@@ -1486,7 +1505,7 @@ window.exportPDF = function(subType) {
   doc.setFontSize(16);
   doc.setTextColor(15, 23, 42); // slate-900
   doc.setFont('inter', 'bold');
-  const typeLabels = { 'Vehicle': 'Kendaraan', 'Room': 'Ruangan', 'Repair': 'Maintenance/Perbaikan', 'Item': 'Peminjaman Barang', 'Zoom': 'Virtual (Zoom)' };
+  const typeLabels = { 'Vehicle': 'Kendaraan', 'Room': 'Ruangan', 'Dormitory': 'Dormitory', 'Repair': 'Maintenance/Perbaikan', 'Item': 'Peminjaman Barang', 'Zoom': 'Virtual (Zoom)' };
   doc.text(`LAPORAN PENGGUNAAN FASILITAS: ${typeLabels[subType] || subType}`, 105, 48, null, 'center');
   
   doc.setFontSize(11);
@@ -1593,7 +1612,7 @@ function updateAnalyticsDashboard() {
   if (typeof Chart === 'undefined') return;
 
   // 2. Prepare Data for Daily Volume Chart
-  const dailyCountsByType = { 'Vehicle': {}, 'Room': {}, 'Zoom': {}, 'Repair': {}, 'Item': {} };
+  const dailyCountsByType = { 'Vehicle': {}, 'Room': {}, 'Dormitory': {}, 'Zoom': {}, 'Repair': {}, 'Item': {} };
   const allDaysSet = new Set();
   
   filtered.forEach(r => {
@@ -2179,6 +2198,22 @@ function renderDetailPengajuanTinjau() {
       </div>
     </div>` : '';
 
+  // ── Bagian assign Dormitory ──
+  const dormitorySection = (req.type === 'Dormitory' && req.status === 'pending') ? `
+    <div style="background:#fdf4ff; border:1px solid #fbcfe8; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
+      <div style="font-weight:700; color:#831843; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Plotting / Ubah Dormitory
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <select id="assign-dormitory" class="form-select" style="background:#fff;">
+          <option value="">Pilih Dormitory...</option>
+          ${ALL_DORMITORIES.map(r => `<option value="${r.id}"${req.dormitory_id === r.id ? ' selected' : ''}>${r.name}</option>`).join('')}
+        </select>
+        <div style="font-size:0.75rem; color:#be185d; font-style:italic; margin-top:0.5rem;">* Anda wajib memploting dormitory untuk user.</div>
+      </div>
+    </div>` : '';
+
   // ── Strict Role-Based Workflow Logic ──
   // NOTE: All users on admin/index.php have CURRENT_ROLE='admin' (from login redirect).
   // Access control MUST be based on ADMIN_USERNAME (which = NIK) or CURRENT_ROLE for specific non-admin roles.
@@ -2187,6 +2222,7 @@ function renderDetailPengajuanTinjau() {
     'Item':    ['198902222025211044'],
     'Zoom':    ['198902222025211044'],
     'Room':    ['199008092025212052', '198902222025211044'],
+    'Dormitory': ['199008092025212052', '198902222025211044'],
     'Repair':  ['198605082025211053', '197212162014091003'] // Alfi, Agus Sujadi
   };
   const SUPER_ADMIN_NIKS = ['000000000000000000'];
@@ -2224,6 +2260,11 @@ function renderDetailPengajuanTinjau() {
       } else if (req.type === 'Room') {
         actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
           <button class="btn btn-primary btn-full" onclick="doRoomApprove(${req.id},'waiting_manager_fmd')">✓ Tersedia — Plotting & Teruskan ke Manager FMD</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
+        </div>`;
+      } else if (req.type === 'Dormitory') {
+        actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
+          <button class="btn btn-primary btn-full" onclick="doDormitoryApprove(${req.id},'waiting_manager_fmd')">✓ Tersedia — Plotting & Teruskan ke Manager FMD</button>
           <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
         </div>`;
       } else {
@@ -2534,6 +2575,16 @@ function buildDetailBody(req) {
         <div class="tv-label">Pemohon</div>
         <div class="tv-value tv-applicant" style="font-weight:600;">${(req.applicant_name || '-').toUpperCase()} / ${req.applicant_unit || '-'}</div>
       </div>
+      ${req.type === 'Dormitory' ? `
+      <div class="tv-row">
+        <div class="tv-label">Penghuni</div>
+        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'}</div>
+      </div>` : ''}
+      ${req.type === 'Vehicle' ? `
+      <div class="tv-row">
+        <div class="tv-label">Lokasi Tujuan</div>
+        <div class="tv-value" style="font-weight:600;">${req.destination || '-'}</div>
+      </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Kategori</div>
         <div class="tv-value">${catLabel}</div>
@@ -2769,6 +2820,32 @@ async function doRoomApprove(id, targetStatus = 'approved') {
     }
   }
   await updateStatus(id, 'Room', targetStatus);
+}
+
+async function doDormitoryApprove(id, targetStatus = 'approved') {
+  const dormitoryId = document.getElementById('assign-dormitory')?.value || '';
+  const noteEl = document.getElementById('admin-note');
+  const rawNote = noteEl?.value || '';
+
+  if (!dormitoryId) {
+    Toast.error('Pilih dormitory yang akan ditetapkan!');
+    return;
+  }
+
+  const res = await apiPost(API_BASE + 'requests.php', {
+    action: 'update_dormitory_assignment', id, dormitory_id: dormitoryId
+  });
+  if (!res.success) { Toast.error(res.message); return; }
+
+  const dName = DORMITORY_MAP[dormitoryId] || dormitoryId;
+  if (noteEl) {
+    if (targetStatus === 'waiting_manager_fmd' && !rawNote.trim()) {
+      noteEl.value = `${dName} tersedia, diteruskan kepada Manager FMD untuk approval permohonan`;
+    } else {
+      noteEl.value = `Dormitory: ${dName}. ${rawNote}`;
+    }
+  }
+  await updateStatus(id, 'Dormitory', targetStatus);
 }
 
 async function approveRABtoSupervisor(id) {
@@ -3108,7 +3185,13 @@ window.showAdminDayDetail = function(dateStr, updateGrid = true) {
     </div>`;
 };
 
-// ===== INIT =====
+function exportExcel() {
+  const month = document.getElementById('stat-month')?.value || '';
+  const year = document.getElementById('stat-year')?.value || new Date().getFullYear();
+  window.open(API_BASE + `export_excel.php?month=${month}&year=${year}`, '_blank');
+}
+
+// ===== UTILITIES =====
 document.addEventListener('DOMContentLoaded', () => {
   Modal.init();
   loadAllData().then(() => switchView('dashboard'));

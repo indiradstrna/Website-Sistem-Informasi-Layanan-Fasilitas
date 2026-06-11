@@ -135,6 +135,42 @@ switch ($action) {
         $stmt->close();
         break;
 
+    case 'change_password':
+        $userId = (int)$_SESSION['user_id'];
+        $oldPass = trim($_POST['old_password'] ?? '');
+        $newPass = trim($_POST['new_password'] ?? '');
+
+        if (!$oldPass || !$newPass) {
+            jsonResponse(false, 'Password lama dan baru wajib diisi!');
+        }
+
+        // Fetch current password
+        $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $user = $res->fetch_assoc();
+        $stmt->close();
+
+        if (!$user) {
+            jsonResponse(false, 'User tidak ditemukan.');
+        }
+
+        if ($user['password'] !== $oldPass) {
+            jsonResponse(false, 'Password lama tidak cocok.');
+        }
+
+        // Update to new password
+        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $stmt->bind_param("si", $newPass, $userId);
+        if ($stmt->execute()) {
+            jsonResponse(true, 'Password berhasil diperbarui!');
+        } else {
+            jsonResponse(false, 'Gagal memperbarui password.');
+        }
+        $stmt->close();
+        break;
+
     default:
         jsonResponse(false, "Action '$action' tidak dikenali.");
 }

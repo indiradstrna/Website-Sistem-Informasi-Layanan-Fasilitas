@@ -281,8 +281,8 @@ let USER_WA_NUMBER = <?= json_encode($waNumber) ?>;
 let USER_WA_APIKEY = <?= json_encode($waApikey) ?>;
 const API_BASE  = '<?= BASE_URL ?>/api/';
 
-let myVehicle = [], myRoom = [], myZoom  = [], myRepair = [], myItem  = [];
-let allVehicle= [], allRoom  = [], allZoom  = [], allRepair = [];
+let myVehicle = [], myRoom = [], myDormitory = [], myZoom  = [], myRepair = [], myItem  = [];
+let allVehicle= [], allRoom  = [], allDormitory = [], allZoom  = [], allRepair = [];
 let currentRequests = [];
 let currentPage = 1;
 let itemsPerPage = 10;
@@ -332,9 +332,10 @@ function renderNotifDropdown() {
     const safeCreated = (r.created_at && r.created_at.includes(' ')) ? r.created_at.replace(' ', 'T') : r.created_at;
     const d = new Date(safeCreated);
     const dateStr = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    const typeLabel = { Vehicle:'Mobil', Room:'Ruang', Zoom:'Zoom', Repair:'Perbaikan', Item:'Barang' }[r._type] || r._type;
+    const typeLabel = { Vehicle:'Mobil', Room:'Ruang', Dormitory:'Dormitory', Zoom:'Zoom', Repair:'Perbaikan', Item:'Barang' }[r._type] || r._type;
     const detail = r._type === 'Vehicle' ? (VEHICLE_MAP[r.vehicle_id] || 'Mobilitas') :
                    r._type === 'Room'    ? r.room_id :
+                   r._type === 'Dormitory' ? r.dormitory_id :
                    r._type === 'Zoom'    ? r.zoom_account_id :
                    r._type === 'Repair'  ? r.location_detail :
                    r._type === 'Item'    ? r.item_name : '-';
@@ -396,6 +397,19 @@ const ROOMS = [
   { id: 'RUANG_KMD',      name: 'Ruang Rapat KMD (8-10 orang)' },
   { id: 'RUANG_HERBARIUM',name: 'Ruang Rapat Herbarium (30-35 org)' },
 ];
+const DORMITORIES = [
+  { id: 'DORMITORY_A', name: 'Dormitory A' },
+  { id: 'DORMITORY_B', name: 'Dormitory B' },
+  { id: 'DORMITORY_C', name: 'Dormitory C' },
+  { id: 'DORMITORY_E', name: 'Dormitory E' },
+  { id: 'DORMITORY_F', name: 'Dormitory F' },
+  { id: 'DORMITORY_G', name: 'Dormitory G' },
+  { id: 'DORMITORY_H', name: 'Dormitory H' },
+  { id: 'DORMITORY_I', name: 'Dormitory I' },
+  { id: 'DORMITORY_J', name: 'Dormitory J' },
+  { id: 'DORMITORY_K', name: 'Dormitory K' },
+  { id: 'DORMITORY_L', name: 'Dormitory L' }
+];
 const ZOOM_ACCOUNTS = [
   { id: 'zoom_01', name: 'Zoom Premium 1 (Kap. 100)' },
   { id: 'zoom_02', name: 'Zoom Webinar (Kap. 500)' },
@@ -403,30 +417,35 @@ const ZOOM_ACCOUNTS = [
 
 async function loadMyData(silent = false) {
   try {
-    const [v,r,z,rep,itm, av, ar, az, arep] = await Promise.all([
+    const [v,r,d,z,rep,itm, av, ar, ad, az, arep] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle_by_user'),
       api(API_BASE + 'requests.php?action=get_room_by_user'),
+      api(API_BASE + 'requests.php?action=get_dormitory_by_user'),
       api(API_BASE + 'requests.php?action=get_zoom_by_user'),
       api(API_BASE + 'requests.php?action=get_repair_by_user'),
       api(API_BASE + 'requests.php?action=get_item_by_user'),
       api(API_BASE + 'requests.php?action=get_vehicle'),
       api(API_BASE + 'requests.php?action=get_room'),
+      api(API_BASE + 'requests.php?action=get_dormitory'),
       api(API_BASE + 'requests.php?action=get_zoom'),
       api(API_BASE + 'requests.php?action=get_repair'),
     ]);
     myVehicle = Array.isArray(v)   ? v   : [];
     myRoom    = Array.isArray(r)   ? r   : [];
+    myDormitory = Array.isArray(d) ? d : [];
     myZoom    = Array.isArray(z)   ? z   : [];
     myRepair  = Array.isArray(rep) ? rep : [];
     myItem    = Array.isArray(itm) ? itm : [];
     allVehicle= Array.isArray(av)  ? av  : [];
     allRoom   = Array.isArray(ar)  ? ar  : [];
+    allDormitory = Array.isArray(ad) ? ad : [];
     allZoom   = Array.isArray(az)  ? az  : [];
     allRepair = Array.isArray(arep)? arep: [];
 
     currentRequests = [
       ...myVehicle.map(r=>({...r,_type:'Vehicle'})),
       ...myRoom.map(r=>({...r,_type:'Room'})),
+      ...myDormitory.map(r=>({...r,_type:'Dormitory'})),
       ...myZoom.map(r=>({...r,_type:'Zoom'})),
       ...myRepair.map(r=>({...r,_type:'Repair'})),
       ...myItem.map(r=>({...r,_type:'Item'})),
@@ -464,7 +483,7 @@ async function loadMyData(silent = false) {
 
 function switchView(viewId) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === viewId));
-  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
+  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[viewId] || viewId;
   previousView = window._currentView || 'dashboard';
@@ -494,6 +513,7 @@ function renderCurrentView() {
     case 'dashboard':   ct.innerHTML = renderDashboard();          break;
     case 'vehicle':     ct.innerHTML = renderServicePage('vehicle');break;
     case 'room':        ct.innerHTML = renderServicePage('room');   break;
+    case 'dormitory':   ct.innerHTML = renderServicePage('dormitory');   break;
     case 'zoom':        ct.innerHTML = renderServicePage('zoom');   break;
     case 'repair':      ct.innerHTML = renderServicePage('repair'); break;
     case 'item':        ct.innerHTML = renderServicePage('item');   break;
@@ -504,7 +524,7 @@ function renderCurrentView() {
 }
 
 function renderDashboard() {
-  const all = [...myVehicle,...myRoom,...myZoom,...myRepair,...myItem];
+  const all = [...myVehicle,...myRoom,...myDormitory,...myZoom,...myRepair,...myItem];
   const total    = all.length;
   const pending  = all.filter(r=>['pending','waiting_manager_fmd'].includes(r.status)).length;
   const approved = all.filter(r=>['approved', 'ready_for_user'].includes(r.status)).length;
@@ -538,6 +558,7 @@ function renderDashboard() {
         ${[
           {id:'vehicle',icon:'🚗',label:'Kendaraan Dinas',desc:'Ajukan peminjaman kendaraan dinas'},
           {id:'room',icon:'🏢',label:'Ruangan',desc:'Booking ruang rapat/seminar'},
+          {id:'dormitory',icon:'🏢',label:'Dormitory',desc:'Pengajuan Dormitory'},
           {id:'zoom',icon:'💻',label:'Zoom Meeting',desc:'Request akun Zoom untuk rapat online'},
           {id:'repair',icon:'🔧',label:'Perbaikan',desc:'Laporkan kerusakan fasilitas'},
           {id:'item',icon:'📦',label:'Peminjaman Barang',desc:'Pinjam peralatan kantor'},
@@ -590,6 +611,7 @@ function renderServicePage(type) {
   const typeInfo = {
     vehicle:{ title:'Kendaraan Dinas', desc:'Ajukan permohonan kendaraan dinas', data:'allVehicle', takenKey: 'vehicle_id' },
     room:   { title:'Ruangan',         desc:'Booking ruang rapat atau seminar' },
+    dormitory: { title:'Dormitory', desc:'Booking Dormitory A-L' },
     zoom:   { title:'Zoom Meeting',    desc:'Request akun Zoom untuk online meeting' },
     repair: { title:'Laporan Perbaikan', desc:'Laporkan kerusakan/masalah fasilitas' },
     item:   { title:'Peminjaman Barang', desc:'Ajukan peminjaman peralatan' },
@@ -749,6 +771,50 @@ function renderServicePage(type) {
     setTimeout(() => { if(window._currentView === 'room') renderRoomCalendar(); }, 50);
   }
 
+  if(type === 'dormitory') {
+    layoutHTML = `
+    <div style="display:grid; grid-template-columns: 100%; gap:1.5rem; align-items:start;">
+      <div class="grid-main">
+        ${tableHTML}
+
+        <div class="card" style="position:sticky;top:1rem;">
+          <div class="card-header">
+            <div class="card-title">Jadwal Peminjaman Dormitory</div>
+            <div class="card-desc">Klik tanggal untuk melihat detail</div>
+          </div>
+          <div class="card-body" style="padding:0.75rem;">
+
+            <!-- Navigasi Bulan -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+              <button onclick="dormitoryCalPrevMonth()" class="btn btn-ghost btn-sm" style="padding:0.25rem 0.6rem;font-size:1rem;">&#8249;</button>
+              <div id="dormitory-cal-title" style="font-weight:700;font-size:0.9rem;color:var(--color-slate-800);"></div>
+              <button onclick="dormitoryCalNextMonth()" class="btn btn-ghost btn-sm" style="padding:0.25rem 0.6rem;font-size:1rem;">&#8250;</button>
+            </div>
+
+            <!-- Header hari -->
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:0.65rem;font-weight:700;color:var(--color-slate-400);margin-bottom:0.3rem;">
+              <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+            </div>
+
+            <!-- Grid kalender -->
+            <div id="dormitory-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;"></div>
+
+            <!-- Legenda -->
+            <div style="display:flex;gap:0.8rem;margin-top:0.75rem;font-size:0.7rem;color:var(--color-slate-500);flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div style="width:8px;height:8px;border-radius:50%;background:#16a34a;"></div>Disetujui</div>
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></div>Pending</div>
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div style="width:8px;height:8px;border-radius:50%;background:#e11d48;"></div>Lainnya</div>
+            </div>
+
+            <!-- Detail tanggal yang dipilih -->
+            <div id="dormitory-cal-detail" style="margin-top:0.75rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    setTimeout(() => { if(window._currentView === 'dormitory') renderDormitoryCalendar(); }, 50);
+  }
+
   if(type === 'repair') {
     layoutHTML = `
     <div style="display:grid; grid-template-columns: 100%; gap:1.5rem; align-items:start;">
@@ -805,7 +871,7 @@ function renderServicePage(type) {
 }
 
 function renderMyTypeRows(type) {
-  const dataMap = { vehicle: myVehicle, room: myRoom, zoom: myZoom, repair: myRepair, item: myItem };
+  const dataMap = { vehicle: myVehicle, room: myRoom, dormitory: myDormitory, zoom: myZoom, repair: myRepair, item: myItem };
   const data    = dataMap[type] || [];
   if (!data.length) return `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Belum ada pengajuan ${type}</td></tr>`;
 
@@ -813,7 +879,8 @@ function renderMyTypeRows(type) {
     let detail = '-';
     let period = '-';
     if (type === 'vehicle') { detail = VEHICLE_MAP[r.vehicle_id] || r.vehicle_id; period = `${r.date_start||''} ${r.time_start||''} → ${r.date_end||''} ${r.time_end||''}`; }
-    else if (type === 'room')   { detail = r.room_id;           period = `${r.date_start||''} ${r.time_start||''}`; }
+    else if (type === 'room')   { detail = ROOMS.find(x => x.id === r.room_id)?.name || r.room_id;           period = `${r.date_start||''} ${r.time_start||''}`; }
+    else if (type === 'dormitory') { detail = DORMITORIES.find(x => x.id === r.dormitory_id)?.name || r.dormitory_id; period = `${r.date_start||''} ${r.time_start||''}`; }
     else if (type === 'zoom')   { detail = r.zoom_account_id;   period = `${r.date_start||''} ${r.time_start||''}`; }
     else if (type === 'repair') { 
       detail = `<div style="font-weight:700;">${r.location_detail || '-'}</div><div style="font-size:0.75rem;color:var(--color-slate-500);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.issue_description}">${r.issue_description}</div>`; 
@@ -890,6 +957,7 @@ function renderMyReports() {
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
+          <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
           <option value="Repair">Perbaikan</option>
           <option value="Item">Barang</option>
@@ -924,9 +992,10 @@ function renderMyReportsRows(data, page) {
   if (paged.length === 0) return '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Data tidak ditemukan</td></tr>';
 
   return paged.map(r => {
-    const typeLabel = { Vehicle:'Mobil', Room:'Ruangan', Zoom:'Zoom', Repair:'Perbaikan', Item:'Barang' }[r._type] || r._type;
+    const typeLabel = { Vehicle:'Mobil', Room:'Ruangan', Dormitory:'Dormitory', Zoom:'Zoom', Repair:'Perbaikan', Item:'Barang' }[r._type] || r._type;
     const detail = r._type === 'Vehicle' ? (VEHICLE_MAP[r.vehicle_id] || 'Menunggu Plotting') :
                    r._type === 'Room'    ? r.room_id :
+                   r._type === 'Dormitory' ? r.dormitory_id :
                    r._type === 'Zoom'    ? r.zoom_account_id :
                    r._type === 'Repair'  ? r.location_detail :
                    r._type === 'Item'    ? r.item_name : '-';
@@ -996,7 +1065,8 @@ function filterMyReports() {
   if (search) {
     data = data.filter(r => {
       const detail = (r._type === 'Vehicle' ? (VEHICLE_MAP[r.vehicle_id] || '') : 
-                     r._type === 'Room' ? r.room_id : 
+                     r._type === 'Room'    ? r.room_id :
+                   r._type === 'Dormitory' ? r.dormitory_id : 
                      r._type === 'Zoom' ? r.zoom_account_id : 
                      r._type === 'Repair' ? r.location_detail : 
                      r.item_name || '').toLowerCase();
@@ -1021,7 +1091,8 @@ function goReportsPage(page) {
   if (search) {
     data = data.filter(r => {
       const detail = (r._type === 'Vehicle' ? (VEHICLE_MAP[r.vehicle_id] || '') : 
-                     r._type === 'Room' ? r.room_id : 
+                     r._type === 'Room'    ? r.room_id :
+                   r._type === 'Dormitory' ? r.dormitory_id : 
                      r._type === 'Zoom' ? r.zoom_account_id : 
                      r._type === 'Repair' ? r.location_detail : 
                      r.item_name || '').toLowerCase();
@@ -1112,17 +1183,32 @@ function renderProfile() {
             <div style="display:grid; gap: 0.75rem;">
                 <div>
                    <label class="form-label" style="font-size: 0.7rem;">Password Lama</label>
-                   <input type="password" id="p-old-password" class="form-input" placeholder="Masukkan password lama" />
+                   <div style="position: relative;">
+                       <input type="password" id="p-old-password" class="form-input" placeholder="Masukkan password lama" style="padding-right: 2.5rem;" />
+                       <button type="button" onclick="togglePasswordVisibility('p-old-password', this)" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--color-slate-400); cursor: pointer; padding: 0;">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                       </button>
+                   </div>
                 </div>
                 <div>
                    <label class="form-label" style="font-size: 0.7rem;">Password Baru</label>
-                   <input type="password" id="p-new-password" class="form-input" placeholder="Masukkan password baru" />
+                   <div style="position: relative;">
+                       <input type="password" id="p-new-password" class="form-input" placeholder="Masukkan password baru" style="padding-right: 2.5rem;" />
+                       <button type="button" onclick="togglePasswordVisibility('p-new-password', this)" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--color-slate-400); cursor: pointer; padding: 0;">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                       </button>
+                   </div>
                 </div>
                 <div>
                    <label class="form-label" style="font-size: 0.7rem;">Konfirmasi Password Baru</label>
-                   <input type="password" id="p-confirm-password" class="form-input" placeholder="Ulangi password baru" />
+                   <div style="position: relative;">
+                       <input type="password" id="p-confirm-password" class="form-input" placeholder="Ulangi password baru" style="padding-right: 2.5rem;" />
+                       <button type="button" onclick="togglePasswordVisibility('p-confirm-password', this)" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--color-slate-400); cursor: pointer; padding: 0;">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                       </button>
+                   </div>
                 </div>
-                <button class="btn btn-primary" style="margin-top:0.5rem;" onclick="changePassword()">Perbarui Password</button>
+                <button type="button" class="btn btn-primary" style="margin-top:0.5rem;" onclick="changePassword()">Perbarui Password</button>
             </div>
         </div>
 
@@ -1135,6 +1221,19 @@ function renderProfile() {
       </div>
     </div>
   </div>`;
+}
+
+function togglePasswordVisibility(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        btnEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+    } else {
+        input.type = 'password';
+        btnEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    }
 }
 
 async function changePassword() {
@@ -1195,7 +1294,7 @@ async function saveProfile() {
 function openForm(type) {
   currentFormType = type;
   document.getElementById('modal-form-title').textContent = {
-    vehicle:'Form Peminjaman Kendaraan Dinas', room:'Form Booking Ruangan',
+    vehicle:'Form Peminjaman Kendaraan Dinas', room:'Form Booking Ruangan', dormitory:'Form Booking Dormitory',
     zoom:'Form Request Zoom Meeting', repair:'Form Laporan Perbaikan',
     item:'Form Peminjaman Barang'
   }[type] || 'Form Pengajuan';
@@ -1290,6 +1389,7 @@ function buildForm(type) {
     <div class="form-group"><label class="form-label">Tanggal Selesai</label><input type="date" id="f-date-end" class="form-input" required /></div>
     <div class="form-group"><label class="form-label">Jam Selesai</label><input type="time" id="f-time-end" class="form-input" required /></div>
   </div>
+  <div class="form-group"><label class="form-label">Lokasi Tujuan</label><input type="text" id="f-destination" class="form-input" required placeholder="Masukkan lokasi tujuan..." /></div>
   <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan penggunaan kendaraan..."></textarea></div>`;
 
   if (type === 'room') return `
@@ -1361,6 +1461,27 @@ function buildForm(type) {
   </div>
   <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan peminjaman..."></textarea></div>`;
 
+  if (type === 'dormitory') return `
+  ${nameUnit}
+  <div class="form-group">
+    <label class="form-label">Nama Penghuni</label>
+    <div id="occupant-list" style="display:flex; flex-direction:column; gap:0.5rem;">
+      <div style="display:flex; gap:0.5rem;" class="occupant-row">
+        <input type="text" class="form-input f-occupant-item" required placeholder="Nama Penghuni 1" style="flex:1;" />
+        <button type="button" class="btn btn-outline" style="padding: 0.5rem 1rem;" onclick="addOccupantField()">+</button>
+      </div>
+    </div>
+  </div>
+  <div class="grid-2">
+    <div class="form-group"><label class="form-label">Tanggal Mulai</label><input type="date" id="f-date-start" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Jam Mulai</label><input type="time" id="f-time-start" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Tanggal Selesai</label><input type="date" id="f-date-end" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Jam Selesai</label><input type="time" id="f-time-end" class="form-input" required /></div>
+  </div>
+  <div class="form-group"><label class="form-label">Jumlah Penghuni</label><input type="number" id="f-participants" class="form-input" min="1" value="1" required /></div>
+  <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan..."></textarea></div>
+  <div class="form-group"><label class="form-label">Kebutuhan Khusus</label><textarea id="f-special-needs" class="form-textarea" placeholder="Extra bed, dll..."></textarea></div>`;
+
   return '';
 }
 
@@ -1376,7 +1497,7 @@ async function doSubmitForm() {
 
   const data = { action: 'submit_' + currentFormType, applicant_name: name, applicant_unit: unit };
 
-  if (['vehicle','room','zoom','item'].includes(currentFormType)) {
+  if (['vehicle','room','dormitory','zoom','item'].includes(currentFormType)) {
     data.date_start = document.getElementById('f-date-start')?.value || '';
     data.time_start = document.getElementById('f-time-start')?.value || '';
     data.date_end   = document.getElementById('f-date-end')?.value   || '';
@@ -1385,9 +1506,16 @@ async function doSubmitForm() {
   }
   if (currentFormType === 'vehicle') {
     data.vehicle_id = 'PENDING_ASSIGNMENT';
+    data.destination = document.getElementById('f-destination')?.value || '';
   } else if (currentFormType === 'room') {
     data.room_id      = document.getElementById('f-room-id')?.value || '';
     data.participants = document.getElementById('f-participants')?.value || '1';
+    data.special_needs= document.getElementById('f-special-needs')?.value || '';
+  } else if (currentFormType === 'dormitory') {
+    data.dormitory_id = 'PENDING_ASSIGNMENT';
+    const occupantInputs = Array.from(document.querySelectorAll('.f-occupant-item'));
+    data.occupant_name = occupantInputs.map(input => input.value.trim()).filter(v => v).join(', ');
+    data.participants = document.getElementById('f-participants')?.value || occupantInputs.length || '1';
     data.special_needs= document.getElementById('f-special-needs')?.value || '';
   } else if (currentFormType === 'zoom') {
     data.zoom_account_id= document.getElementById('f-zoom-id')?.value     || '';
@@ -1511,7 +1639,7 @@ function buildDetailBody(req) {
   const jadwalVal = `${ds}${de}<div style="font-size:.75rem;color:#6b7280;margin-top:.2rem;">${timeStr}</div>`;
 
   const type = (req._type || req.type || '').toLowerCase();
-  const catLabel = { vehicle:'Kendaraan Dinas', room:'Ruangan', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang' }[type] || type;
+  const catLabel = { vehicle:'Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang' }[type] || type;
 
   // Timeline Section
   const timelineEvents = getTimelineEvents(req);
@@ -1552,6 +1680,7 @@ function buildDetailBody(req) {
 
   const detail = type === 'vehicle' ? (VEHICLE_MAP[req.vehicle_id] || 'Menunggu Plotting') :
                  type === 'room'    ? req.room_id :
+                 type === 'dormitory' ? req.dormitory_id :
                  type === 'zoom'    ? req.zoom_account_id :
                  type === 'repair'  ? req.location_detail :
                  type === 'item'    ? req.item_name : '-';
@@ -1573,6 +1702,16 @@ function buildDetailBody(req) {
         <div class="tv-label">Pemohon</div>
         <div class="tv-value tv-applicant" style="font-weight:600;">${(req.applicant_name || '-').toUpperCase()} / ${req.applicant_unit || '-'}</div>
       </div>
+      ${type === 'dormitory' ? `
+      <div class="tv-row">
+        <div class="tv-label">Penghuni</div>
+        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'}</div>
+      </div>` : ''}
+      ${type === 'vehicle' ? `
+      <div class="tv-row">
+        <div class="tv-label">Lokasi Tujuan</div>
+        <div class="tv-value" style="font-weight:600;">${req.destination || '-'}</div>
+      </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Kategori</div>
         <div class="tv-value">${catLabel}</div>
@@ -2383,6 +2522,187 @@ window.showRoomDayDetail = function(dateStr, updateGrid = true) {
         ${bookedHtml}
       </div>
     </div>`;
+};
+
+window._dormitoryCalYear     = new Date().getFullYear();
+window._dormitoryCalMonth    = new Date().getMonth();
+window._dormitoryCalSelected = null;
+
+window.renderDormitoryCalendar = function() {
+  renderDormitoryCalGrid();
+};
+
+window.dormitoryCalPrevMonth = function() {
+  window._dormitoryCalMonth--;
+  if (window._dormitoryCalMonth < 0) { window._dormitoryCalMonth = 11; window._dormitoryCalYear--; }
+  renderDormitoryCalGrid();
+  window._dormitoryCalSelected = null;
+  const det = document.getElementById('dormitory-cal-detail');
+  if (det) det.innerHTML = '';
+};
+
+window.dormitoryCalNextMonth = function() {
+  window._dormitoryCalMonth++;
+  if (window._dormitoryCalMonth > 11) { window._dormitoryCalMonth = 0; window._dormitoryCalYear++; }
+  renderDormitoryCalGrid();
+  window._dormitoryCalSelected = null;
+  const det = document.getElementById('dormitory-cal-detail');
+  if (det) det.innerHTML = '';
+};
+
+window.renderDormitoryCalGrid = function() {
+  const yr   = window._dormitoryCalYear;
+  const mo   = window._dormitoryCalMonth;
+  const grid  = document.getElementById('dormitory-cal-grid');
+  const title = document.getElementById('dormitory-cal-title');
+  if (!grid || !title) return;
+
+  const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  title.textContent = `${BULAN[mo]} ${yr}`;
+
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const pendingStatuses  = ['pending'];
+  const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
+
+  // Precompute dayMap dari allDormitory
+  const dayMap = {};
+  allDormitory.filter(r => activeStatuses.includes(r.status)).forEach(r => {
+    if (!r.date_start) return;
+    const start = new Date(r.date_start);
+    const end   = r.date_end ? new Date(r.date_end) : new Date(r.date_start);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getMonth() !== mo || d.getFullYear() !== yr) continue;
+      const key = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!dayMap[key]) dayMap[key] = { approved:[], pending:[], other:[] };
+      if (occupiedStatuses.includes(r.status)) dayMap[key].approved.push(r);
+      else if (pendingStatuses.includes(r.status)) dayMap[key].pending.push(r);
+      else dayMap[key].other.push(r);
+    }
+  });
+
+  const firstDay    = new Date(yr, mo, 1).getDay();
+  const daysInMonth = new Date(yr, mo + 1, 0).getDate();
+  const today       = new Date();
+  const todayStr    = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  let html = '';
+  for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr    = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ev         = dayMap[dateStr];
+    const isToday    = dateStr === todayStr;
+    const isSelected = dateStr === window._dormitoryCalSelected;
+
+    let dots = '';
+    if (ev) {
+      if (ev.approved.length) dots += `<div style="width:5px;height:5px;border-radius:50%;background:#16a34a;display:inline-block;margin:0 1px;"></div>`;
+      if (ev.pending.length)  dots += `<div style="width:5px;height:5px;border-radius:50%;background:#f59e0b;display:inline-block;margin:0 1px;"></div>`;
+      if (ev.other.length)    dots += `<div style="width:5px;height:5px;border-radius:50%;background:#e11d48;display:inline-block;margin:0 1px;"></div>`;
+    }
+
+    const bgColor   = isSelected ? '#2563eb' : isToday ? '#eff6ff' : ev ? 'var(--color-slate-50)' : 'transparent';
+    const textColor = isSelected ? '#fff'    : isToday ? '#2563eb' : 'var(--color-slate-700)';
+    const border    = isToday && !isSelected ? '1.5px solid #2563eb' : isSelected ? 'none' : '1px solid transparent';
+
+    html += `
+      <div onclick="showDormitoryDayDetail('${dateStr}')" style="
+        padding:0.2rem 0; text-align:center; cursor:pointer;
+        border-radius:0.4rem; background:${bgColor}; border:${border}; transition:all .12s;
+      " onmouseover="if('${dateStr}'!==window._dormitoryCalSelected)this.style.background='var(--color-slate-100)'"
+         onmouseout="if('${dateStr}'!==window._dormitoryCalSelected)this.style.background='${ev ? 'var(--color-slate-50)' : 'transparent'}'">
+        <div style="font-size:0.72rem;font-weight:${isToday||isSelected?'700':'500'};color:${textColor};line-height:1.6;">${d}</div>
+        <div style="display:flex;justify-content:center;align-items:center;min-height:7px;">${dots}</div>
+      </div>`;
+  }
+
+  grid.innerHTML = html;
+  if (window._dormitoryCalSelected) showDormitoryDayDetail(window._dormitoryCalSelected, false);
+};
+
+window.showDormitoryDayDetail = function(dateStr, updateGrid = true) {
+  window._dormitoryCalSelected = dateStr;
+  if (updateGrid) renderDormitoryCalGrid();
+
+  const det = document.getElementById('dormitory-cal-detail');
+  if (!det) return;
+
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const activeStatuses   = [...occupiedStatuses, 'pending'];
+
+  const reqs = allDormitory.filter(r => {
+    if (!activeStatuses.includes(r.status) || !r.date_start) return false;
+    return r.date_start <= dateStr && (r.date_end >= dateStr || r.date_start === dateStr);
+  });
+
+  const [yr, mo, dy] = dateStr.split('-');
+  const BULAN    = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const dayNames = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const dayObj   = new Date(dateStr);
+  const dayLabel = `${dayNames[dayObj.getDay()]}, ${parseInt(dy)} ${BULAN[parseInt(mo)-1]} ${yr}`;
+
+  // Dormitory yang sudah terpakai
+  const bookedRoomIds = new Set(reqs.filter(r => occupiedStatuses.includes(r.status)).map(r => r.dormitory_id));
+  const availableRooms = DORMITORIES.filter(rm => !bookedRoomIds.has(rm.id));
+
+  // -- Bagian TERSEDIA --
+  let availHtml = availableRooms.map(rm =>
+    `<span style="display:inline-block;font-size:0.72rem;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:0.25rem;padding:0.1rem 0.45rem;margin:0.1rem 0.15rem;">${rm.name}</span>`
+  ).join('');
+  if (!availHtml) availHtml = `<span style="font-size:0.75rem;color:var(--color-slate-400);">Semua dormitory terpakai</span>`;
+
+  // -- Bagian TERPAKAI --
+  let bookedHtml = '';
+  reqs.sort((a,b) => (a.time_start||'').localeCompare(b.time_start||'')).forEach(r => {
+    const sColor  = occupiedStatuses.includes(r.status) ? '#dc2626' : '#f59e0b';
+    const sLabel  = r.status === 'pending' ? 'PENDING' : 'TERPAKAI';
+    const tStr    = (r.time_start||'00:00').substring(0,5);
+    const tEnd    = (r.time_end  ||'00:00').substring(0,5);
+    const nama    = r.occupant_name || r.applicant_name || '-';
+    const ruangan = DORMITORIES.find(rm => rm.id === r.dormitory_id)?.name || r.dormitory_id || '-';
+    bookedHtml += `<div style="display:flex;align-items:baseline;gap:0.4rem;padding:0.25rem 0;border-bottom:1px solid var(--color-slate-100);font-size:0.75rem;color:var(--color-slate-600);line-height:1.5;">
+      <span style="font-size:0.6rem;font-weight:700;color:${sColor};border:1px solid ${sColor};border-radius:0.2rem;padding:0.05rem 0.3rem;white-space:nowrap;flex-shrink:0;">${sLabel}</span>
+      <span>${ruangan} &ndash; ${tStr}–${tEnd} &ndash; ${nama}</span>
+    </div>`;
+  });
+  if (!bookedHtml) bookedHtml = `<div style="font-size:0.75rem;color:var(--color-slate-400);">Tidak ada.</div>`;
+
+  det.innerHTML = `
+    <div style="background:var(--color-slate-50);border:1px solid var(--color-slate-100);border-radius:0.4rem;overflow:hidden;">
+      <div style="padding:0.5rem 0.75rem;border-bottom:1px solid var(--color-slate-200);">
+        <div style="font-size:0.8rem;font-weight:600;color:var(--color-slate-700);">${dayLabel}</div>
+      </div>
+      <div style="padding:0.5rem 0.75rem;border-bottom:1px solid var(--color-slate-200);">
+        <div style="font-size:0.72rem;font-weight:700;color:#15803d;margin-bottom:0.3rem;">✅ Tersedia (${availableRooms.length})</div>
+        <div>${availHtml}</div>
+      </div>
+      <div style="padding:0.5rem 0.75rem;">
+        <div style="font-size:0.72rem;font-weight:700;color:#dc2626;margin-bottom:0.3rem;">🔴 Terpakai/Pending (${reqs.length})</div>
+        ${bookedHtml}
+      </div>
+    </div>`;
+};
+
+window.addOccupantField = function() {
+  const container = document.getElementById('occupant-list');
+  if (!container) return;
+  const count = container.children.length + 1;
+  const div = document.createElement('div');
+  div.className = 'occupant-row';
+  div.style.display = 'flex';
+  div.style.gap = '0.5rem';
+  div.innerHTML = `
+    <input type="text" class="form-input f-occupant-item" required placeholder="Nama Penghuni ${count}" style="flex:1;" />
+    <button type="button" class="btn btn-danger" style="padding: 0.5rem 1rem;" onclick="this.parentElement.remove(); syncParticipantsCount();">-</button>
+  `;
+  container.appendChild(div);
+  syncParticipantsCount();
+};
+
+window.syncParticipantsCount = function() {
+  const count = document.querySelectorAll('.f-occupant-item').length;
+  const partInput = document.getElementById('f-participants');
+  if (partInput) partInput.value = count;
 };
 
 // ===== REPAIR RAB VIEW (READ ONLY) =====

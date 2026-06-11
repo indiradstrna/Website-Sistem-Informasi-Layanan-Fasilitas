@@ -27,7 +27,7 @@ if (!$sender || !$message) {
 }
 
 // Hanya proses jika pesan dimulai dengan SETUJU atau TOLAK
-if (!preg_match('/^(SETUJU|TOLAK)\s+([A-Z]+)-(\d+)(?:\s+([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+if (!preg_match('/^(SETUJU|TOLAK)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
     http_response_code(200); // Ignore non-command messages
     exit;
 }

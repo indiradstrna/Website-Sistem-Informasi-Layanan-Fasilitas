@@ -139,5 +139,8 @@ function sendWhatsAppFonnte(string $message, string $phone): bool {
     }
     curl_close($curl);
     
+    // Add delay to prevent Fonnte rate limits on consecutive API calls
+    sleep(2);
+    
     return true; 
 }

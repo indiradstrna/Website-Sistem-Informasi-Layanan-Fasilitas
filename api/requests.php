@@ -30,6 +30,8 @@ function makeNoteLog(string $actor, string $status, string $note): string {
 $tableMap = [
     'Vehicle' => 'vehicle_requests',
     'Room'    => 'room_requests',
+        'Dormitory'=> 'dormitory_requests',
+    'Dormitory'=> 'dormitory_requests',
     'Zoom'    => 'zoom_requests',
     'Repair'  => 'repair_requests',
     'Item'    => 'item_loan_requests',
@@ -43,10 +45,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
 
     $waMsg = str_replace(['<b>','</b>','<i>','</i>'], ['*','*','_','_'], $msg);
     $waMsg = strip_tags($waMsg);
+    
+    $tgMsg = $msg; // Telegram uses HTML
 
     $typeCodes = [
         'Vehicle' => 'VEH',
         'Room'    => 'ROM',
+        'Dormitory'=> 'DRM',
         'Zoom'    => 'ZOM',
         'Repair'  => 'REP',
         'Item'    => 'ITM'
@@ -57,11 +62,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     if (in_array($newStatus, $approvableStatuses)) {
         if ($newStatus === 'pending' && $type === 'Vehicle') {
             $waMsg .= "\n\n---\n*PILIHAN KENDARAAN:*\n";
+            $tgMsg .= "\n\n---\n<b>PILIHAN KENDARAAN:</b>\n";
             $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC");
             if ($resV) {
                 $vCount = 0;
                 while($row = $resV->fetch_assoc()) {
                     $waMsg .= chr(65 + $vCount) . ". " . $row['name'] . "\n";
+                    $tgMsg .= chr(65 + $vCount) . ". " . $row['name'] . "\n";
                     $vCount++;
                 }
             }
@@ -76,42 +83,64 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                 }
             }
             $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A1\n_(Ganti A & 1 sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
+            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A1\n<i>(Ganti A & 1 sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
         } else if ($newStatus === 'pending' && $type === 'Room') {
             $waMsg .= "\n\n---\n*PILIHAN RUANGAN:*\n";
+            $tgMsg .= "\n\n---\n<b>PILIHAN RUANGAN:</b>\n";
             $resR = $conn->query("SELECT id, name FROM master_rooms ORDER BY id ASC");
             if ($resR) {
                 $rCount = 0;
                 while($row = $resR->fetch_assoc()) {
                     $waMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
+                    $tgMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
                     $rCount++;
                 }
             }
             $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
+            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
+        } else if ($newStatus === 'pending' && $type === 'Dormitory') {
+            $waMsg .= "\n\n---\n*PILIHAN DORMITORY:*\n";
+            $tgMsg .= "\n\n---\n<b>PILIHAN DORMITORY:</b>\n";
+            $resR = $conn->query("SELECT id, name FROM master_dormitories ORDER BY id ASC");
+            if ($resR) {
+                $rCount = 0;
+                while($row = $resR->fetch_assoc()) {
+                    $waMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
+                    $tgMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
+                    $rCount++;
+                }
+            }
+            $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
+            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
         } else {
             $waMsg .= "\n\n---\n*Untuk menyetujui/lanjut, balas:*\nSETUJU {$code}-{$id}\n\n*Untuk menolak, balas:*\nTOLAK {$code}-{$id}";
+            $tgMsg .= "\n\n---\n<b>Untuk menyetujui/lanjut, balas:</b>\nSETUJU {$code}-{$id}\n\n<b>Untuk menolak, balas:</b>\nTOLAK {$code}-{$id}";
         }
     }
     $targetNumbers = [];
+    $targetTelegramIds = [];
     $picMap = [
         'Vehicle' => ['198605082025211053'], // Alfi
         'Item'    => ['198902222025211044'], // Indra
         'Zoom'    => ['198902222025211044'], // Indra
-        'Room'    => ['199008092025212052', '198902222025211044'], // Lastiah, Indra
-        'Repair'  => ['198605082025211053', '197212162014091003'] // Alfi, Agus Sujadi
+        'Room'    => ['199008092025212052', '16268300055'], // Lastiah, Dani
+        'Dormitory'=> ['199008092025212052', '16268300055'], // Lastiah, Dani
+        'Repair'  => ['16268000027', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
     ];
 
     if ($newStatus === 'pending' || $newStatus === 'approved') {
         if (isset($picMap[$type])) {
             $usernames = $picMap[$type];
             $placeholders = implode(',', array_fill(0, count($usernames), '?'));
-            $stmt = $conn->prepare("SELECT u.whatsapp_number FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders) AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''");
+            $stmt = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders)");
             if ($stmt) {
                 $types = str_repeat('s', count($usernames));
                 $stmt->bind_param($types, ...$usernames);
                 $stmt->execute();
                 $res = $stmt->get_result();
                 while ($row = $res->fetch_assoc()) {
-                    $targetNumbers[] = $row['whatsapp_number'];
+                    if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
+                    if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
                 }
                 $stmt->close();
             }
@@ -128,9 +157,9 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     $targetRole = $roleMap[$newStatus] ?? null;
     
     if ($targetRole) {
-        $sql = "SELECT u.whatsapp_number FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.role = ? AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''";
+        $sql = "SELECT u.whatsapp_number, u.telegram_chat_id FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.role = ?";
         if ($newStatus === 'waiting_manager_fmd') {
-            $sql = "SELECT u.whatsapp_number FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE (u.role = ? OR e.nip_nik = '197707072025211067') AND u.whatsapp_number IS NOT NULL AND u.whatsapp_number != ''";
+            $sql = "SELECT u.whatsapp_number, u.telegram_chat_id FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE (u.role = ? OR e.nip_nik = '197707072025211067')";
         }
         
         $stmt = $conn->prepare($sql);
@@ -139,15 +168,24 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
             $stmt->execute();
             $res = $stmt->get_result();
             while ($row = $res->fetch_assoc()) {
-                $targetNumbers[] = $row['whatsapp_number'];
+                if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
+                if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
             }
             $stmt->close();
         }
     }
 
     $targetNumbers = array_unique($targetNumbers);
-    foreach ($targetNumbers as $phone) {
-        sendWhatsAppFonnte($waMsg, $phone);
+    if (!empty($targetNumbers) && function_exists('sendWhatsAppFonnte')) {
+        $targets = implode(',', $targetNumbers);
+        sendWhatsAppFonnte($waMsg, $targets);
+    }
+
+    $targetTelegramIds = array_unique($targetTelegramIds);
+    if (!empty($targetTelegramIds) && function_exists('sendTelegramPHP')) {
+        foreach ($targetTelegramIds as $tgId) {
+            sendTelegramPHP($tgMsg, $tgId);
+        }
     }
 }
 
@@ -179,6 +217,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
     $table = [
         'Vehicle' => 'vehicle_requests',
         'Room'    => 'room_requests',
+        'Dormitory'=> 'dormitory_requests',
+    'Dormitory'=> 'dormitory_requests',
         'Zoom'    => 'zoom_requests',
         'Repair'  => 'repair_requests',
         'Item'    => 'item_loan_requests'
@@ -188,13 +228,20 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         $res = $conn->query("SELECT * FROM `$table` WHERE id = $id");
         if ($res && $row = $res->fetch_assoc()) {
             if ($type === 'Vehicle') {
+                $detailTxt .= "<b>Lokasi Tujuan:</b> " . htmlspecialchars($row['destination'] ?? '-') . "\n";
                 $detailTxt .= "<b>Item:</b> Operasional\n";
                 $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
             } elseif ($type === 'Room') {
                 $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($row['room_id'] ?? '') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
+            } elseif ($type === 'Dormitory') {
+                $detailTxt .= "<b>Dormitory:</b> " . htmlspecialchars($row['dormitory_id'] ?? '') . "\n";
+                $detailTxt .= "<b>Penghuni:</b> " . htmlspecialchars($row['occupant_name'] ?? '-') . "\n";
+                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
             } elseif ($type === 'Zoom') {
                 $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($row['zoom_account_id'] ?? '') . "\n";
+                $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type'] ?? '-') . "\n";
+                $detailTxt .= "<b>Kebutuhan Khusus:</b> " . htmlspecialchars($row['special_needs'] ?? '-') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
             } elseif ($type === 'Repair') {
                 $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '') . "\n";
@@ -296,6 +343,7 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         $tableToType = [
             'vehicle_requests' => 'Vehicle',
             'room_requests'    => 'Room',
+            'dormitory_requests' => 'Dormitory',
             'zoom_requests'    => 'Zoom',
             'repair_requests'  => 'Repair',
             'item_loan_requests' => 'Item'
@@ -318,12 +366,17 @@ switch ($action) {
     // 1. GET ALL REQUESTS (Admin melihat semua)
     // ============================================================
     case 'get_vehicle':
-        $res = $conn->query("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests ORDER BY created_at DESC LIMIT 100");
+        $res = $conn->query("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests ORDER BY created_at DESC LIMIT 100");
         echo json_encode($res->fetch_all(MYSQLI_ASSOC));
         break;
 
     case 'get_room':
         $res = $conn->query("SELECT id, user_id, room_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM room_requests ORDER BY created_at DESC LIMIT 100");
+        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        break;
+
+    case 'get_dormitory':
+        $res = $conn->query("SELECT id, user_id, dormitory_id, applicant_name, applicant_unit, occupant_name, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM dormitory_requests ORDER BY created_at DESC LIMIT 100");
         echo json_encode($res->fetch_all(MYSQLI_ASSOC));
         break;
 
@@ -346,7 +399,7 @@ switch ($action) {
     // 1b. GET REQUESTS BY USER
     // ============================================================
     case 'get_vehicle_by_user':
-        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
@@ -355,6 +408,14 @@ switch ($action) {
 
     case 'get_room_by_user':
         $stmt = $conn->prepare("SELECT id, user_id, room_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM room_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $stmt->close();
+        break;
+
+    case 'get_dormitory_by_user':
+        $stmt = $conn->prepare("SELECT id, user_id, dormitory_id, applicant_name, applicant_unit, occupant_name, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM dormitory_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
@@ -396,10 +457,11 @@ switch ($action) {
         $time_start     = $_POST['time_start']     ?? '';
         $date_end       = $_POST['date_end']       ?? '';
         $time_end       = $_POST['time_end']       ?? '';
+        $destination    = $_POST['destination']    ?? '';
         $purpose        = $_POST['purpose']        ?? '';
 
-        $stmt = $conn->prepare("INSERT INTO vehicle_requests (user_id, vehicle_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, status) VALUES (?,?,?,?,?,?,?,?,?,'pending')");
-        $stmt->bind_param("issssssss", $userId, $vehicle_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose);
+        $stmt = $conn->prepare("INSERT INTO vehicle_requests (user_id, vehicle_id, applicant_name, applicant_unit, destination, date_start, time_start, date_end, time_end, purpose, status) VALUES (?,?,?,?,?,?,?,?,?,?,'pending')");
+        $stmt->bind_param("isssssssss", $userId, $vehicle_id, $applicant_name, $applicant_unit, $destination, $date_start, $time_start, $date_end, $time_end, $purpose);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
             notifyNewRequest('Vehicle', $newId, $applicant_name, $applicant_unit, $purpose);
@@ -428,6 +490,31 @@ switch ($action) {
             $newId = $conn->insert_id;
             notifyNewRequest('Room', $newId, $applicant_name, $applicant_unit, $purpose);
             jsonResponse(true, 'Permintaan Ruangan berhasil disimpan!', ['id' => $newId]);
+        } else {
+            jsonResponse(false, 'Gagal menyimpan data.');
+        }
+        $stmt->close();
+        break;
+
+    case 'submit_dormitory':
+        $dormitory_id   = $_POST['dormitory_id']   ?? '';
+        $applicant_name = $_POST['applicant_name'] ?? '';
+        $applicant_unit = $_POST['applicant_unit'] ?? '';
+        $occupant_name  = $_POST['occupant_name']  ?? '';
+        $date_start     = $_POST['date_start']     ?? '';
+        $time_start     = $_POST['time_start']     ?? '';
+        $date_end       = $_POST['date_end']       ?? '';
+        $time_end       = $_POST['time_end']       ?? '';
+        $purpose        = $_POST['purpose']        ?? '';
+        $participants   = (int)($_POST['participants'] ?? 0);
+        $special_needs  = $_POST['special_needs']  ?? '';
+
+        $stmt = $conn->prepare("INSERT INTO dormitory_requests (user_id, dormitory_id, applicant_name, applicant_unit, occupant_name, date_start, time_start, date_end, time_end, purpose, participants, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("isssssssssis", $userId, $dormitory_id, $applicant_name, $applicant_unit, $occupant_name, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $special_needs);
+        if ($stmt->execute()) {
+            $newId = $conn->insert_id;
+            notifyNewRequest('Dormitory', $newId, $applicant_name, $applicant_unit, $purpose);
+            jsonResponse(true, 'Permintaan Dormitory berhasil disimpan!', ['id' => $newId]);
         } else {
             jsonResponse(false, 'Gagal menyimpan data.');
         }
@@ -529,6 +616,7 @@ switch ($action) {
                 $detailVal = '';
                 if ($type === 'Vehicle') $detailVal = 'Kendaraan Dinas';
                 else if ($type === 'Room') $detailVal = $row['room_id'] ?? 'Ruangan';
+                else if ($type === 'Dormitory') $detailVal = $row['dormitory_id'] ?? 'Dormitory';
                 else if ($type === 'Zoom') $detailVal = $row['zoom_account_id'] ?? 'Akun Zoom';
                 else if ($type === 'Repair') $detailVal = $row['location_detail'] ?? 'Lokasi';
                 else if ($type === 'Item') $detailVal = $row['item_name'] ?? 'Barang';
@@ -545,6 +633,7 @@ switch ($action) {
                 $typeLabels = [
                     'Vehicle' => 'Kendaraan (Unit & Driver)',
                     'Room'    => 'Ruangan & Fasilitas',
+                    'Dormitory'=> 'Dormitory',
                     'Zoom'    => 'Akun Zoom/Link',
                     'Item'    => 'Peminjaman Barang',
                     'Repair'  => 'Perbaikan'
@@ -558,6 +647,7 @@ switch ($action) {
         if ($newStatus === 'ready_for_user' && empty($noteInput)) {
             $typeLabels = [
                 'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
+                'Dormitory' => 'Dormitory',
                 'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
             ];
             $label = $typeLabels[$type] ?? $type;
@@ -568,6 +658,7 @@ switch ($action) {
         if (in_array($newStatus, ['completed','returned']) && empty($noteInput)) {
             $typeLabels = [
                 'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
+                'Dormitory' => 'Dormitory',
                 'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
             ];
             $label = $typeLabels[$type] ?? $type;
@@ -614,6 +705,39 @@ switch ($action) {
             // KIRIM NOTIFIKASI KE TELEGRAM USER
             notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorName);
             
+            // JIKA VEHICLE DAN APPROVED, KIRIM NOTIF KE DRIVER
+            if ($type === 'Vehicle' && $newStatus === 'approved') {
+                $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
+                $stmtDrv->bind_param("i", $id);
+                $stmtDrv->execute();
+                $reqRow = $stmtDrv->get_result()->fetch_assoc();
+                $stmtDrv->close();
+
+                if ($reqRow && $reqRow['driver_name'] && trim($reqRow['driver_name']) !== '') {
+                    $vName = $reqRow['vehicle_id'];
+                    $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
+                    $stmtV->bind_param("s", $reqRow['vehicle_id']);
+                    $stmtV->execute();
+                    if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
+                    $stmtV->close();
+
+                    $drvName = $reqRow['driver_name'];
+                    $appName = $reqRow['applicant_name'];
+                    $dest    = $reqRow['destination'] ?: '-';
+                    $waktu   = $reqRow['ds'] . " jam " . substr($reqRow['time_start'], 0, 5) . " s/d " . $reqRow['de'] . " jam " . substr($reqRow['time_end'], 0, 5);
+                    $purp    = $reqRow['purpose'] ?: '-';
+
+                    if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Waktu:* $waktu\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        sendWhatsAppFonnte($msgDriver, $reqRow['whatsapp_number']);
+                    }
+                    if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Waktu:</b> $waktu\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
+                    }
+                }
+            }
+
             jsonResponse(true, 'Status berhasil diupdate.', ['finalNote' => $finalNote]);
         } else {
             jsonResponse(false, 'Gagal update status.');
@@ -630,7 +754,7 @@ switch ($action) {
         $driverName  = $_POST['driver_name']       ?? '';
 
         // Ambil detail waktu request & pemohon
-        $stmt = $conn->prepare("SELECT applicant_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, DATE_FORMAT(date_end,'%d %b %Y') as de, time_start, time_end FROM vehicle_requests WHERE id = ?");
+        $stmt = $conn->prepare("SELECT applicant_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, DATE_FORMAT(date_end,'%d %b %Y') as de, time_start, time_end, purpose, destination FROM vehicle_requests WHERE id = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $reqRow = $stmt->get_result()->fetch_assoc();
@@ -670,26 +794,6 @@ switch ($action) {
         $stmt = $conn->prepare("UPDATE vehicle_requests SET vehicle_id = ?, driver_name = ? WHERE id = ?");
         $stmt->bind_param("ssi", $vehicleId, $driverName, $id);
         if ($stmt->execute()) {
-            // Notifikasi ke Driver
-            if ($driverName && trim($driverName) !== '') {
-                $stmtDriver = $conn->prepare("SELECT u.whatsapp_number FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
-                $stmtDriver->bind_param("s", $driverName);
-                $stmtDriver->execute();
-                $drv = $stmtDriver->get_result()->fetch_assoc();
-                $stmtDriver->close();
-
-                if ($drv && !empty($drv['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                    $vName = $vehicleId;
-                    $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
-                    $stmtV->bind_param("s", $vehicleId);
-                    $stmtV->execute();
-                    if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
-                    $stmtV->close();
-
-                    $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$driverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* " . $reqRow['applicant_name'] . "\n*Kendaraan:* $vName\n*Jadwal:* " . $reqRow['ds'] . " jam " . substr($reqRow['time_start'], 0, 5) . "\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                    sendWhatsAppFonnte($msgDriver, $drv['whatsapp_number']);
-                }
-            }
             jsonResponse(true, 'Kendaraan dan Driver berhasil ditetapkan.');
         } else {
             jsonResponse(false, 'Gagal update kendaraan/driver.');
@@ -735,6 +839,45 @@ switch ($action) {
             jsonResponse(true, 'Ruangan berhasil dipindahkan/ditetapkan.');
         } else {
             jsonResponse(false, 'Gagal update ruangan.');
+        }
+        $stmt->close();
+        break;
+
+    case 'update_dormitory_assignment':
+        $id      = (int)($_POST['id']      ?? 0);
+        $dormitoryId  = $_POST['dormitory_id']       ?? '';
+
+        if (!$id || !$dormitoryId) jsonResponse(false, 'Parameter tidak lengkap.');
+
+        // Ambil detail waktu request
+        $stmt = $conn->prepare("SELECT DATE_FORMAT(date_start,'%Y-%m-%d') as ds, DATE_FORMAT(date_end,'%Y-%m-%d') as de, time_start, time_end FROM dormitory_requests WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $reqRow = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$reqRow) jsonResponse(false, 'Request tidak ditemukan.');
+
+        $startDT = $reqRow['ds'] . ' ' . substr($reqRow['time_start'], 0, 5);
+        $endDT   = $reqRow['de'] . ' ' . substr($reqRow['time_end'], 0, 5);
+
+        // Cek konflik dormitory
+        $stmt = $conn->prepare("SELECT id FROM dormitory_requests WHERE id != ? AND dormitory_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt->bind_param("isss", $id, $dormitoryId, $endDT, $startDT);
+        $stmt->execute();
+        $resConf = $stmt->get_result();
+        if ($resConf->num_rows > 0) {
+            $conflictRow = $resConf->fetch_assoc();
+            jsonResponse(false, 'Dormitory sudah dipesan pada jam tersebut. (Bentrok dengan ID #' . $conflictRow['id'] . ')');
+        }
+        $stmt->close();
+
+        $stmt = $conn->prepare("UPDATE dormitory_requests SET dormitory_id = ? WHERE id = ?");
+        $stmt->bind_param("si", $dormitoryId, $id);
+        if ($stmt->execute()) {
+            jsonResponse(true, 'Dormitory berhasil dipindahkan/ditetapkan.');
+        } else {
+            jsonResponse(false, 'Gagal update dormitory.');
         }
         $stmt->close();
         break;

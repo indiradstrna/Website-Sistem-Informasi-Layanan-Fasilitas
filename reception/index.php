@@ -328,7 +328,8 @@ const API_BASE = '<?= BASE_URL ?>/api/';
 // Helper for icons in pills
 const ICONS = {
   Vehicle: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
-  Room: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
+  Room: '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" ry=\"2\"/><line x1=\"3\" y1=\"9\" x2=\"21\" y2=\"9\"/><line x1=\"9\" y1=\"21\" x2=\"9\" y2=\"9\"/></svg>',
+  Dormitory: '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" ry=\"2\"/><line x1=\"3\" y1=\"9\" x2=\"21\" y2=\"9\"/><line x1=\"9\" y1=\"21\" x2=\"9\" y2=\"9\"/></svg>',
   Zoom: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6z"/><rect x="2" y="5" width="12" height="14" rx="2"/></svg>',
   Item: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
 };
@@ -348,8 +349,8 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ===== COLOR MAP (type → CSS class) =====
-const TYPE_CLASS = { Vehicle: 'vehicle', Room: 'room', Zoom: 'zoom', Item: 'item' };
-const TYPE_LABEL = { Vehicle: 'Kendaraan Dinas', Room: 'Penggunaan Ruangan', Zoom: 'Virtual Meeting', Item: 'Peminjaman Barang' };
+const TYPE_CLASS = { Vehicle: 'vehicle', Room: 'room', Dormitory: 'room', Zoom: 'zoom', Item: 'item' };
+const TYPE_LABEL = { Vehicle: 'Kendaraan Dinas', Room: 'Penggunaan Ruangan', Dormitory: 'Penggunaan Dormitory', Zoom: 'Virtual Meeting', Item: 'Peminjaman Barang' };
 
 // ===== FORMAT TIME =====
 function fmtTime(t) { return t ? t.slice(0,5) : '--:--'; }
@@ -377,6 +378,19 @@ const ROOM_MAP = {
   'RUANG_KMD':      'Ruang Rapat KMD (8-10 orang)',
   'RUANG_HERBARIUM':'Ruang Rapat Herbarium (30-35 org)',
 };
+const DORMITORY_MAP = {
+  'DORMITORY_A': 'Dormitory A',
+  'DORMITORY_B': 'Dormitory B',
+  'DORMITORY_C': 'Dormitory C',
+  'DORMITORY_E': 'Dormitory E',
+  'DORMITORY_F': 'Dormitory F',
+  'DORMITORY_G': 'Dormitory G',
+  'DORMITORY_H': 'Dormitory H',
+  'DORMITORY_I': 'Dormitory I',
+  'DORMITORY_J': 'Dormitory J',
+  'DORMITORY_K': 'Dormitory K',
+  'DORMITORY_L': 'Dormitory L'
+};
 
 // ===== LOAD + RENDER =====
 async function loadAndRender() {
@@ -398,6 +412,9 @@ async function loadAndRender() {
         sub   = `Driver: ${item.info_extra || 'TBA'}`;
       } else if (item.type === 'Room') {
         title = ROOM_MAP[item.sub_title] || item.sub_title;
+        sub   = `Kapasitas: ${item.info_extra || '0'} orang`;
+      } else if (item.type === 'Dormitory') {
+        title = DORMITORY_MAP[item.sub_title] || item.sub_title;
         sub   = `Kapasitas: ${item.info_extra || '0'} orang`;
       } else if (item.type === 'Zoom') {
         title = `Zoom: ${item.sub_title}`;

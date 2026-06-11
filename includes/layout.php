@@ -33,6 +33,7 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         ['id' => 'dashboard',     'label' => 'Dashboard',     'icon' => 'layout'],
         ['id' => 'vehicle',       'label' => 'Pengajuan Kendaraan Dinas', 'icon' => 'car'],
         ['id' => 'room',          'label' => 'Pengajuan Peminjaman Ruangan',        'icon' => 'building2'],
+        ['id' => 'dormitory',     'label' => 'Pengajuan Dormitory',           'icon' => 'building2'],
         ['id' => 'zoom',          'label' => 'Pengajuan Zoom',   'icon' => 'video'],
         ['id' => 'repair',        'label' => 'Pengajuan Perbaikan',      'icon' => 'wrench'],
         ['id' => 'item',          'label' => 'Pengajuan Peminjaman Barang','icon' => 'package'],
@@ -196,12 +197,16 @@ function renderPageHead(string $title, string $basePath = '../'): void {
     global $conn;
     $masterVehicles = [];
     $masterRooms = [];
+    $masterDormitories = [];
     if ($conn) {
         $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC");
         if ($resV) { while($row = $resV->fetch_assoc()) $masterVehicles[] = $row; }
         
         $resR = $conn->query("SELECT id, name FROM master_rooms ORDER BY id ASC");
         if ($resR) { while($row = $resR->fetch_assoc()) $masterRooms[] = $row; }
+
+        $resD = $conn->query("SELECT id, name FROM master_dormitories ORDER BY id ASC");
+        if ($resD) { while($row = $resD->fetch_assoc()) $masterDormitories[] = $row; }
     }
   ?>
   <script>
@@ -210,6 +215,9 @@ function renderPageHead(string $title, string $basePath = '../'): void {
     
     const ALL_ROOMS = <?= json_encode($masterRooms) ?>;
     const ROOM_MAP = Object.fromEntries(ALL_ROOMS.map(r => [r.id, r.name]));
+
+    const ALL_DORMITORIES = <?= json_encode($masterDormitories) ?>;
+    const DORMITORY_MAP = Object.fromEntries(ALL_DORMITORIES.map(r => [r.id, r.name]));
   </script>
 </head>
 <body>
