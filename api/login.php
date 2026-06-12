@@ -74,12 +74,15 @@ $_SESSION['whatsapp_number'] = $user['whatsapp_number'];
 $_SESSION['callmebot_apikey'] = $user['callmebot_apikey'];
 
 // 5. Tentukan redirect URL berdasarkan role
+$normalizedRole = strtolower(trim($user['role']));
 $redirectMap = [
-    'admin'      => 'admin/index.php',
-    'user'       => 'user/index.php',
-    'supervisor' => 'supervisor/index.php',
+    'admin'       => 'admin/index.php',
+    'supervisor'  => 'supervisor/index.php',
+    'user'        => 'user/index.php',
+    'superadmin'  => 'superadmin/index.php',
+    'super admin' => 'superadmin/index.php',
 ];
 
-$redirectUrl = $redirectMap[$user['role']] ?? 'user/index.php';
+$redirectUrl = $redirectMap[$normalizedRole] ?? 'user/index.php';
 
 jsonResponse(true, 'Login berhasil.', ['redirectUrl' => $redirectUrl]);

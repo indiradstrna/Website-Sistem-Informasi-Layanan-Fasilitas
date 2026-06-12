@@ -8,6 +8,15 @@ session_start();
 require_once __DIR__ . '/../config.php';
 header('Content-Type: application/json');
 
+set_exception_handler(function ($e) {
+    echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()]);
+    exit;
+});
+set_error_handler(function ($errno, $errstr, $errfile, $errline) {
+    if (error_reporting() === 0) return false;
+    throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+});
+
 if (!isset($_SESSION['user_id'])) {
     jsonResponse(false, 'Session tidak valid. Silakan login kembali.');
 }
@@ -367,32 +376,32 @@ switch ($action) {
     // ============================================================
     case 'get_vehicle':
         $res = $conn->query("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     case 'get_room':
         $res = $conn->query("SELECT id, user_id, room_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM room_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     case 'get_dormitory':
         $res = $conn->query("SELECT id, user_id, dormitory_id, applicant_name, applicant_unit, occupant_name, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM dormitory_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     case 'get_zoom':
         $res = $conn->query("SELECT id, user_id, zoom_account_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, request_type, special_needs, status, note, created_at FROM zoom_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     case 'get_repair':
         $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     case 'get_item':
         $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, item_name, item_quantity, DATE_FORMAT(loan_date,'%Y-%m-%d') as loan_date, loan_time, DATE_FORMAT(return_date,'%Y-%m-%d') as return_date, return_time, purpose, status, note, created_at FROM item_loan_requests ORDER BY created_at DESC LIMIT 100");
-        echo json_encode($res->fetch_all(MYSQLI_ASSOC));
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     // ============================================================
@@ -402,7 +411,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -410,7 +420,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, room_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM room_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -418,7 +429,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, dormitory_id, applicant_name, applicant_unit, occupant_name, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, special_needs, status, note, created_at FROM dormitory_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -426,7 +438,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, zoom_account_id, applicant_name, applicant_unit, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, participants, request_type, special_needs, status, note, created_at FROM zoom_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -434,7 +447,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -442,7 +456,8 @@ switch ($action) {
         $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, item_name, item_quantity, DATE_FORMAT(loan_date,'%Y-%m-%d') as loan_date, loan_time, DATE_FORMAT(return_date,'%Y-%m-%d') as return_date, return_time, purpose, status, note, created_at FROM item_loan_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         $stmt->close();
         break;
 
@@ -453,10 +468,10 @@ switch ($action) {
         $vehicle_id     = $_POST['vehicle_id']     ?? 'PENDING_ASSIGNMENT';
         $applicant_name = $_POST['applicant_name'] ?? '';
         $applicant_unit = $_POST['applicant_unit'] ?? '';
-        $date_start     = $_POST['date_start']     ?? '';
-        $time_start     = $_POST['time_start']     ?? '';
-        $date_end       = $_POST['date_end']       ?? '';
-        $time_end       = $_POST['time_end']       ?? '';
+        $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
+        $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
+        $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
+        $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
         $destination    = $_POST['destination']    ?? '';
         $purpose        = $_POST['purpose']        ?? '';
 
@@ -476,10 +491,10 @@ switch ($action) {
         $room_id        = $_POST['room_id']        ?? '';
         $applicant_name = $_POST['applicant_name'] ?? '';
         $applicant_unit = $_POST['applicant_unit'] ?? '';
-        $date_start     = $_POST['date_start']     ?? '';
-        $time_start     = $_POST['time_start']     ?? '';
-        $date_end       = $_POST['date_end']       ?? '';
-        $time_end       = $_POST['time_end']       ?? '';
+        $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
+        $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
+        $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
+        $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
         $purpose        = $_POST['purpose']        ?? '';
         $participants   = (int)($_POST['participants'] ?? 0);
         $special_needs  = $_POST['special_needs']  ?? '';
@@ -501,10 +516,10 @@ switch ($action) {
         $applicant_name = $_POST['applicant_name'] ?? '';
         $applicant_unit = $_POST['applicant_unit'] ?? '';
         $occupant_name  = $_POST['occupant_name']  ?? '';
-        $date_start     = $_POST['date_start']     ?? '';
-        $time_start     = $_POST['time_start']     ?? '';
-        $date_end       = $_POST['date_end']       ?? '';
-        $time_end       = $_POST['time_end']       ?? '';
+        $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
+        $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
+        $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
+        $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
         $purpose        = $_POST['purpose']        ?? '';
         $participants   = (int)($_POST['participants'] ?? 0);
         $special_needs  = $_POST['special_needs']  ?? '';
@@ -525,11 +540,11 @@ switch ($action) {
         $zoom_account_id = $_POST['zoom_account_id'] ?? '';
         $applicant_name  = $_POST['applicant_name']  ?? '';
         $applicant_unit  = $_POST['applicant_unit']  ?? '';
-        $date_start      = $_POST['date_start']      ?? '';
-        $time_start      = $_POST['time_start']      ?? '';
-        $date_end        = $_POST['date_end']        ?? '';
-        $time_end        = $_POST['time_end']        ?? '';
-        $purpose         = $_POST['purpose']         ?? '';
+        $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
+        $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
+        $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
+        $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
+        $purpose        = $_POST['purpose']        ?? '';
         $participants    = (int)($_POST['participants'] ?? 0);
         $request_type    = $_POST['request_type']    ?? '';
         $special_needs   = $_POST['special_needs']   ?? '';
@@ -550,8 +565,8 @@ switch ($action) {
         $applicant_name  = $_POST['applicant_name']  ?? '';
         $applicant_unit  = $_POST['applicant_unit']  ?? '';
         $location_detail = $_POST['location_detail'] ?? '';
-        $incident_date   = $_POST['incident_date']   ?? '';
-        $incident_time   = $_POST['incident_time']   ?? '';
+        $incident_date   = !empty($_POST['incident_date']) ? $_POST['incident_date'] : null;
+        $incident_time   = !empty($_POST['incident_time']) ? $_POST['incident_time'] : null;
         $issue_description = $_POST['issue_description'] ?? '';
         $priority        = $_POST['priority']        ?? 'medium';
 
@@ -572,10 +587,10 @@ switch ($action) {
         $applicant_unit = $_POST['applicant_unit'] ?? '';
         $item_name      = $_POST['item_name']      ?? '';
         $item_quantity  = 1;
-        $loan_date      = $_POST['loan_date']      ?? '';
-        $loan_time      = $_POST['loan_time']      ?? '';
-        $return_date    = $_POST['return_date']    ?? '';
-        $return_time    = $_POST['return_time']    ?? '';
+        $loan_date      = !empty($_POST['loan_date']) ? $_POST['loan_date'] : null;
+        $loan_time      = !empty($_POST['loan_time']) ? $_POST['loan_time'] : null;
+        $return_date    = !empty($_POST['return_date']) ? $_POST['return_date'] : null;
+        $return_time    = !empty($_POST['return_time']) ? $_POST['return_time'] : null;
         $purpose        = $_POST['purpose']        ?? '';
 
         $stmt = $conn->prepare("INSERT INTO item_loan_requests (user_id, applicant_name, applicant_unit, item_name, item_quantity, loan_date, loan_time, return_date, return_time, purpose) VALUES (?,?,?,?,?,?,?,?,?,?)");

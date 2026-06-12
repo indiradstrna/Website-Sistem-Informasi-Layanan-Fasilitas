@@ -60,15 +60,41 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         ['id' => 'profile',      'label' => 'Profil',               'icon' => 'user'],
     ];
 
-    $menus = match($role) {
+    $superadminMenus = [
+        ['id' => 'dashboard',          'label' => 'Dashboard',            'icon' => 'layout'],
+        ['type' => 'section',          'label' => 'Interface'],
+        [
+            'dropdown' => true,
+            'id'       => 'group_req',
+            'label'    => 'Pengajuan',
+            'icon'     => 'file-text',
+            'items'    => [
+                ['id' => 'request_management', 'label' => 'Manajemen Pengajuan',  'icon' => 'file-text', 'badge' => 'pending_count'],
+                ['id' => 'track_reports',      'label' => 'Track Pengajuan',      'icon' => 'history', 'badge' => 'track_count'],
+            ]
+        ],
+        ['id' => 'analytics',          'label' => 'Laporan & Statistik',  'icon' => 'bar-chart-2'],
+        ['type' => 'section',          'label' => 'Menu Khusus'],
+        ['id' => 'user_management',    'label' => 'Kelola Users',         'icon' => 'users'],
+        ['id' => 'master_data',        'label' => 'Master Data',          'icon' => 'database'],
+        ['id' => 'system_settings',    'label' => 'Pengaturan Sistem',    'icon' => 'settings'],
+        ['type' => 'section',          'label' => 'Settings'],
+        ['id' => 'profile',            'label' => 'Profil',               'icon' => 'user'],
+    ];
+
+    $menus = match(strtolower(trim($role))) {
         'admin'      => $adminMenus,
         'supervisor' => $supervisorMenus,
+        'superadmin' => $superadminMenus,
+        'super admin'=> $superadminMenus,
         default      => $userMenus,
     };
 
-    $roleLabel = match($role) {
+    $roleLabel = match(strtolower(trim($role))) {
         'admin'      => 'Administrator',
         'supervisor' => 'Supervisor FMD',
+        'superadmin' => 'Super Administrator',
+        'super admin'=> 'Super Administrator',
         default      => 'Staff / User',
     };
     ?>
@@ -89,7 +115,14 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
     <div class="sidebar-section-label">Interface</div>
 
     <?php foreach ($menus as $menu): ?>
-      <?php if ($menu['id'] === 'profile' || $menu['id'] === 'my_reports' || strpos($menu['id'], 'switch_') === 0): ?>
+      <?php if (isset($menu['type']) && $menu['type'] === 'section'): ?>
+        <hr class="sidebar-divider">
+        <div class="sidebar-section-label"><?= htmlspecialchars($menu['label']) ?></div>
+        <?php continue; ?>
+      <?php endif; ?>
+
+      <?php if (!isset($menu['type']) && ($menu['id'] === 'profile' || $menu['id'] === 'my_reports' || strpos($menu['id'] ?? '', 'switch_') === 0)): ?>
+        <?php if (!isset($superadminMenus) || $menus !== $superadminMenus): ?>
         <hr class="sidebar-divider">
         <div class="sidebar-section-label">
             <?php 
@@ -98,9 +131,40 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
                 else echo 'Reports';
             ?>
         </div>
+        <?php endif; ?>
       <?php endif; ?>
       
-      <?php if (isset($menu['url'])): ?>
+      <?php if (isset($menu['dropdown']) && $menu['dropdown']): ?>
+        <div class="nav-dropdown-group" style="margin-bottom:0.5rem;">
+            <div class="sidebar-section-label" style="display:flex; justify-content:space-between; cursor:pointer; padding: 0.5rem 1rem; margin:0;" onclick="const m = this.nextElementSibling; m.style.display = m.style.display === 'none' ? 'block' : 'none';">
+                <span style="display:flex; align-items:center; gap:0.5rem; color:var(--color-slate-400); font-weight:700;">
+                    <?= getSvgIcon($menu['icon'] ?? 'layout') ?> <?= htmlspecialchars($menu['label']) ?>
+                </span>
+                <span style="font-size:0.6rem;">▼</span>
+            </div>
+            <div class="nav-dropdown-menu" style="padding-left:1rem; display:none;">
+                <?php foreach($menu['items'] as $sub): ?>
+                    <button class="nav-item <?= $activeView === $sub['id'] ? 'active' : '' ?>" style="padding:0.4rem 1rem; font-size:0.8rem; margin:0.2rem 0.75rem;" data-view="<?= htmlspecialchars($sub['id']) ?>" onclick="switchView('<?= htmlspecialchars($sub['id']) ?>')">
+                        <?= getSvgIcon($sub['icon'] ?? 'circle') ?>
+                        <span><?= htmlspecialchars($sub['label']) ?></span>
+                        <?php if (isset($sub['badge'])): ?>
+                            <span class="nav-badge-count" id="<?= htmlspecialchars($sub['badge']) ?>">...</span>
+                        <?php endif; ?>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const groups = document.querySelectorAll('.nav-dropdown-group');
+                groups.forEach(g => {
+                    if (g.querySelector('.nav-item.active')) {
+                        g.querySelector('.nav-dropdown-menu').style.display = 'block';
+                    }
+                });
+            });
+        </script>
+      <?php elseif (isset($menu['url'])): ?>
         <a href="<?= $menu['url'] ?>" class="nav-item <?= $activeView === $menu['id'] ? 'active' : '' ?>" style="text-decoration:none;">
           <?= getSvgIcon($menu['icon']) ?>
           <span><?= htmlspecialchars($menu['label']) ?></span>
@@ -173,6 +237,9 @@ function getSvgIcon(string $name): string {
         'eye'             => '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
         'calendar'        => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
         'bell'            => '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+        'database'        => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+        'settings'        => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+        'circle'          => '<circle cx="12" cy="12" r="10"/>',
     ];
     $path = $paths[$name] ?? '<circle cx="12" cy="12" r="10"/>';
     return '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $path . '</svg>';
