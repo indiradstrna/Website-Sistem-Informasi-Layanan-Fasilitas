@@ -82,17 +82,19 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                 }
             }
             
-            $waMsg .= "\n*PILIHAN SUPIR:*\n";
+            $waMsg .= "\n*PILIHAN SUPIR:*\n0. Tanpa Supir\n";
+            $tgMsg .= "\n<b>PILIHAN SUPIR:</b>\n0. Tanpa Supir\n";
             $resD = $conn->query("SELECT id, full_name FROM employees WHERE position LIKE '%driver%' OR position LIKE '%pengemudi%' ORDER BY full_name ASC");
             if ($resD) {
                 $dCount = 1;
                 while($row = $resD->fetch_assoc()) {
                     $waMsg .= $dCount . ". " . $row['full_name'] . "\n";
+                    $tgMsg .= $dCount . ". " . $row['full_name'] . "\n";
                     $dCount++;
                 }
             }
-            $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A1\n_(Ganti A & 1 sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
-            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A1\n<i>(Ganti A & 1 sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
+            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A1\n_(Ganti A & 1 sesuai pilihan)_";
+            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A1\n<i>(Ganti A & 1 sesuai pilihan)</i>";
         } else if ($newStatus === 'pending' && $type === 'Room') {
             $waMsg .= "\n\n---\n*PILIHAN RUANGAN:*\n";
             $tgMsg .= "\n\n---\n<b>PILIHAN RUANGAN:</b>\n";
@@ -105,8 +107,8 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                     $rCount++;
                 }
             }
-            $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
-            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
+            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_";
+            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>";
         } else if ($newStatus === 'pending' && $type === 'Dormitory') {
             $waMsg .= "\n\n---\n*PILIHAN DORMITORY:*\n";
             $tgMsg .= "\n\n---\n<b>PILIHAN DORMITORY:</b>\n";
@@ -119,11 +121,11 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                     $rCount++;
                 }
             }
-            $waMsg .= "\n*Untuk menyetujui, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_\n\n*Untuk menolak:*\nTOLAK {$code}-{$id}";
-            $tgMsg .= "\n<b>Untuk menyetujui, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>\n\n<b>Untuk menolak:</b>\nTOLAK {$code}-{$id}";
+            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_";
+            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>";
         } else {
-            $waMsg .= "\n\n---\n*Untuk menyetujui/lanjut, balas:*\nSETUJU {$code}-{$id}\n\n*Untuk menolak, balas:*\nTOLAK {$code}-{$id}";
-            $tgMsg .= "\n\n---\n<b>Untuk menyetujui/lanjut, balas:</b>\nSETUJU {$code}-{$id}\n\n<b>Untuk menolak, balas:</b>\nTOLAK {$code}-{$id}";
+            $waMsg .= "\n\n---\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
+            $tgMsg .= "\n\n---\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
         }
     }
     $targetNumbers = [];
@@ -794,7 +796,7 @@ switch ($action) {
         }
 
         // Cek konflik driver
-        if ($driverName && trim($driverName) !== '') {
+        if ($driverName && trim($driverName) !== '' && $driverName !== 'TANPA_SUPIR') {
             $stmt = $conn->prepare("SELECT id FROM vehicle_requests WHERE id != ? AND driver_name = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
             $stmt->bind_param("isss", $id, $driverName, $endDT, $startDT);
             $stmt->execute();
@@ -931,6 +933,7 @@ switch ($action) {
 
     case 'submit_repair_budget':
         $requestId = (int)($_POST['request_id'] ?? 0);
+        $jenis     = $_POST['jenis']             ?? '';
         $itemsJson = $_POST['items']             ?? '[]';
         $items     = json_decode($itemsJson, true) ?? [];
 
@@ -957,16 +960,17 @@ switch ($action) {
             }
             $ins->close();
 
-            // Update status -> 'verified'
+            // Update status -> 'waiting_manager_fmd'
             $ts       = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');
-            $noteLog  = "\n[$ts] [System] - STATUS UPDATE: RAB Diajukan (Rp " . number_format($totalRAB, 0, ',', '.') . ") - Verified (Menunggu Approval Manager FMD)";
-            $upd = $conn->prepare("UPDATE repair_requests SET status = 'verified', note = CONCAT(IFNULL(note,''),?) WHERE id = ?");
+            $jenisStr = $jenis ? "[$jenis] " : "";
+            $noteLog  = "\n[$ts] [System] - STATUS UPDATE: {$jenisStr}RAB Diajukan (Rp " . number_format($totalRAB, 0, ',', '.') . ") - Menunggu Approval Manager FMD";
+            $upd = $conn->prepare("UPDATE repair_requests SET status = 'waiting_manager_fmd', note = CONCAT(IFNULL(note,''),?) WHERE id = ?");
             $upd->bind_param("si", $noteLog, $requestId);
             $upd->execute();
             $upd->close();
 
             // KIRIM NOTIFIKASI TELEGRAM
-            notifyStatusUpdate($conn, 'repair_requests', $requestId, 'verified', "RAB Diajukan (Rp " . number_format($totalRAB, 0, ',', '.') . ")", 'System');
+            notifyStatusUpdate($conn, 'repair_requests', $requestId, 'waiting_manager_fmd', "RAB Diajukan (Rp " . number_format($totalRAB, 0, ',', '.') . ")", 'System');
 
             $conn->commit();
             jsonResponse(true, 'RAB berhasil diajukan!');

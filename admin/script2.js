@@ -1,457 +1,13 @@
-<?php
-// ============================================================
-// admin/index.php — Dashboard Admin
-// Setara dengan: app/admin/page.tsx
-// ============================================================
 
-require_once __DIR__ . '/../includes/auth.php';
-requireRole('admin');
-require_once __DIR__ . '/../includes/layout.php';
-
-$session   = getSession();
-$userName  = $session['fullName'];
-$userRole  = $session['role'];
-$userLogin = $session['username'];
-
-renderPageHead('Dashboard Admin');
-?>
-
-<style>
-/* Notif Dropdown */
-
-/* Notif Dropdown */
-/* Notif Dropdown */
-.card-shadow {
-  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15) !important;
-}
-.card-header-stats {
-  background-color: #f8f9fc;
-  border-bottom: 1px solid #e3e6f0;
-  padding: 0.75rem 1.25rem;
-}
-.text-primary-stats {
-  color: #4e73df !important;
-}
-.text-success-stats {
-  color: #1cc88a !important;
-}
-.text-info-stats {
-  color: #36b9cc !important;
-}
-.text-warning-stats {
-  color: #f6c23e !important;
-}
-.font-weight-bold-stats {
-  font-weight: 700 !important;
-}
-.notif-dropdown {
-  position: absolute;
-  top: 100%;
-  right: -50px;
-  width: 340px;
-  background: #fff;
-  border: 1px solid #e3e6f0;
-  border-radius: 0.35rem;
-  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
-  margin-top: 1.15rem;
-  display: none;
-  z-index: 1060;
-  overflow: hidden;
-}
-.notif-dropdown::after {
-  content: '';
-  position: absolute;
-  top: -10px;
-  right: 58px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 10px solid #fff;
-}
-.notif-dropdown.open {
-  display: block;
-  animation: slideDown .2s ease-out;
-}
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.notif-header {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-}
-.notif-header h3 {
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin: 0;
-  color: #1e293b;
-}
-.notif-header .count {
-  font-size: 0.8rem;
-  color: #64748b;
-}
-.notif-list {
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.notif-list::-webkit-scrollbar {
-  width: 5px;
-}
-.notif-list::-webkit-scrollbar-thumb {
-  background: #e3e6f0;
-  border-radius: 10px;
-}
-.notif-item {
-  padding: 0.85rem 1.25rem;
-  border-bottom: 1px solid #f1f5f9;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: block;
-  width: 100%;
-  text-decoration: none !important;
-}
-.notif-item:hover {
-  background: #f8fafc;
-}
-.notif-item:last-child {
-  border-bottom: none;
-}
-.notif-item-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.4rem;
-}
-.notif-type-badge {
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  background: #eff6ff;
-  color: #2563eb;
-}
-.notif-date {
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-.notif-title {
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: #334155;
-  margin-bottom: 0.25rem;
-  line-height: 1.3;
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.notif-subtitle {
-  font-size: 0.72rem;
-  color: #858796;
-}
-
-/* Global Minimalist UI Polishing */
-.sidebar-menu-item {
-  border-radius: 10px;
-  margin: 0.2rem 0.75rem;
-  padding: 0.65rem 1rem;
-  color: #64748b;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid transparent;
-}
-
-.sidebar-menu-item:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-  transform: translateX(4px);
-}
-
-.sidebar-menu-item.active {
-  background: #fff;
-  color: var(--color-emerald-600);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  border-color: #f1f5f9;
-}
-
-/* Topbar & Profile Refinements */
-/* Removed redundant topbar classes - already in style.css */
-.topbar-user-name {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #5a5c69;
-}
-#notif-badge {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  font-size: 0.6rem;
-  padding: 2px 4px;
-  min-width: 16px;
-  height: 16px;
-  border: 1px solid #fff;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 800;
-  line-height: 1;
-}
-.chart-tooltip {
-  position: fixed;
-  display: none;
-  background: rgba(0, 0, 0, 0.85);
-  color: #fff;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  pointer-events: none;
-  z-index: 10000;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  line-height: 1.4;
-  white-space: nowrap;
-}
-</style>
-
-  <!-- TOPBAR -->
-  <div class="topbar">
-    <div class="topbar-content">
-      <div class="topbar-left">
-        <div class="topbar-logo">
-          <img src="../assets/img/logo.png" alt="SEAMEO BIOTROP" />
-        </div>
-        <button class="btn btn-ghost btn-sm" id="sidebar-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')" aria-label="Toggle Sidebar">☰</button>
-        <span class="topbar-title" id="page-title">Admin Dashboard</span>
-      </div>
-      <div class="topbar-user">
-        <div style="display:flex; align-items:center;">
-          <!-- Notifications -->
-          <div id="notification-area" style="cursor:pointer; position:relative; display:flex; align-items:center; padding: 0.5rem; color: #d1d3e2;" onclick="toggleNotifDropdown(event)">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-            <span id="notif-badge" class="nav-badge-count" style="display:none; background-color: #e74a3b;">0</span>
-            
-            <div id="notif-dropdown" class="notif-dropdown">
-              <div class="notif-header">
-                <h3>Notifikasi Pengajuan</h3>
-                <span class="count" id="notif-header-count">0 Baru</span>
-              </div>
-              <div id="notif-list" class="notif-list">
-                <!-- Items rendered by JS -->
-              </div>
-            </div>
-          </div>
-
-          <div class="topbar-divider"></div>
-
-          <!-- User Info -->
-          <div class="topbar-user-link" onclick="switchView('profile')">
-            <span class="topbar-user-name"><?= htmlspecialchars($userName) ?></span>
-            <div class="user-avatar-sm">
-              <?= strtoupper(mb_substr($userName, 0, 1)) ?>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-<div class="app-layout">
-
-  <?php renderSidebar($userRole, 'dashboard', $userName, '../'); ?>
-
-  <!-- Sidebar Overlay for Mobile -->
-  <div class="sidebar-overlay" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
-
-  <!-- MAIN CONTENT -->
-  <div class="main-content">
-
-    <!-- PAGE CONTENT -->
-    <div class="page-content">
-      <div class="page-content-inner" id="view-container">
-        <!-- JS will render the active view here -->
-        <div style="text-align:center;padding:3rem;color:var(--color-slate-400);">
-          <div class="spinner" style="border-color:rgba(16,185,129,.2);border-top-color:var(--color-emerald-600);width:2.5rem;height:2.5rem;"></div>
-          <p style="margin-top:1rem;">Memuat data...</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-<!-- ===== MODAL: ADD/EDIT USER ===== -->
-<div class="modal-overlay" id="modal-user">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title" id="modal-user-title">Tambah User</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <form id="user-form">
-        <input type="hidden" id="edit-user-id" name="id" value="" />
-        <div class="grid-2">
-          <div class="form-group" style="grid-column: 1/3;">
-            <label class="form-label" for="user-employee-id">Pilih Karyawan *</label>
-            <select id="user-employee-id" name="employee_id" class="form-select" required onchange="onEmployeeSelect(this)">
-              <option value="">-- Pilih Karyawan --</option>
-            </select>
-            <p style="font-size:0.75rem; color:var(--color-slate-500); margin-top:0.25rem;">NIP/NIK karyawan ini akan otomatis menjadi Username login.</p>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="user-fullname">Nama Lengkap Akun *</label>
-            <input type="text" id="user-fullname" name="full_name" class="form-input" required placeholder="Contoh: Admin Utama" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="user-role">Role Akses *</label>
-            <select id="user-role" name="role" class="form-select" required>
-              <option value="user">User Standar</option>
-              <option value="admin">Administrator</option>
-              <option value="supervisor">Supervisor FMD</option>
-              <option value="pic_repair">PIC Repair</option>
-              <option value="managerFMD">Manager FMD</option>
-              <option value="bod">BOD / Director</option>
-              <option value="ppk">PPK</option>
-              <option value="managerFAD">Manager FAD</option>
-              <option value="bendahara">Bendahara</option>
-            </select>
-          </div>
-          <div class="form-group" style="grid-column: 1/3;">
-            <label class="form-label" for="user-password">Password Login <span id="pw-hint" style="font-weight:400;color:var(--color-slate-400);">(wajib isi)</span></label>
-            <input type="password" id="user-password" name="password" class="form-input" placeholder="••••••••" />
-          </div>
-        </div>
-      </form>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" onclick="submitUserForm()">Simpan</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL: RAB (Budget) ===== -->
-<div class="modal-overlay" id="modal-rab">
-  <div class="modal modal-lg">
-    <div class="modal-header">
-      <h3 class="modal-title">Input RAB (Rincian Anggaran Biaya)</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Jenis Penanganan</label>
-        <select id="rab-jenis" class="form-select">
-          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
-          <option value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)</option>
-        </select>
-      </div>
-      <div class="grid-3" style="margin-bottom:1rem;">
-        <div class="form-group" style="grid-column:1/3;">
-          <label class="form-label">Nama Item</label>
-          <input type="text" id="rab-item-name" class="form-input" placeholder="Contoh: Cat Tembok" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Qty</label>
-          <input type="number" id="rab-item-qty" class="form-input" value="1" min="1" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Harga Satuan (Rp)</label>
-          <input type="number" id="rab-item-price" class="form-input" value="0" min="0" />
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button class="btn btn-primary btn-full" onclick="addRabItem()">+ Tambah</button>
-        </div>
-      </div>
-      <div class="rab-table-wrap">
-        <table>
-          <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th><th style="text-align:right">Total</th><th></th></tr></thead>
-          <tbody id="rab-table-body"><tr><td colspan="5" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada item</td></tr></tbody>
-        </table>
-      </div>
-      <div style="margin-top:1rem;text-align:right;font-weight:700;font-size:1rem;">
-        Total RAB: <span id="rab-total" style="color:var(--color-blue-600);">Rp 0</span>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" onclick="submitRAB()">Diteruskan ke Manager FMD</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL: FORM GUDANG ===== -->
-<div class="modal-overlay" id="modal-gudang">
-  <div class="modal modal-lg">
-    <div class="modal-header">
-      <h3 class="modal-title">Form Permintaan Barang Gudang</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Jenis Pengerjaan</label>
-        <select id="gudang-jenis" class="form-select" onchange="toggleGudangItems(this.value)">
-          <option value="Sparepart tersedia di gudang">Sparepart tersedia di gudang</option>
-          <option value="Tidak perlu sparepart (jasa)">Tidak perlu sparepart (jasa)</option>
-        </select>
-      </div>
-      <div id="gudang-item-inputs">
-        <div class="grid-3" style="margin-bottom:1rem;">
-          <div class="form-group" style="grid-column:1/3;">
-            <label class="form-label">Nama Barang</label>
-            <input type="text" id="gudang-item-name" class="form-input" placeholder="Contoh: Lampu LED 18W" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Jumlah</label>
-            <input type="number" id="gudang-item-qty" class="form-input" value="1" min="1" />
-          </div>
-          <div style="grid-column:1/4; display:flex; justify-content:flex-end;">
-            <button class="btn btn-primary" onclick="addGudangItem()">+ Tambah</button>
-          </div>
-        </div>
-        <div class="rab-table-wrap" id="gudang-item-table">
-          <table>
-            <thead><tr><th>Barang</th><th style="text-align:right">Jumlah</th><th></th></tr></thead>
-            <tbody id="gudang-table-body"><tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="form-group" style="margin-top:1rem;">
-        <label class="form-label">Catatan Pengerjaan / Proses Internal</label>
-        <textarea id="gudang-note" class="form-input" rows="2" placeholder="Catatan tambahan..."></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" onclick="submitGudang()">Diteruskan ke Manager FMD</button>
-    </div>
-  </div>
-</div>
-<!-- ===== TOAST ===== -->
-<div id="toast-container"></div>
-
-<script src="../assets/js/main.js"></script>
-<script>
 // ============================================================
 // ADMIN DASHBOARD — JavaScript
 // Setara dengan: seluruh logic di app/admin/page.tsx
 // ============================================================
-window.BASE_URL = '<?= BASE_URL ?>';
-const ADMIN_NAME = <?= json_encode($userName) ?>;
-const ADMIN_USERNAME = <?= json_encode($userLogin) ?>;
-const CURRENT_ROLE = <?= json_encode($userRole) ?>;
-const API_BASE   = '<?= BASE_URL ?>/api/';
+window.BASE_URL = 'null';
+const ADMIN_NAME = null;
+const ADMIN_USERNAME = null;
+const CURRENT_ROLE = null;
+const API_BASE   = 'null/api/';
 
 // --- STATE ---
 let allRequests = [];
@@ -2359,23 +1915,15 @@ function renderDetailPengajuanTinjau() {
   } else if (req.type === 'Repair') {
     // ── REPAIR WORKFLOW ──
     if (req.status === 'pending' && (isPIC || isSuperAdmin)) {
-      actionBtns = `
-      <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
-        <div style="font-weight:700; color:#334155; margin-bottom:0.75rem;">Opsi Penanganan Perbaikan</div>
-        
-        <div style="margin-bottom:1rem;">
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Kerjakan Sendiri (Sparepart Tersedia / Tidak Butuh Sparepart)</div>
-          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">📦 Form Permintaan Barang Gudang / Proses Internal</button>
-        </div>
-
-        <div>
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Memungkinkan / Harus Beli Sparepart / Vendor</div>
-          <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5;">📄 Buat RAB & Teruskan ke Manager FMD</button>
-        </div>
+      actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
+        <div style="font-size:0.875rem; font-weight:600; color:#475569; margin-bottom:0.25rem;">Opsi Akses Pengajuan (Pilih Tindakan):</div>
+        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','in-progress')" style="background:#0f172a; border-color:#0f172a;">🔧 Dikerjakan Sendiri (Tanpa Sparepart)</button>
+        <button class="btn btn-primary btn-full" onclick="openGudangModal()" style="background:#059669; border-color:#059669;">📦 Dikerjakan Sendiri (Ambil Sparepart Gudang)</button>
+        <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5; border-color:#4f46e5;">📄 Pihak Ketiga / Beli Baru (Buat RAB)</button>
       </div>`;
     } else if (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)) {
-      actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
-        <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB / Internal</button>
+      actionBtns = `<div style="display:flex;gap:.5rem;">
+        <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB</button>
         <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
       </div>`;
     } else if (req.status === 'waiting_bod' && (CURRENT_ROLE === 'bod' || isSuperAdmin)) {
@@ -2501,7 +2049,7 @@ function renderDetailPengajuanTinjau() {
         'Pengajuan telah disiapkan oleh PIC dan berstatus Ready for User. PIC akan menyelesaikan permintaan ini setelah penggunaan selesai.');
     }
 
-  }
+
 
   return `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 1.5rem;">
@@ -2847,16 +2395,11 @@ async function handleApproveRAB(id) {
   let nextStatus = 'waiting_manager_fad'; 
   if (total > 50000000) nextStatus = 'waiting_bod';
   else if (total > 20000000) nextStatus = 'waiting_ppk';
-  else if (total > 0) nextStatus = 'waiting_manager_fad';
-  else nextStatus = 'in-progress'; // Jika 0, berarti form gudang / tanpa biaya
+  else nextStatus = 'waiting_manager_fad';
 
   const noteEl = document.getElementById('admin-note');
   if (noteEl) {
-    if (total > 0) {
-      noteEl.value = `RAB Approved. Total: ${formatRupiah(total)}. ` + (noteEl.value || '');
-    } else {
-      noteEl.value = `Permintaan Internal / Gudang disetujui. ` + (noteEl.value || '');
-    }
+    noteEl.value = `RAB Approved. Total: ${formatRupiah(total)}. ` + (noteEl.value || '');
   }
   
   await updateStatus(id, 'Repair', nextStatus);
@@ -2997,22 +2540,30 @@ async function doDormitoryApprove(id, targetStatus = 'approved') {
   await updateStatus(id, 'Dormitory', targetStatus);
 }
 
-async function approveRABtoSupervisor(id) {
-  const res = await apiPost(API_BASE + 'requests.php', { action: 'approve_repair_budget', request_id: id });
-  if (res.success) {
-    Toast.success(res.message);
-    switchView(previousView || 'dashboard');
-    await loadAllData();
-  } else {
-    Toast.error(res.message);
-  }
-}
-
 // ===== RAB MODAL =====
 function openRABModal() {
   rabItems = [];
   renderRABTable();
+  document.getElementById('rab-total').textContent = 'Rp 0';
   Modal.open('modal-rab');
+}
+
+function openGudangModal() {
+  document.getElementById('gudang-items').value = '';
+  Modal.open('modal-gudang');
+}
+
+async function submitGudang() {
+  const items = document.getElementById('gudang-items').value;
+  if (!items.trim()) { Toast.error('Isi daftar barang yang diambil!'); return; }
+  
+  const noteEl = document.getElementById('admin-note');
+  if (noteEl) {
+    noteEl.value = `[Form Gudang] Mengambil barang: ${items}. ` + (noteEl.value || '');
+  }
+  
+  await updateStatus(currentDetailReq.id, 'Repair', 'in-progress');
+  Modal.close('modal-gudang');
 }
 
 function addRabItem() {
@@ -3059,12 +2610,9 @@ async function submitRAB() {
   if (!rabItems.length) { Toast.error('Minimal isi 1 item RAB.'); return; }
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
-  const jenis = document.getElementById('rab-jenis')?.value || '';
-
   const res = await apiPost(API_BASE + 'requests.php', {
     action: 'submit_repair_budget',
     request_id: currentRequestId,
-    jenis: jenis,
     items: JSON.stringify(rabItems)
   });
   if (res.success) {
@@ -3076,90 +2624,6 @@ async function submitRAB() {
     Toast.error(res.message);
   }
 }
-
-// ===== GUDANG MODAL =====
-let gudangItems = [];
-
-function toggleGudangItems(value) {
-  const inputs = document.getElementById('gudang-item-inputs');
-  if (value === 'Tidak perlu sparepart (jasa)') {
-    inputs.style.display = 'none';
-  } else {
-    inputs.style.display = 'block';
-  }
-}
-
-function openGudangModal(id) {
-  gudangItems = [];
-  document.getElementById('gudang-note').value = '';
-  renderGudangTable();
-  Modal.open('modal-gudang');
-}
-
-function addGudangItem() {
-  const name = document.getElementById('gudang-item-name')?.value?.trim();
-  const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
-  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
-  gudangItems.push({ id: Date.now(), itemName: name, quantity: qty });
-  document.getElementById('gudang-item-name').value = '';
-  document.getElementById('gudang-item-qty').value  = '1';
-  renderGudangTable();
-}
-
-function removeGudangItem(id) {
-  gudangItems = gudangItems.filter(i => i.id !== id);
-  renderGudangTable();
-}
-
-function renderGudangTable() {
-  const tbody = document.getElementById('gudang-table-body');
-  if (!tbody) return;
-  if (!gudangItems.length) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = gudangItems.map(i => {
-    return `<tr>
-      <td>${i.itemName}</td>
-      <td style="text-align:right;">${i.quantity}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="removeGudangItem(${i.id})">✕</button></td>
-    </tr>`;
-  }).join('');
-}
-
-async function submitGudang() {
-  if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
-
-  const jenis = document.getElementById('gudang-jenis')?.value || '';
-  let note = document.getElementById('gudang-note')?.value?.trim() || '';
-  
-  if (jenis === 'Sparepart tersedia di gudang' && gudangItems.length > 0) {
-    const itemsStr = gudangItems.map(i => `${i.quantity}x ${i.itemName}`).join(', ');
-    note = `[Internal: ${jenis}] Permintaan Barang: ${itemsStr}. ${note}`;
-  } else {
-    note = `[Internal: ${jenis}] ${note}`;
-  }
-
-  // Update status to waiting_manager_fmd with the note
-  const res = await apiPost(API_BASE + 'requests.php', {
-    action: 'update_status', 
-    id: currentRequestId, 
-    type: 'Repair', 
-    status: 'waiting_manager_fmd', 
-    note: note, 
-    prev_note: currentRequestNote
-  });
-
-  if (res.success) {
-    Toast.success('Permintaan Gudang berhasil diajukan!');
-    Modal.close('modal-gudang');
-    switchView(previousView || 'dashboard');
-    await loadAllData();
-  } else {
-    Toast.error(res.message || 'Gagal update status.');
-  }
-}
-
 
 // ===== USER MANAGEMENT =====
 window.openAddUser = function() {
@@ -3508,82 +2972,3 @@ window.submitRoomChecklist = async function() {
         Toast.error("Gagal terhubung ke server");
     }
 };
-</script>
-
-<!-- Modal Checklist Ruangan -->
-<div class="modal-overlay" id="modal-checklist-ruangan">
-  <div class="modal" style="max-width: 650px;">
-    <div class="modal-header">
-      <h3 class="modal-title">Laporan Pengecheckan Ruangan</h3>
-      <button class="modal-close-btn">&times;</button>
-    </div>
-    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
-      <form id="form-checklist-ruangan" onsubmit="event.preventDefault(); submitRoomChecklist();">
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Kebersihan dan Kerapihan</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-kebersihan" value="Lantai bersih"> Lantai bersih</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-kebersihan" value="Meja bersih dan rapi"> Meja bersih dan rapi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-kebersihan" value="Kursi tertata rapi"> Kursi tertata rapi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-kebersihan" value="Tempat sampah kosong"> Tempat sampah kosong</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-kebersihan" value="Tidak ada bau tidak sedap"> Tidak ada bau tidak sedap</label>
-        
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Fasilitas Utama</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="Proyektor berfungsi"> Proyektor berfungsi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="Layar proyektor siap"> Layar proyektor siap</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="TV/Monitor menyala dengan baik"> TV/Monitor menyala dengan baik</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="Sound system berfungsi"> Sound system berfungsi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="Microphone tersedia dan berfungsi"> Microphone tersedia dan berfungsi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-fasilitas" value="Kabel dan konektor lengkap"> Kabel dan konektor lengkap</label>
-        
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Kelistrikan dan Koneksi</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-listrik" value="Stop kontak berfungsi"> Stop kontak berfungsi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-listrik" value="Lampu menyala dengan baik"> Lampu menyala dengan baik</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-listrik" value="AC berfungsi"> AC berfungsi</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-listrik" value="WiFi tersedia dan stabil"> WiFi tersedia dan stabil</label>
-
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Perlengkapan Meeting</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-perlengkapan" value="Whiteboard tersedia"> Whiteboard tersedia</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-perlengkapan" value="Spidol dan penghapus tersedia"> Spidol dan penghapus tersedia</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-perlengkapan" value="Air minum tersedia (jika diperlukan)"> Air minum tersedia (jika diperlukan)</label>
-        
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Pengaturan Ruangan</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-pengaturan" value="Layout sesuai permintaan"> Layout sesuai permintaan (teater/u-shape/classroom)</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-pengaturan" value="Jumlah kursi sesuai kebutuhan"> Jumlah kursi sesuai kebutuhan</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-pengaturan" value="Pencahayaan sesuai"> Pencahayaan sesuai</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-pengaturan" value="Suhu ruang nyaman"> Suhu ruang nyaman</label>
-
-        <div style="font-weight:700; color:#1e293b; margin-top:1rem; margin-bottom:0.5rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Video Pembukaan Kegiatan</div>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-video" value="File Lagu Indonesia Raya tersedia"> File Lagu Indonesia Raya tersedia</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-video" value="File Lagu SEAMEO Colours tersedia"> File Lagu SEAMEO Colours tersedia</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-video" value="Format file audio sesuai standar"> Format file audio sesuai standar</label>
-        <label style="display:flex; gap:.5rem; margin-bottom:.5rem;"><input type="checkbox" name="cr-video" value="Lokasi penyimpanan file sudah benar"> Lokasi penyimpanan file sudah benar</label>
-
-        <div class="form-group" style="margin-top:1rem;">
-          <label class="form-label" style="font-weight:700;">Catatan Tambahan (kendala atau hal yang perlu diperbaiki)</label>
-          <textarea id="cr-catatan" class="form-textarea" rows="3"></textarea>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" style="font-weight:700;">Status Kesiapan</label>
-          <select id="cr-status" class="form-select" required>
-            <option value="">Pilih Status...</option>
-            <option value="Siap digunakan">Siap digunakan</option>
-            <option value="Perlu perbaikan">Perlu perbaikan</option>
-            <option value="Belum siap">Belum siap</option>
-          </select>
-        </div>
-
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label" style="font-weight:700;">Foto Ruangan (Maks 5 file, maks 100MB)</label>
-          <input type="file" id="cr-foto" class="form-input" accept="image/*" multiple>
-        </div>
-      </form>
-    </div>
-    <div class="modal-footer" style="margin-top:0;">
-      <button class="btn btn-outline" onclick="Modal.close('modal-checklist-ruangan')">Batal</button>
-      <button class="btn btn-primary" onclick="submitRoomChecklist()">Siap - Lanjutkan</button>
-    </div>
-  </div>
-</div>
-
-</body>
-</html>

@@ -348,6 +348,13 @@ renderPageHead('Dashboard Admin');
       </button>
     </div>
     <div class="modal-body">
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label">Jenis Penanganan</label>
+        <select id="rab-jenis" class="form-select">
+          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
+          <option value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)</option>
+        </select>
+      </div>
       <div class="grid-3" style="margin-bottom:1rem;">
         <div class="form-group" style="grid-column:1/3;">
           <label class="form-label">Nama Item</label>
@@ -377,7 +384,57 @@ renderPageHead('Dashboard Admin');
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" onclick="submitRAB()">Ajukan RAB ke Supervisor</button>
+      <button class="btn btn-primary" onclick="submitRAB()">Diteruskan ke Manager FMD</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: FORM GUDANG ===== -->
+<div class="modal-overlay" id="modal-gudang">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Form Permintaan Barang Gudang</h3>
+      <button class="modal-close modal-close-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label">Jenis Pengerjaan</label>
+        <select id="gudang-jenis" class="form-select" onchange="toggleGudangItems(this.value)">
+          <option value="Sparepart tersedia di gudang">Sparepart tersedia di gudang</option>
+          <option value="Tidak perlu sparepart (jasa)">Tidak perlu sparepart (jasa)</option>
+        </select>
+      </div>
+      <div id="gudang-item-inputs">
+        <div class="grid-3" style="margin-bottom:1rem;">
+          <div class="form-group" style="grid-column:1/3;">
+            <label class="form-label">Nama Barang</label>
+            <input type="text" id="gudang-item-name" class="form-input" placeholder="Contoh: Lampu LED 18W" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Jumlah</label>
+            <input type="number" id="gudang-item-qty" class="form-input" value="1" min="1" />
+          </div>
+          <div style="grid-column:1/4; display:flex; justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="addGudangItem()">+ Tambah</button>
+          </div>
+        </div>
+        <div class="rab-table-wrap" id="gudang-item-table">
+          <table>
+            <thead><tr><th>Barang</th><th style="text-align:right">Jumlah</th><th></th></tr></thead>
+            <tbody id="gudang-table-body"><tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:1rem;">
+        <label class="form-label">Catatan Pengerjaan / Proses Internal</label>
+        <textarea id="gudang-note" class="form-input" rows="2" placeholder="Catatan tambahan..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline modal-close-btn">Batal</button>
+      <button class="btn btn-primary" onclick="submitGudang()">Diteruskan ke Manager FMD</button>
     </div>
   </div>
 </div>
@@ -615,8 +672,8 @@ function renderCurrentView() {
     case 'request_management': container.innerHTML = renderRequestManagement();  break;
     case 'track_reports':      container.innerHTML = renderTrackReports();       break;
     case 'user_management':    container.innerHTML = renderUserManagement();     break;
-    case 'master_data':        container.innerHTML = `<div class="page-header"><h1>Master Data</h1><p>Halaman ini sedang dalam tahap pengembangan (Coming Soon).</p></div>`; break;
-    case 'system_settings':    container.innerHTML = `<div class="page-header"><h1>Pengaturan Sistem</h1><p>Halaman konfigurasi server & aplikasi (Coming Soon).</p></div>`; break;
+    case 'master_data':        container.innerHTML = renderMasterData();         break;
+    case 'system_settings':    container.innerHTML = renderSystemSettings();     break;
     case 'analytics':          container.innerHTML = renderAnalytics();          break;
     case 'profile':            container.innerHTML = renderProfile();            break;
     case 'detail_pengajuan':   container.innerHTML = renderDetailPengajuan();    break;
@@ -1062,13 +1119,45 @@ function goTrackPage(page) {
 // --- USER MANAGEMENT ---
 function renderUserManagement() {
   const users = allUsers;
+  const total = users.length;
+  const adminCount = users.filter(u => u.role === 'admin' || u.role === 'super admin' || u.role === 'superadmin').length;
+  const fmdCount = users.filter(u => u.role === 'supervisor').length;
+  const userCount = users.filter(u => u.role === 'user').length;
+  
   const html = `
   <div class="page-header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-      <div><h1>Manajemen User</h1><p>Kelola akun pengguna sistem</p></div>
-      <button class="btn btn-primary" onclick="openAddUser()">+ Tambah User</button>
+      <div><h1>Manajemen User</h1><p>Kelola akun pengguna dan hak akses sistem</p></div>
+      <button class="btn btn-primary" onclick="openAddUser()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.4rem"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Tambah User
+      </button>
     </div>
   </div>
+
+  <div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card border-left-blue">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value" style="color:var(--color-blue-600);">${total}</div>
+      <div class="stat-sub">Seluruh pengguna terdaftar</div>
+    </div>
+    <div class="stat-card border-left-emerald">
+      <div class="stat-label">Administrator</div>
+      <div class="stat-value" style="color:var(--color-emerald-600);">${adminCount}</div>
+      <div class="stat-sub">Akses pengelola sistem</div>
+    </div>
+    <div class="stat-card border-left-amber">
+      <div class="stat-label">Supervisor FMD</div>
+      <div class="stat-value" style="color:var(--color-amber-600);">${fmdCount}</div>
+      <div class="stat-sub">Penyetuju permintaan</div>
+    </div>
+    <div class="stat-card border-left-slate">
+      <div class="stat-label">Staff / User</div>
+      <div class="stat-value" style="color:var(--color-slate-600);">${userCount}</div>
+      <div class="stat-sub">Pengguna layanan fasilitas</div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-header">
       <div class="search-wrap" style="max-width:300px;">
@@ -1097,9 +1186,19 @@ function renderUserRows(data, page) {
 
   return paged.map(u => `
     <tr>
-      <td data-label="Nama" style="font-weight:600;">${u.full_name}</td>
+      <td data-label="Nama">
+        <div style="display:flex;align-items:center;gap:0.8rem;">
+            <div class="user-avatar-sm" style="width:32px;height:32px;background:#e2e8f0;color:#334155;display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:700;font-size:0.85rem;">
+                ${(u.full_name || u.username || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div>
+                <div style="font-weight:700;color:var(--color-slate-800);">${u.full_name || u.username || 'Tanpa Nama'}</div>
+                <div style="font-size:0.75rem;color:var(--color-slate-400);">@${u.username}</div>
+            </div>
+        </div>
+      </td>
       <td data-label="NIP/NIK" style="font-family:monospace;font-size:.82rem;">${u.nip_nik || '-'}</td>
-      <td data-label="Role"><span class="badge ${u.role === 'admin' ? 'badge-approved' : u.role === 'supervisor' ? 'badge-verified' : 'badge-pending'}">${u.role}</span></td>
+      <td data-label="Role"><span class="badge ${u.role === 'admin' || u.role === 'super admin' || u.role === 'superadmin' ? 'badge-approved' : u.role === 'supervisor' ? 'badge-verified' : 'badge-pending'}">${u.role}</span></td>
       <td data-label="Dibuat" style="font-size:.78rem;color:var(--color-slate-400);">${formatDate(u.created_at)}</td>
       <td data-label="Aksi">
         <div style="display:flex;gap:.4rem;justify-content:flex-end;">
@@ -1115,8 +1214,9 @@ function filterUsers() {
   let data = allUsers;
   if (search) {
     data = data.filter(u => 
-      u.full_name.toLowerCase().includes(search) || 
-      u.username.toLowerCase().includes(search)
+      (u.full_name || '').toLowerCase().includes(search) || 
+      (u.nip_nik || '').toLowerCase().includes(search) ||
+      (u.role || '').toLowerCase().includes(search)
     );
   }
   currentPage = 1;
@@ -2114,6 +2214,43 @@ function openDetailView(id, type, mode = 'tinjau') {
   }
 }
 
+function checkResourceConflict(currentReq, resourceType, resourceId) {
+  if (!resourceId) return false;
+  if (resourceType === 'driver' && resourceId === 'TANPA_SUPIR') return false;
+
+  const activeStatuses = ['approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'];
+  
+  const curStartStr = currentReq.date_start + 'T' + ((currentReq.raw_time_start || '').substring(0, 5) || '00:00') + ':00';
+  const curEndStr = (currentReq.raw_date_end || currentReq.date_start) + 'T' + ((currentReq.raw_time_end || '').substring(0, 5) || '23:59') + ':00';
+  
+  const curStart = new Date(curStartStr).getTime();
+  const curEnd = new Date(curEndStr).getTime();
+
+  for (const r of allRequests) {
+    if (r.id === currentReq.id && r.type === currentReq.type) continue;
+    if (!activeStatuses.includes(r.status)) continue;
+    
+    let match = false;
+    if (resourceType === 'Vehicle' && r.type === 'Vehicle' && String(r.vehicle_id) === String(resourceId)) match = true;
+    if (resourceType === 'driver' && r.type === 'Vehicle' && String(r.driver_name) === String(resourceId)) match = true;
+    if (resourceType === 'Room' && r.type === 'Room' && String(r.room_id) === String(resourceId)) match = true;
+    if (resourceType === 'Dormitory' && r.type === 'Dormitory' && String(r.dormitory_id) === String(resourceId)) match = true;
+    
+    if (match) {
+      const rStartStr = r.date_start + 'T' + ((r.raw_time_start || '').substring(0, 5) || '00:00') + ':00';
+      const rEndStr = (r.raw_date_end || r.date_start) + 'T' + ((r.raw_time_end || '').substring(0, 5) || '23:59') + ':00';
+      
+      const rStart = new Date(rStartStr).getTime();
+      const rEnd = new Date(rEndStr).getTime();
+      
+      if (rStart < curEnd && rEnd > curStart) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function renderDetailPengajuan() {
   // Mode 'tinjau' = dari Manajemen Pengajuan → tampilkan form pemrosesan
   // Mode lainnya (misal 'track') = dari Track Pengajuan → tampilkan reporting detail
@@ -2142,7 +2279,7 @@ function renderDetailPengajuanTinjau() {
   const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
 
   // ── Bagian assign kendaraan ──
-  const vehicleSection = (req.type === 'Vehicle' && req.status === 'pending') ? `
+  const vehicleSection = (req.type === 'Vehicle' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#fff7ed; border:1px solid #ffedd5; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#9a3412; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 11l1.5-4.5h11L19 11M3 11h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5M7 16v-2M17 16v-2"/></svg>
@@ -2151,7 +2288,10 @@ function renderDetailPengajuanTinjau() {
       <div class="form-group" style="margin-bottom:1.5rem">
         <select id="assign-vehicle" class="form-select" style="background:#fff;">
           <option value="">Pilih Kendaraan Dinas...</option>
-          ${ALL_VEHICLES.map(v => `<option value="${v.id}"${req.vehicle_id === v.id ? ' selected' : ''}>${v.name}</option>`).join('')}
+          ${ALL_VEHICLES.map(v => {
+            const conflict = checkResourceConflict(req, 'Vehicle', v.id);
+            return `<option value="${v.id}"${req.vehicle_id === v.id ? ' selected' : ''}${conflict ? ' disabled' : ''}>${v.name}${conflict ? ' (Digunakan)' : ''}</option>`;
+          }).join('')}
         </select>
       </div>
 
@@ -2162,14 +2302,18 @@ function renderDetailPengajuanTinjau() {
       <div class="form-group" style="margin-bottom:0">
         <select id="assign-driver" class="form-select" style="background:#fff;">
           <option value="">Pilih Driver dari Data Pegawai...</option>
-          ${(Array.isArray(allEmployees) ? allEmployees : []).filter(emp => emp.position && (String(emp.position).toLowerCase().includes('driver') || String(emp.position).toLowerCase().includes('pengemudi'))).map(emp => `<option value="${emp.full_name}"${req.driver_name?.includes(emp.full_name) ? ' selected' : ''}>${emp.full_name} - ${emp.position}</option>`).join('')}
+          <option value="TANPA_SUPIR" style="color:#ea580c; font-weight:bold;">[0] Tanpa Supir (Tidak Ada Driver Tersedia)</option>
+          ${(Array.isArray(allEmployees) ? allEmployees : []).filter(emp => emp.position && (String(emp.position).toLowerCase().includes('driver') || String(emp.position).toLowerCase().includes('pengemudi'))).map(emp => {
+            const conflict = checkResourceConflict(req, 'driver', emp.full_name);
+            return `<option value="${emp.full_name}"${req.driver_name?.includes(emp.full_name) ? ' selected' : ''}${conflict ? ' disabled' : ''}>${emp.full_name} - ${emp.position}${conflict ? ' (Bertugas)' : ''}</option>`;
+          }).join('')}
         </select>
       </div>
       <div style="font-size:0.75rem; color:#ea580c; font-style:italic; margin-top:1rem;">* Kendaraan dan Driver wajib dipilih sebelum melakukan verifikasi ke Manager.</div>
     </div>` : '';
 
   // ── Bagian assign Zoom ──
-  const zoomSection = (req.type === 'Zoom' && req.status === 'pending') ? `
+  const zoomSection = (req.type === 'Zoom' && req.status === 'approved' && (isPIC || isSuperAdmin)) ? `
     <div style="background:#ecfeff; border:1px solid #cffafe; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#155e75; margin-bottom:0.75rem;">Link / Host Key (Optional)</div>
       <div class="form-group" style="margin-bottom:0">
@@ -2178,7 +2322,7 @@ function renderDetailPengajuanTinjau() {
     </div>` : '';
 
   // ── Bagian assign Item ──
-  const itemSection = (req.type === 'Item' && req.status === 'pending') ? `
+  const itemSection = (req.type === 'Item' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#faf5ff; border:1px solid #f3e8ff; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#6b21a8; margin-bottom:0.75rem;">Asset ID / Note (Optional)</div>
       <div class="form-group" style="margin-bottom:0">
@@ -2187,7 +2331,7 @@ function renderDetailPengajuanTinjau() {
     </div>` : '';
 
   // ── Bagian assign Room ──
-  const roomSection = (req.type === 'Room' && req.status === 'pending') ? `
+  const roomSection = (req.type === 'Room' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#f0fdf4; border:1px solid #dcfce7; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#166534; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
@@ -2196,14 +2340,17 @@ function renderDetailPengajuanTinjau() {
       <div class="form-group" style="margin-bottom:0">
         <select id="assign-room" class="form-select" style="background:#fff;">
           <option value="">Pilih Ruangan...</option>
-          ${ALL_ROOMS.map(r => `<option value="${r.id}"${req.room_id === r.id ? ' selected' : ''}>${r.name}</option>`).join('')}
+          ${ALL_ROOMS.map(r => {
+            const conflict = checkResourceConflict(req, 'Room', r.id);
+            return `<option value="${r.id}"${req.room_id === r.id ? ' selected' : ''}${conflict ? ' disabled' : ''}>${r.name}${conflict ? ' (Digunakan)' : ''}</option>`;
+          }).join('')}
         </select>
         <div style="font-size:0.75rem; color:#15803d; font-style:italic; margin-top:0.5rem;">* Anda dapat mengubah ruangan yang dipilih user jika diperlukan.</div>
       </div>
     </div>` : '';
 
   // ── Bagian assign Dormitory ──
-  const dormitorySection = (req.type === 'Dormitory' && req.status === 'pending') ? `
+  const dormitorySection = (req.type === 'Dormitory' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#fdf4ff; border:1px solid #fbcfe8; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#831843; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -2212,7 +2359,10 @@ function renderDetailPengajuanTinjau() {
       <div class="form-group" style="margin-bottom:0">
         <select id="assign-dormitory" class="form-select" style="background:#fff;">
           <option value="">Pilih Dormitory...</option>
-          ${ALL_DORMITORIES.map(r => `<option value="${r.id}"${req.dormitory_id === r.id ? ' selected' : ''}>${r.name}</option>`).join('')}
+          ${ALL_DORMITORIES.map(r => {
+            const conflict = checkResourceConflict(req, 'Dormitory', r.id);
+            return `<option value="${r.id}"${req.dormitory_id === r.id ? ' selected' : ''}${conflict ? ' disabled' : ''}>${r.name}${conflict ? ' (Digunakan)' : ''}</option>`;
+          }).join('')}
         </select>
         <div style="font-size:0.75rem; color:#be185d; font-style:italic; margin-top:0.5rem;">* Anda wajib memploting dormitory untuk user.</div>
       </div>
@@ -2253,28 +2403,68 @@ function renderDetailPengajuanTinjau() {
 
   if (isFinal) {
     // No action needed for final states
+  } else if (req.type === 'Repair') {
+    // ── REPAIR WORKFLOW ──
+    if (req.status === 'pending' && (isPIC || isSuperAdmin)) {
+      actionBtns = `
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
+        <div style="font-weight:700; color:#334155; margin-bottom:0.75rem;">Opsi Penanganan Perbaikan</div>
+        
+        <div style="margin-bottom:1rem;">
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Kerjakan Sendiri (Sparepart Tersedia / Tidak Butuh Sparepart)</div>
+          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">📦 Form Permintaan Barang Gudang / Proses Internal</button>
+        </div>
+
+        <div>
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Sanggup / Harus Beli Sparepart / Vendor</div>
+          <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5;">📄 Buat RAB & Teruskan ke Manager FMD</button>
+        </div>
+      </div>`;
+    } else if (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)) {
+      actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
+        <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB / Internal</button>
+        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
+      </div>`;
+    } else if (req.status === 'waiting_bod' && (CURRENT_ROLE === 'bod' || isSuperAdmin)) {
+      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_ppk')">✓ Approve (ke PPK)</button>`;
+    } else if (req.status === 'waiting_ppk' && (CURRENT_ROLE === 'ppk' || isSuperAdmin)) {
+      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_manager_fad')">✓ Approve (ke Manager FAD)</button>`;
+    } else if (req.status === 'waiting_manager_fad' && (CURRENT_ROLE === 'managerFAD' || isSuperAdmin)) {
+      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','approved_waiting_fund')">✓ Approve (Cairkan Dana)</button>`;
+    } else if (req.status === 'approved_waiting_fund' && (CURRENT_ROLE === 'bendahara' || isSuperAdmin)) {
+      actionBtns = `<div style="background:#fffbeb;border:1px solid #fef3c7;padding:1rem;border-radius:.5rem;">
+        <label class="form-label" style="font-weight:700;color:#92400e;">Pilih Pekerja / Staff:</label>
+        <select id="assign-worker" class="form-select" style="margin-bottom:1rem;">
+          <option value="">Pilih Pekerja...</option>
+          ${allEmployees.map(e => `<option value="${e.full_name}">${e.full_name} (${e.position})</option>`).join('')}
+        </select>
+        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})">💰 Cairkan Dana & Mulai Kerja</button>
+      </div>`;
+    } else if (req.status === 'in-progress' && (isPIC || isSuperAdmin)) {
+      actionBtns = `<button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>`;
+    } else {
+      picMessage = reminderBox('⏳', 'Menunggu Proses',
+        `Pengajuan sedang dalam tahap: <b>${getStatusLabel(req.status)}</b>. Tidak ada tindakan yang tersedia untuk peran Anda saat ini.`);
+    }
+
   } else if (req.status === 'pending') {
     // ── STAGE 1: Pending → PIC Forward to Manager FMD ──
     if (isPIC || isSuperAdmin) {
       if (req.type === 'Vehicle') {
         actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
-          <button class="btn btn-primary btn-full" onclick="doVehicleAssign(${req.id},'waiting_manager_fmd')">✓ Tersedia — Teruskan ke Manager FMD</button>
-          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
+          <button class="btn btn-primary btn-full" onclick="doVehicleAssign(${req.id},'waiting_manager_fmd')">✓ Teruskan ke Manager FMD</button>
         </div>`;
       } else if (req.type === 'Room') {
         actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
-          <button class="btn btn-primary btn-full" onclick="doRoomApprove(${req.id},'waiting_manager_fmd')">✓ Tersedia — Plotting & Teruskan ke Manager FMD</button>
-          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
+          <button class="btn btn-primary btn-full" onclick="doRoomApprove(${req.id},'waiting_manager_fmd')">✓ Plotting & Teruskan ke Manager FMD</button>
         </div>`;
       } else if (req.type === 'Dormitory') {
         actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
-          <button class="btn btn-primary btn-full" onclick="doDormitoryApprove(${req.id},'waiting_manager_fmd')">✓ Tersedia — Plotting & Teruskan ke Manager FMD</button>
-          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
+          <button class="btn btn-primary btn-full" onclick="doDormitoryApprove(${req.id},'waiting_manager_fmd')">✓ Plotting & Teruskan ke Manager FMD</button>
         </div>`;
       } else {
         actionBtns = `<div style="display:flex;gap:.5rem;">
-          <button class="btn btn-primary" style="flex:1;" onclick="doApproveRequest(${req.id},'${req.type}','waiting_manager_fmd')">✓ Tersedia — Teruskan ke Manager FMD</button>
-          <button class="btn btn-danger" style="flex:1;" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tidak Tersedia — Tolak</button>
+          <button class="btn btn-primary" style="flex:1;" onclick="doApproveRequest(${req.id},'${req.type}','waiting_manager_fmd')">✓ Teruskan ke Manager FMD</button>
         </div>`;
       }
     } else {
@@ -2285,10 +2475,27 @@ function renderDetailPengajuanTinjau() {
   } else if (req.status === 'waiting_manager_fmd') {
     // ── STAGE 2: Manager FMD Approve / Reject ──
     if (isManagerFMD || isSuperAdmin) {
-      actionBtns = `<div style="display:flex;gap:.5rem;">
-        <button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'${req.type}','approved')">✓ Setujui (Approved)</button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tolak</button>
-      </div>`;
+      if (req.type === 'Vehicle') {
+        actionBtns = `<div style="display:flex;gap:.5rem;">
+          <button class="btn btn-success btn-full" onclick="doVehicleAssign(${req.id},'approved')">✓ Setujui (Approved)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tolak</button>
+        </div>`;
+      } else if (req.type === 'Room') {
+        actionBtns = `<div style="display:flex;gap:.5rem;">
+          <button class="btn btn-success btn-full" onclick="doRoomApprove(${req.id},'approved')">✓ Setujui (Approved)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tolak</button>
+        </div>`;
+      } else if (req.type === 'Dormitory') {
+        actionBtns = `<div style="display:flex;gap:.5rem;">
+          <button class="btn btn-success btn-full" onclick="doDormitoryApprove(${req.id},'approved')">✓ Setujui (Approved)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tolak</button>
+        </div>`;
+      } else {
+        actionBtns = `<div style="display:flex;gap:.5rem;">
+          <button class="btn btn-success btn-full" onclick="doApproveRequest(${req.id},'${req.type}','approved')">✓ Setujui (Approved)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','rejected')">✕ Tolak</button>
+        </div>`;
+      }
     } else if (isPIC) {
       picMessage = reminderBox('⏳', 'Menunggu Keputusan Manager FMD',
         'Pengajuan telah diteruskan dan sedang dalam antrian persetujuan Manager FMD. Anda akan mendapat notifikasi setelah keputusan diberikan.');
@@ -2304,6 +2511,8 @@ function renderDetailPengajuanTinjau() {
       let btnAction = `onclick="updateStatus(${req.id},'${req.type}','ready_for_user')"`;
       if (req.type === 'Room') {
           btnAction = `onclick="openRoomChecklistModal(${req.id})"`;
+      } else if (req.type === 'Zoom') {
+          btnAction = `onclick="doApproveRequest(${req.id},'${req.type}','ready_for_user')"`;
       }
 
       actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
@@ -2339,40 +2548,6 @@ function renderDetailPengajuanTinjau() {
         'Pengajuan telah disiapkan oleh PIC dan berstatus Ready for User. PIC akan menyelesaikan permintaan ini setelah penggunaan selesai.');
     }
 
-  } else if (req.type === 'Repair') {
-    // ── REPAIR WORKFLOW ──
-    if (req.status === 'pending' && (isPIC || isSuperAdmin)) {
-      actionBtns = `<div style="display:flex;flex-direction:column;gap:.5rem;">
-        <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5;">📄 Verifikasi & Buat RAB</button>
-        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','in-progress')" style="background:#2563eb;">🔧 Proses Internal (Tanpa RAB)</button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
-      </div>`;
-    } else if (req.status === 'verified' && (isManagerFMD || isSuperAdmin)) {
-      actionBtns = `<div style="display:flex;gap:.5rem;">
-        <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB</button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
-      </div>`;
-    } else if (req.status === 'waiting_bod' && (CURRENT_ROLE === 'bod' || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_ppk')">✓ Approve (ke PPK)</button>`;
-    } else if (req.status === 'waiting_ppk' && (CURRENT_ROLE === 'ppk' || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_manager_fad')">✓ Approve (ke Manager FAD)</button>`;
-    } else if (req.status === 'waiting_manager_fad' && (CURRENT_ROLE === 'managerFAD' || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','approved_waiting_fund')">✓ Approve (Cairkan Dana)</button>`;
-    } else if (req.status === 'approved_waiting_fund' && (CURRENT_ROLE === 'bendahara' || isSuperAdmin)) {
-      actionBtns = `<div style="background:#fffbeb;border:1px solid #fef3c7;padding:1rem;border-radius:.5rem;">
-        <label class="form-label" style="font-weight:700;color:#92400e;">Pilih Pekerja / Staff:</label>
-        <select id="assign-worker" class="form-select" style="margin-bottom:1rem;">
-          <option value="">Pilih Pekerja...</option>
-          ${allEmployees.map(e => `<option value="${e.full_name}">${e.full_name} (${e.position})</option>`).join('')}
-        </select>
-        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})">💰 Cairkan Dana & Mulai Kerja</button>
-      </div>`;
-    } else if (req.status === 'in-progress' && (isPIC || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>`;
-    } else if (!isFinal) {
-      picMessage = reminderBox('⏳', 'Menunggu Proses',
-        `Pengajuan sedang dalam tahap: <b>${getStatusLabel(req.status)}</b>. Tidak ada tindakan yang tersedia untuk peran Anda saat ini.`);
-    }
   }
 
   return `
@@ -2412,7 +2587,7 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Item / Lokasi:</span>
               <div style="font-weight:500; font-size:1.1rem; color:var(--color-blue-700);">
                 ${req.type === 'Vehicle' ? (ALL_VEHICLES.find(v => v.id === req.vehicle_id)?.name || req.details) : (ROOM_MAP[req.room_id] || req.details)}
-                ${req.type === 'Vehicle' && req.driver_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Driver: ${req.driver_name})</span>` : ''}
+                ${req.type === 'Vehicle' && req.driver_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Driver: ${req.driver_name === 'TANPA_SUPIR' ? 'Tidak Ada' : req.driver_name})</span>` : ''}
               </div>
             </div>
             <div style="grid-column:1/3;">
@@ -2719,11 +2894,16 @@ async function handleApproveRAB(id) {
   let nextStatus = 'waiting_manager_fad'; 
   if (total > 50000000) nextStatus = 'waiting_bod';
   else if (total > 20000000) nextStatus = 'waiting_ppk';
-  else nextStatus = 'waiting_manager_fad';
+  else if (total > 0) nextStatus = 'waiting_manager_fad';
+  else nextStatus = 'in-progress'; // Jika 0, berarti form gudang / tanpa biaya
 
   const noteEl = document.getElementById('admin-note');
   if (noteEl) {
-    noteEl.value = `RAB Approved. Total: ${formatRupiah(total)}. ` + (noteEl.value || '');
+    if (total > 0) {
+      noteEl.value = `RAB Approved. Total: ${formatRupiah(total)}. ` + (noteEl.value || '');
+    } else {
+      noteEl.value = `Permintaan Internal / Gudang disetujui. ` + (noteEl.value || '');
+    }
   }
   
   await updateStatus(id, 'Repair', nextStatus);
@@ -2766,6 +2946,8 @@ async function doApproveRequest(id, type, targetStatus = 'approved') {
     }
     const defaultMsg = `${detailVal} tersedia, diteruskan kepada Manager FMD untuk approval permohonan`;
     finalNote = noteAppend ? (noteAppend + defaultMsg) : defaultMsg;
+  } else if (targetStatus === 'ready_for_user' && type === 'Zoom' && !rawNote.trim()) {
+    finalNote = noteAppend + "Link Zoom telah disiapkan PIC dan siap digunakan.";
   }
 
   if (noteEl) noteEl.value = finalNote;
@@ -2789,9 +2971,14 @@ async function doVehicleAssign(id, targetStatus = 'approved') {
   if (!res.success) { Toast.error(res.message); return; }
 
   const vName = ALL_VEHICLES.find(v => v.id === vehicleId)?.name || vehicleId;
+  const isChanged = (String(vehicleId) !== String(currentDetailReq.vehicle_id)) || (String(driverName) !== String(currentDetailReq.driver_name));
+
   if (noteEl) {
     if (targetStatus === 'waiting_manager_fmd' && !rawNote.trim()) {
       noteEl.value = `${vName} tersedia, diteruskan kepada Manager FMD untuk approval permohonan. Driver: ${driverName}`;
+    } else if (targetStatus === 'approved' && currentDetailReq.status === 'waiting_manager_fmd') {
+      if (isChanged) noteEl.value = `Disetujui dengan perubahan: Kendaraan ${vName}, Driver ${driverName}. ${rawNote}`;
+      else noteEl.value = `Vehicle: ${vName}. Driver: ${driverName}. ${rawNote}`;
     } else {
       noteEl.value = `Vehicle: ${vName}. Driver: ${driverName}. ${rawNote}`;
     }
@@ -2816,9 +3003,14 @@ async function doRoomApprove(id, targetStatus = 'approved') {
   if (!res.success) { Toast.error(res.message); return; }
 
   const rName = ROOM_MAP[roomId] || roomId;
+  const isChanged = String(roomId) !== String(currentDetailReq.room_id);
+
   if (noteEl) {
     if (targetStatus === 'waiting_manager_fmd' && !rawNote.trim()) {
       noteEl.value = `${rName} tersedia, diteruskan kepada Manager FMD untuk approval permohonan`;
+    } else if (targetStatus === 'approved' && currentDetailReq.status === 'waiting_manager_fmd') {
+      if (isChanged) noteEl.value = `Disetujui dengan perubahan: Ruangan ${rName}. ${rawNote}`;
+      else noteEl.value = `Ruangan: ${rName}. ${rawNote}`;
     } else {
       noteEl.value = `Ruangan: ${rName}. ${rawNote}`;
     }
@@ -2914,9 +3106,12 @@ async function submitRAB() {
   if (!rabItems.length) { Toast.error('Minimal isi 1 item RAB.'); return; }
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
+  const jenis = document.getElementById('rab-jenis')?.value || '';
+
   const res = await apiPost(API_BASE + 'requests.php', {
     action: 'submit_repair_budget',
     request_id: currentRequestId,
+    jenis: jenis,
     items: JSON.stringify(rabItems)
   });
   if (res.success) {
@@ -2928,6 +3123,90 @@ async function submitRAB() {
     Toast.error(res.message);
   }
 }
+
+// ===== GUDANG MODAL =====
+let gudangItems = [];
+
+function toggleGudangItems(value) {
+  const inputs = document.getElementById('gudang-item-inputs');
+  if (value === 'Tidak perlu sparepart (jasa)') {
+    inputs.style.display = 'none';
+  } else {
+    inputs.style.display = 'block';
+  }
+}
+
+function openGudangModal(id) {
+  gudangItems = [];
+  document.getElementById('gudang-note').value = '';
+  renderGudangTable();
+  Modal.open('modal-gudang');
+}
+
+function addGudangItem() {
+  const name = document.getElementById('gudang-item-name')?.value?.trim();
+  const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
+  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
+  gudangItems.push({ id: Date.now(), itemName: name, quantity: qty });
+  document.getElementById('gudang-item-name').value = '';
+  document.getElementById('gudang-item-qty').value  = '1';
+  renderGudangTable();
+}
+
+function removeGudangItem(id) {
+  gudangItems = gudangItems.filter(i => i.id !== id);
+  renderGudangTable();
+}
+
+function renderGudangTable() {
+  const tbody = document.getElementById('gudang-table-body');
+  if (!tbody) return;
+  if (!gudangItems.length) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = gudangItems.map(i => {
+    return `<tr>
+      <td>${i.itemName}</td>
+      <td style="text-align:right;">${i.quantity}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeGudangItem(${i.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function submitGudang() {
+  if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
+
+  const jenis = document.getElementById('gudang-jenis')?.value || '';
+  let note = document.getElementById('gudang-note')?.value?.trim() || '';
+  
+  if (jenis === 'Sparepart tersedia di gudang' && gudangItems.length > 0) {
+    const itemsStr = gudangItems.map(i => `${i.quantity}x ${i.itemName}`).join(', ');
+    note = `[Internal: ${jenis}] Permintaan Barang: ${itemsStr}. ${note}`;
+  } else {
+    note = `[Internal: ${jenis}] ${note}`;
+  }
+
+  // Update status to waiting_manager_fmd with the note
+  const res = await apiPost(API_BASE + 'requests.php', {
+    action: 'update_status', 
+    id: currentRequestId, 
+    type: 'Repair', 
+    status: 'waiting_manager_fmd', 
+    note: note, 
+    prev_note: currentRequestNote
+  });
+
+  if (res.success) {
+    Toast.success('Permintaan Gudang berhasil diajukan!');
+    Modal.close('modal-gudang');
+    switchView(previousView || 'dashboard');
+    await loadAllData();
+  } else {
+    Toast.error(res.message || 'Gagal update status.');
+  }
+}
+
 
 // ===== USER MANAGEMENT =====
 window.openAddUser = function() {
@@ -3276,6 +3555,182 @@ window.submitRoomChecklist = async function() {
         Toast.error("Gagal terhubung ke server");
     }
 };
+
+// --- MASTER DATA ---
+let currentMasterTab = 'vehicle';
+function setMasterTab(tab) {
+    currentMasterTab = tab;
+    renderCurrentView();
+}
+
+function renderMasterData() {
+    let dataList = [];
+    let title = '';
+    
+    if (currentMasterTab === 'vehicle') {
+        dataList = typeof ALL_VEHICLES !== 'undefined' ? ALL_VEHICLES : [];
+        title = 'Kendaraan Dinas';
+    } else if (currentMasterTab === 'room') {
+        dataList = typeof ALL_ROOMS !== 'undefined' ? ALL_ROOMS : [];
+        title = 'Ruangan';
+    } else if (currentMasterTab === 'dormitory') {
+        dataList = typeof ALL_DORMITORIES !== 'undefined' ? ALL_DORMITORIES : [];
+        title = 'Dormitory';
+    }
+    
+    const rows = dataList.map((item, index) => `
+        <tr>
+            <td data-label="No" style="width:50px; text-align:center;">${index + 1}</td>
+            <td data-label="Nama" style="font-weight:600; color:var(--color-slate-800);">${item.name}</td>
+            <td data-label="Aksi" style="text-align:right;">
+                <button class="btn btn-outline btn-sm" onclick="Toast.info('Fitur edit akan segera hadir')">Edit</button>
+            </td>
+        </tr>
+    `).join('');
+    
+    const noData = '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Tidak ada data</td></tr>';
+
+    return `
+    <div class="page-header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div><h1>Master Data</h1><p>Kelola data referensi fasilitas</p></div>
+            <button class="btn btn-primary" onclick="Toast.info('Fitur tambah data akan segera hadir')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.4rem"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Tambah Data
+            </button>
+        </div>
+    </div>
+    
+    <div class="card" style="margin-bottom:1.5rem;">
+        <div class="tab-nav" style="border-bottom:1px solid #e2e8f0; display:flex; gap:1.5rem; padding:0 1.5rem; overflow-x:auto;">
+            <button class="tab-btn ${currentMasterTab === 'vehicle' ? 'active' : ''}" onclick="setMasterTab('vehicle')" style="padding:1rem 0; border:none; background:transparent; font-weight:600; cursor:pointer; color:${currentMasterTab === 'vehicle' ? 'var(--color-emerald-600)' : 'var(--color-slate-500)'}; border-bottom:${currentMasterTab === 'vehicle' ? '2px solid var(--color-emerald-600)' : '2px solid transparent'}; white-space:nowrap;">Kendaraan Dinas</button>
+            <button class="tab-btn ${currentMasterTab === 'room' ? 'active' : ''}" onclick="setMasterTab('room')" style="padding:1rem 0; border:none; background:transparent; font-weight:600; cursor:pointer; color:${currentMasterTab === 'room' ? 'var(--color-emerald-600)' : 'var(--color-slate-500)'}; border-bottom:${currentMasterTab === 'room' ? '2px solid var(--color-emerald-600)' : '2px solid transparent'}; white-space:nowrap;">Ruangan</button>
+            <button class="tab-btn ${currentMasterTab === 'dormitory' ? 'active' : ''}" onclick="setMasterTab('dormitory')" style="padding:1rem 0; border:none; background:transparent; font-weight:600; cursor:pointer; color:${currentMasterTab === 'dormitory' ? 'var(--color-emerald-600)' : 'var(--color-slate-500)'}; border-bottom:${currentMasterTab === 'dormitory' ? '2px solid var(--color-emerald-600)' : '2px solid transparent'}; white-space:nowrap;">Dormitory</button>
+        </div>
+        <div class="table-wrap table-stack-mobile">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:50px; text-align:center;">No</th>
+                        <th>Nama ${title}</th>
+                        <th style="text-align:right;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows || noData}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    `;
+}
+
+// --- SYSTEM SETTINGS ---
+function renderSystemSettings() {
+    return `
+    <div class="page-header">
+        <div><h1>Pengaturan Sistem</h1><p>Konfigurasi parameter operasional dan notifikasi aplikasi</p></div>
+    </div>
+    
+    <div class="settings-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:1.5rem;">
+        
+        <div class="card">
+            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-blue-500)"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                    Integrasi Notifikasi
+                </h3>
+            </div>
+            <div style="padding:1.25rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <div>
+                        <div style="font-weight:600; color:var(--color-slate-800);">Telegram Bot</div>
+                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Kirim notifikasi persetujuan via Telegram</div>
+                    </div>
+                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
+                        <input type="checkbox" checked onchange="Toast.success('Pengaturan disimpan')" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
+                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
+                        </span>
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:600; color:var(--color-slate-800);">WhatsApp Gateway</div>
+                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Kirim notifikasi via CallMeBot API</div>
+                    </div>
+                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
+                        <input type="checkbox" checked onchange="Toast.success('Pengaturan disimpan')" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
+                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-amber-500)"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Operasional Sistem
+                </h3>
+            </div>
+            <div style="padding:1.25rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <div>
+                        <div style="font-weight:600; color:var(--color-slate-800);">Maintenance Mode</div>
+                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Tutup akses untuk pemeliharaan</div>
+                    </div>
+                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
+                        <input type="checkbox" onchange="const s = this.nextElementSibling.querySelector('span'); if(this.checked){this.nextElementSibling.style.backgroundColor='var(--color-emerald-500)'; s.style.left='23px'; Toast.success('Maintenance diaktifkan');} else {this.nextElementSibling.style.backgroundColor='#cbd5e1'; s.style.left='3px'; Toast.success('Maintenance dinonaktifkan');}" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#cbd5e1; border-radius:34px; transition:.4s;">
+                            <span style="position:absolute; content:''; height:18px; width:18px; left:3px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
+                        </span>
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:600; color:var(--color-slate-800);">Auto-Archive</div>
+                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Arsipkan pengajuan > 90 hari</div>
+                    </div>
+                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
+                        <input type="checkbox" checked onchange="const s = this.nextElementSibling.querySelector('span'); if(this.checked){this.nextElementSibling.style.backgroundColor='var(--color-emerald-500)'; s.style.left='23px'; Toast.success('Pengaturan disimpan');} else {this.nextElementSibling.style.backgroundColor='#cbd5e1'; s.style.left='3px'; Toast.success('Pengaturan disimpan');}" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
+                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-slate-500)"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    Informasi Environment
+                </h3>
+            </div>
+            <div style="padding:1.25rem;">
+                <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:0.75rem; margin-bottom:0.75rem;">
+                    <span style="color:var(--color-slate-500); font-size:0.85rem;">Versi SILATAS</span>
+                    <span style="font-weight:600; font-size:0.85rem; color:var(--color-slate-800);">v1.2.0 (Production)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:0.75rem; margin-bottom:0.75rem;">
+                    <span style="color:var(--color-slate-500); font-size:0.85rem;">PHP Version</span>
+                    <span style="font-weight:600; font-size:0.85rem; color:var(--color-slate-800);">8.1.10</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--color-slate-500); font-size:0.85rem;">Database Engine</span>
+                    <span style="font-weight:600; font-size:0.85rem; color:var(--color-slate-800);">MySQL / MariaDB</span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    `;
+}
+
 </script>
 
 <!-- Modal Checklist Ruangan -->

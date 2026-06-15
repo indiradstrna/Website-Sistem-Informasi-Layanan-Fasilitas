@@ -132,21 +132,28 @@
             %% Nodes Start
             Lapor([User Lapor Kerusakan]) --> Teknisi[PIC Cek Kerusakan]
 
-            Teknisi --> ButuhBiaya{Butuh Beli Baru?}
+            Teknisi --> Sanggup{Sanggup Dikerjakan Sendiri?}
 
-            %% JALUR 1: NON RAB (Internal / Stok)
-            ButuhBiaya -- "Tidak (Non-RAB)" --> CekStok{Butuh Sparepart?}
+            %% JALUR 1: PIHAK KETIGA / VENDOR
+            Sanggup -- "Tidak (Pihak Ketiga/Vendor)" --> BuatRAB[Isi Formulir RAB / PUM]
 
-            CekStok -- "Ya (Ada di Stok)" --> FormBarang[Isi Form Permintaan Barang]
+            %% JALUR 2: KERJAKAN SENDIRI
+            Sanggup -- "Ya (Dikerjakan Sendiri)" --> ButuhSparepart{Cek Sparepart}
+
+            %% JALUR 2a: STOK TERSEDIA
+            ButuhSparepart -- "Tersedia" --> FormBarang[Isi Form Permintaan Barang Gudang]
             FormBarang --> Ambil[Ambil Barang di Gudang]
             Ambil --> Kerjakan[Pengerjaan Perbaikan]
 
-            CekStok -- "Tidak (Jasa/Setting)" --> Kerjakan
+            %% JALUR 2b: TANPA SPAREPART
+            ButuhSparepart -- "Tidak Butuh" --> Kerjakan
 
-            %% JALUR 2: RAB (Pengajuan Anggaran)
-            ButuhBiaya -- "Ya (Butuh Dana)" --> BuatRAB[Buat & Ajukan RAB]
-            BuatRAB --> Nominal{Total Biaya?} --> ManagerFMD[Approval FMD Manager]
+            %% JALUR 2c: HARUS BELI
+            ButuhSparepart -- "Tidak Tersedia (Harus Beli)" --> BuatRAB
 
+            %% PROSES RAB & APPROVAL
+            BuatRAB --> Nominal{Lihat Total Biaya}
+            Nominal --> ManagerFMD[Approval FMD Manager]
 
             ManagerFMD -- "> 50 Juta" --> BOD[Approval BOD]
             BOD --> PPK
@@ -156,22 +163,22 @@
 
             ManagerFMD -- "< 20 Juta" --> MgrFAD[Approval Manager FAD]
 
-                MgrFAD --> Cairkan[Bendahara Cairkan Dana]
-                Cairkan --> Vendor[Pilih Vendor / Belanja]
-                Vendor --> Kerjakan
+            MgrFAD --> Cairkan[Bendahara Cairkan Dana]
+            Cairkan --> BeliAtauVendor[Beli Barang / Vendor]
+            BeliAtauVendor --> Kerjakan
 
-                %% FINISHING
-                Kerjakan --> Validasi[Validasi Hasil]
-                Validasi --> Selesai([Selesai])
+            %% FINISHING
+            Kerjakan --> Validasi[Validasi Hasil]
+            Validasi --> Selesai([Selesai])
 
-                %% Styling
-                classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
-                classDef process fill:#e2e3e5,stroke:#333,stroke-width:1px;
-                classDef decision fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+            %% Styling
+            classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+            classDef process fill:#e2e3e5,stroke:#333,stroke-width:1px;
+            classDef decision fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
 
-                class Lapor,Selesai startend;
-                class Teknisi,BuatRAB,BOD,PPK,MgrFAD,Cairkan,Vendor,FormBarang,Ambil,Kerjakan,Validasi process;
-                class ButuhBiaya,Nominal,CekStok decision;
+            class Lapor,Selesai startend;
+            class Teknisi,BuatRAB,ManagerFMD,BOD,PPK,MgrFAD,Cairkan,BeliAtauVendor,FormBarang,Ambil,Kerjakan,Validasi process;
+            class Sanggup,ButuhSparepart,Nominal decision;
         </div>
 
         <div class="note">

@@ -36,7 +36,7 @@ $actionType = strtoupper($matches[1]); // SETUJU / TOLAK
 $typeCode   = strtoupper($matches[2]); // VEH
 $reqId      = (int)$matches[3]; // 15
 $optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
-$optNumber  = isset($matches[5]) ? (int)$matches[5] : 0; // 1
+$optNumber  = isset($matches[5]) && $matches[5] !== '' ? (int)$matches[5] : -1; // -1 means not provided
 
 // Normalisasi nomor WA (Hapus 62 atau 0 di depan untuk pencarian yang fleksibel)
 $cleanSender = preg_replace('/^(62|0)/', '', $sender);
@@ -99,7 +99,9 @@ if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
             $resV = $conn->query("SELECT id FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
             if ($resV && $v = $resV->fetch_assoc()) $selectedVehicleId = $v['id'];
         }
-        if ($optNumber > 0) {
+        if ($optNumber === 0) {
+            $selectedDriverName = 'TANPA_SUPIR';
+        } else if ($optNumber > 0) {
             $idx = $optNumber - 1;
             $resD = $conn->query("SELECT full_name FROM employees WHERE position LIKE '%driver%' OR position LIKE '%pengemudi%' ORDER BY full_name ASC LIMIT $idx, 1");
             if ($resD && $d = $resD->fetch_assoc()) $selectedDriverName = $d['full_name'];
@@ -135,6 +137,11 @@ $isPIC = in_array($username, $picMap[$typeCode] ?? []);
 // Logika Transisi Status
 if ($currentStatus === 'pending') {
     if ($isPIC) {
+        if ($actionType === 'TOLAK') {
+            sendWhatsAppFonnte("Maaf, PIC tidak dapat menolak pengajuan. Semua pengajuan harus diteruskan ke Manager FMD. Balas SETUJU untuk meneruskan.", $sender);
+            http_response_code(200);
+            exit;
+        }
         $canProcess = true;
         $nextStatusApprove = 'waiting_manager_fmd'; // Default PIC forward
     }
