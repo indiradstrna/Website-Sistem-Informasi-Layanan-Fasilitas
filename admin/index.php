@@ -2256,6 +2256,22 @@ function renderDetailPengajuanTinjau() {
   // ── Category label ──
   const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
 
+  // ── Strict Role-Based Workflow Logic (deklarasi di awal agar bisa digunakan di seluruh fungsi) ──
+  const PIC_MAP_LOCAL = {
+    'Vehicle': ['198605082025211053'],
+    'Item':    ['198902222025211044'],
+    'Zoom':    ['198902222025211044'],
+    'Room':    ['199008092025212052', '198902222025211044'],
+    'Dormitory': ['199008092025212052', '198902222025211044'],
+    'Repair':  ['198605082025211053', '197212162014091003']
+  };
+  const SUPER_ADMIN_NIKS_LOCAL = ['000000000000000000'];
+  const allowedPICs  = PIC_MAP_LOCAL[req.type] || [];
+  const isPIC        = allowedPICs.includes(ADMIN_USERNAME);
+  const MANAGER_FMD_NIK = '197707072025211067';
+  const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === MANAGER_FMD_NIK);
+  const isSuperAdmin = SUPER_ADMIN_NIKS_LOCAL.includes(ADMIN_USERNAME);
+
   // ── Bagian assign kendaraan ──
   const vehicleSection = (req.type === 'Vehicle' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#fff7ed; border:1px solid #ffedd5; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
@@ -2346,27 +2362,9 @@ function renderDetailPengajuanTinjau() {
       </div>
     </div>` : '';
 
-  // ── Strict Role-Based Workflow Logic ──
   // NOTE: All users on admin/index.php have CURRENT_ROLE='admin' (from login redirect).
   // Access control MUST be based on ADMIN_USERNAME (which = NIK) or CURRENT_ROLE for specific non-admin roles.
-  const PIC_MAP = {
-    'Vehicle': ['198605082025211053'],
-    'Item':    ['198902222025211044'],
-    'Zoom':    ['198902222025211044'],
-    'Room':    ['199008092025212052', '198902222025211044'],
-    'Dormitory': ['199008092025212052', '198902222025211044'],
-    'Repair':  ['198605082025211053', '197212162014091003'] // Alfi, Agus Sujadi
-  };
-  const SUPER_ADMIN_NIKS = ['000000000000000000'];
-
-  const allowedPICs  = PIC_MAP[req.type] || [];
-  // isPIC: matches by NIK for all types including Repair
-  const isPIC = allowedPICs.includes(ADMIN_USERNAME);
-
-  const MANAGER_FMD_NIK = '197707072025211067';
-  const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === MANAGER_FMD_NIK);
-  // isSuperAdmin: specific NIKs only — NOT just any 'admin' role
-  const isSuperAdmin = SUPER_ADMIN_NIKS.includes(ADMIN_USERNAME);
+  // (isPIC, isManagerFMD, isSuperAdmin sudah dideklarasikan di atas fungsi ini)
 
   // Helper: reminder box
   function reminderBox(icon, title, msg) {
