@@ -348,13 +348,7 @@ renderPageHead('Dashboard Admin');
       </button>
     </div>
     <div class="modal-body">
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Jenis Penanganan</label>
-        <select id="rab-jenis" class="form-select">
-          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
-          <option value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)</option>
-        </select>
-      </div>
+      <input type="hidden" id="rab-jenis" value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">
       <div class="grid-3" style="margin-bottom:1rem;">
         <div class="form-group" style="grid-column:1/3;">
           <label class="form-label">Nama Item</label>
@@ -393,7 +387,7 @@ renderPageHead('Dashboard Admin');
 <div class="modal-overlay" id="modal-gudang">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <h3 class="modal-title">Form Permintaan Barang Gudang</h3>
+      <h3 class="modal-title">Form Pengerjaan Sendiri</h3>
       <button class="modal-close modal-close-btn">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -404,6 +398,7 @@ renderPageHead('Dashboard Admin');
         <select id="gudang-jenis" class="form-select" onchange="toggleGudangItems(this.value)">
           <option value="Sparepart tersedia di gudang">Sparepart tersedia di gudang</option>
           <option value="Tidak perlu sparepart (jasa)">Tidak perlu sparepart (jasa)</option>
+          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
         </select>
       </div>
       <div id="gudang-item-inputs">
@@ -425,6 +420,36 @@ renderPageHead('Dashboard Admin');
             <thead><tr><th>Barang</th><th style="text-align:right">Jumlah</th><th></th></tr></thead>
             <tbody id="gudang-table-body"><tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr></tbody>
           </table>
+        </div>
+      </div>
+      
+      <!-- INTERNAL RAB FORM -->
+      <div id="gudang-rab-inputs" style="display:none;">
+        <div class="grid-3" style="margin-bottom:1rem;">
+          <div class="form-group" style="grid-column:1/3;">
+            <label class="form-label">Nama Item</label>
+            <input type="text" id="gr-item-name" class="form-input" placeholder="Contoh: Cat Tembok" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Qty</label>
+            <input type="number" id="gr-item-qty" class="form-input" value="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Harga Satuan (Rp)</label>
+            <input type="number" id="gr-item-price" class="form-input" value="0" min="0" />
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn btn-primary btn-full" onclick="addGrItem()">+ Tambah</button>
+          </div>
+        </div>
+        <div class="rab-table-wrap">
+          <table>
+            <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th><th style="text-align:right">Total</th><th></th></tr></thead>
+            <tbody id="gr-table-body"><tr><td colspan="5" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada item</td></tr></tbody>
+          </table>
+        </div>
+        <div style="margin-top:1rem;text-align:right;font-weight:700;font-size:1rem;">
+          Total RAB: <span id="gr-total" style="color:var(--color-blue-600);">Rp 0</span>
         </div>
       </div>
       <div class="form-group" style="margin-top:1rem;">
@@ -458,6 +483,7 @@ let allRequests = [];
 let allUsers    = [];
 let allEmployees= [];
 let picPendingRequests = [];
+let systemSettings = {};
 let currentView = 'dashboard';
 let currentPage = 1;
 let itemsPerPage = 10;
@@ -485,16 +511,19 @@ window._adminCalSelected = null;
 // ===== LOAD ALL DATA =====
 async function loadAllData(silent = false) {
   try {
-    const [vehicles, rooms, dormitories, zooms, repairs, items, users, employees] = await Promise.all([
-      api(API_BASE + 'requests.php?action=get_vehicle'),
-      api(API_BASE + 'requests.php?action=get_room'),
-      api(API_BASE + 'requests.php?action=get_dormitory'),
-      api(API_BASE + 'requests.php?action=get_zoom'),
-      api(API_BASE + 'requests.php?action=get_repair'),
-      api(API_BASE + 'requests.php?action=get_item'),
-      api(API_BASE + 'users.php?action=get_all'),
-      api(API_BASE + 'users.php?action=get_employees'),
+    const [vehicles, rooms, dormitories, zooms, repairs, items, users, employees, settingsRaw] = await Promise.all([
+      api(API_BASE + 'requests.php?action=get_vehicle').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_room').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_dormitory').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_zoom').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_repair').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_item').catch(e => []),
+      api(API_BASE + 'users.php?action=get_all').catch(e => []),
+      api(API_BASE + 'users.php?action=get_employees').catch(e => []),
+      api(API_BASE + 'settings.php?action=get_all').catch(e => ({data:{}}))
     ]);
+
+    systemSettings = (settingsRaw && settingsRaw.data) ? settingsRaw.data : {};
 
     // Normalize (same as before)
     const norm = (data, type) => data.map(item => ({
@@ -655,7 +684,8 @@ function switchView(viewId, initialStatus = 'all') {
     analytics:'Analitik',
     profile:'Profil',
     master_data: 'Master Data',
-    system_settings: 'Pengaturan Sistem'
+    system_settings: 'Pengaturan Sistem',
+    crud_requests: 'Kelola Data Pengajuan'
   };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[viewId] || viewId;
@@ -677,6 +707,7 @@ function renderCurrentView() {
     case 'analytics':          container.innerHTML = renderAnalytics();          break;
     case 'profile':            container.innerHTML = renderProfile();            break;
     case 'detail_pengajuan':   container.innerHTML = renderDetailPengajuan();    break;
+    case 'crud_requests':      container.innerHTML = renderCrudRequests();       break;
     default:                   container.innerHTML = `<div class="page-header"><h1>${currentView}</h1></div>`;
   }
 }
@@ -1267,6 +1298,238 @@ function goUserPage(page) {
   }
   document.getElementById('user-table-body').innerHTML = renderUserRows(data, page);
   updateUserPagination(data);
+}
+
+// --- CRUD REQUESTS ---
+function renderCrudRequests() {
+  const html = `
+  <div class="page-header mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Kelola Data Pengajuan</h1>
+    <p class="text-muted">Edit, ubah status, atau hapus pengajuan secara langsung.</p>
+  </div>
+  <div class="card card-shadow">
+    <div class="card-header-stats py-3" style="display:flex; justify-content:space-between; align-items:center;">
+      <h6 class="m-0 font-weight-bold-stats text-primary-stats">Daftar Seluruh Pengajuan</h6>
+      <div style="display:flex; gap:0.5rem;">
+        <input type="text" id="crud-search" class="form-input form-input-sm" placeholder="Cari nama, departemen, dsb..." oninput="filterCrud()" style="width:250px;">
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table-custom">
+          <thead>
+            <tr>
+              <th>ID / Tipe</th>
+              <th>Pemohon</th>
+              <th>Tujuan / Keperluan</th>
+              <th>Status</th>
+              <th style="width:120px; text-align:center;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="crud-table-body">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+      <div id="crud-pagination" class="pagination" style="margin-top:1rem;"></div>
+    </div>
+  </div>
+  `;
+  setTimeout(() => filterCrud(), 50);
+  return html;
+}
+
+function filterCrud() {
+  const search = (document.getElementById('crud-search')?.value || '').toLowerCase();
+  let data = allRequests;
+  if (search) {
+    data = data.filter(r => 
+      (r.applicant_name && r.applicant_name.toLowerCase().includes(search)) ||
+      (r.applicant_unit && r.applicant_unit.toLowerCase().includes(search)) ||
+      (r.purpose && r.purpose.toLowerCase().includes(search)) ||
+      (r.type && r.type.toLowerCase().includes(search))
+    );
+  }
+  document.getElementById('crud-table-body').innerHTML = renderCrudRows(data, currentPage);
+  updateCrudPagination(data);
+}
+
+function renderCrudRows(data, page) {
+  const start = (page - 1) * itemsPerPage;
+  const paginated = data.slice(start, start + itemsPerPage);
+  if (!paginated.length) return '<tr><td colspan="5" style="text-align:center;padding:2rem;">Tidak ada data ditemukan</td></tr>';
+
+  return paginated.map(r => {
+    let statusBadge = '';
+    const st = r.status || '';
+    if (st === 'pending') statusBadge = '<span class="badge" style="background:#fef3c7;color:#d97706;">Pending</span>';
+    else if (st === 'approved') statusBadge = '<span class="badge" style="background:#dcfce7;color:#166534;">Approved</span>';
+    else if (st === 'rejected' || st === 'cancelled') statusBadge = '<span class="badge" style="background:#fee2e2;color:#b91c1c;">'+st+'</span>';
+    else statusBadge = '<span class="badge" style="background:#e0e7ff;color:#3730a3;">'+st+'</span>';
+
+    return `<tr>
+      <td><b>#${r.id}</b><br><span style="font-size:0.75rem;color:var(--color-slate-400);">${r.type}</span></td>
+      <td>${r.applicant_name}<br><span style="font-size:0.75rem;color:var(--color-slate-400);">${r.applicant_unit}</span></td>
+      <td>${r.purpose || '-'}</td>
+      <td>${statusBadge}</td>
+      <td style="text-align:center;">
+        <div style="display:flex; flex-direction:column; gap:0.25rem; align-items:center; width:80px; margin:0 auto;">
+          <button class="btn btn-sm btn-outline" style="width:100%; padding:0.25rem;" onclick="openCrudEdit(${r.id}, '${r.type}')">Edit</button>
+          <button class="btn btn-sm btn-danger" style="width:100%; padding:0.25rem;" onclick="doCrudDelete(${r.id}, '${r.type}')">Hapus</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function updateCrudPagination(data) {
+  const container = document.getElementById('crud-pagination');
+  if (!container) return;
+  const totalPages = Math.ceil(data.length / itemsPerPage);
+  let html = '';
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goCrudPage(${i})">${i}</button>`;
+  }
+  container.innerHTML = html;
+}
+
+function goCrudPage(page) {
+  currentPage = page;
+  filterCrud();
+}
+
+function openCrudEdit(id, type) {
+  const req = allRequests.find(r => r.id == id && r.type === type);
+  if (!req) return;
+  
+  document.getElementById('crud-id').value = req.id;
+  document.getElementById('crud-type').value = req.type;
+  document.getElementById('crud-applicant_name').value = req.applicant_name || '';
+  document.getElementById('crud-applicant_unit').value = req.applicant_unit || '';
+  document.getElementById('crud-purpose').value = req.purpose || '';
+  document.getElementById('crud-status').value = req.status || '';
+  document.getElementById('crud-note').value = req.note || '';
+  
+  document.getElementById('crud-date_start').value = req.date_start || '';
+  document.getElementById('crud-date_end').value = req.raw_date_end || '';
+  document.getElementById('crud-time_start').value = req.raw_time_start ? req.raw_time_start.substring(0,5) : '';
+  document.getElementById('crud-time_end').value = req.raw_time_end ? req.raw_time_end.substring(0,5) : '';
+
+  // Type-specific fields
+  document.getElementById('crud-type-specific').innerHTML = renderCrudSpecificFields(req);
+  
+  Modal.open('modal-crud-edit');
+}
+
+function renderCrudSpecificFields(req) {
+  let html = '';
+  if (req.type === 'Vehicle') {
+    html += `
+      <div class="form-group"><label class="form-label">Tujuan (Destination)</label><input type="text" id="crud-sp-destination" class="form-input" value="${req.destination || ''}"></div>
+      <div class="form-group"><label class="form-label">Vehicle ID</label><input type="text" id="crud-sp-vehicle_id" class="form-input" value="${req.vehicle_id || ''}"></div>
+      <div class="form-group"><label class="form-label">Driver Name</label><input type="text" id="crud-sp-driver_name" class="form-input" value="${req.driver_name || ''}"></div>
+    `;
+  } else if (req.type === 'Room') {
+    html += `
+      <div class="form-group"><label class="form-label">Room ID</label><input type="text" id="crud-sp-room_id" class="form-input" value="${req.room_id || ''}"></div>
+      <div class="form-group"><label class="form-label">Peserta</label><input type="number" id="crud-sp-participants" class="form-input" value="${req.participants || ''}"></div>
+      <div class="form-group"><label class="form-label">Kebutuhan Khusus</label><input type="text" id="crud-sp-special_needs" class="form-input" value="${req.special_needs || ''}"></div>
+    `;
+  } else if (req.type === 'Dormitory') {
+    html += `
+      <div class="form-group"><label class="form-label">Dormitory ID</label><input type="text" id="crud-sp-dormitory_id" class="form-input" value="${req.dormitory_id || ''}"></div>
+      <div class="form-group"><label class="form-label">Nama Penghuni</label><input type="text" id="crud-sp-occupant_name" class="form-input" value="${req.occupant_name || ''}"></div>
+      <div class="form-group"><label class="form-label">Peserta</label><input type="number" id="crud-sp-participants" class="form-input" value="${req.participants || ''}"></div>
+    `;
+  } else if (req.type === 'Zoom') {
+    html += `
+      <div class="form-group"><label class="form-label">Zoom Account ID</label><input type="text" id="crud-sp-zoom_account_id" class="form-input" value="${req.zoom_account_id || ''}"></div>
+      <div class="form-group"><label class="form-label">Peserta</label><input type="number" id="crud-sp-participants" class="form-input" value="${req.participants || ''}"></div>
+    `;
+  } else if (req.type === 'Repair') {
+    html += `
+      <div class="form-group"><label class="form-label">Detail Lokasi</label><input type="text" id="crud-sp-location_detail" class="form-input" value="${req.location_detail || ''}"></div>
+      <div class="form-group"><label class="form-label">Deskripsi Masalah</label><textarea id="crud-sp-issue_description" class="form-input" rows="2">${req.issue_description || ''}</textarea></div>
+    `;
+  } else if (req.type === 'Item') {
+    html += `
+      <div class="form-group"><label class="form-label">Nama Barang</label><input type="text" id="crud-sp-item_name" class="form-input" value="${req.item_name || ''}"></div>
+      <div class="form-group"><label class="form-label">Jumlah Barang</label><input type="number" id="crud-sp-item_quantity" class="form-input" value="${req.item_quantity || ''}"></div>
+    `;
+  }
+  return html;
+}
+
+async function doCrudSave() {
+  const id = document.getElementById('crud-id').value;
+  const type = document.getElementById('crud-type').value;
+  
+  const payload = {
+    action: 'superadmin_update_request',
+    id: id,
+    type: type,
+    applicant_name: document.getElementById('crud-applicant_name').value,
+    applicant_unit: document.getElementById('crud-applicant_unit').value,
+    purpose: document.getElementById('crud-purpose').value,
+    status: document.getElementById('crud-status').value,
+    note: document.getElementById('crud-note').value,
+    date_start: document.getElementById('crud-date_start').value,
+    date_end: document.getElementById('crud-date_end').value,
+    time_start: document.getElementById('crud-time_start').value,
+    time_end: document.getElementById('crud-time_end').value
+  };
+
+  // Collect specific fields
+  if (type === 'Vehicle') {
+    payload.destination = document.getElementById('crud-sp-destination').value;
+    payload.vehicle_id = document.getElementById('crud-sp-vehicle_id').value || null;
+    payload.driver_name = document.getElementById('crud-sp-driver_name').value;
+  } else if (type === 'Room') {
+    payload.room_id = document.getElementById('crud-sp-room_id').value || null;
+    payload.participants = document.getElementById('crud-sp-participants').value || 0;
+    payload.special_needs = document.getElementById('crud-sp-special_needs').value;
+  } else if (type === 'Dormitory') {
+    payload.dormitory_id = document.getElementById('crud-sp-dormitory_id').value || null;
+    payload.occupant_name = document.getElementById('crud-sp-occupant_name').value;
+    payload.participants = document.getElementById('crud-sp-participants').value || 0;
+  } else if (type === 'Zoom') {
+    payload.zoom_account_id = document.getElementById('crud-sp-zoom_account_id').value || null;
+    payload.participants = document.getElementById('crud-sp-participants').value || 0;
+  } else if (type === 'Repair') {
+    payload.location_detail = document.getElementById('crud-sp-location_detail').value;
+    payload.issue_description = document.getElementById('crud-sp-issue_description').value;
+  } else if (type === 'Item') {
+    payload.item_name = document.getElementById('crud-sp-item_name').value;
+    payload.item_quantity = document.getElementById('crud-sp-item_quantity').value || 0;
+  }
+
+  const res = await apiPost(API_BASE + 'requests.php', payload);
+  if (res.success) {
+    Toast.success('Data pengajuan berhasil diperbarui!');
+    Modal.close('modal-crud-edit');
+    await loadAllData();
+    filterCrud();
+  } else {
+    Toast.error(res.message);
+  }
+}
+
+async function doCrudDelete(id, type) {
+  if (!confirm('Apakah Anda yakin ingin HAPUS PERMANEN pengajuan ini? Data yang dihapus tidak bisa dikembalikan!')) return;
+  
+  const res = await apiPost(API_BASE + 'requests.php', {
+    action: 'superadmin_delete_request',
+    id: id,
+    type: type
+  });
+  
+  if (res.success) {
+    Toast.success('Pengajuan berhasil dihapus!');
+    await loadAllData();
+    filterCrud();
+  } else {
+    Toast.error(res.message);
+  }
 }
 
 // --- ANALYTICS ---
@@ -2313,7 +2576,7 @@ function renderDetailPengajuanTinjau() {
     </div>` : '';
 
   // ── Bagian assign Zoom ──
-  const zoomSection = (req.type === 'Zoom' && req.status === 'approved' && (isPIC || isSuperAdmin)) ? `
+  const zoomSection = (req.type === 'Zoom' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#ecfeff; border:1px solid #cffafe; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#155e75; margin-bottom:0.75rem;">Link / Host Key (Optional)</div>
       <div class="form-group" style="margin-bottom:0">
@@ -2411,13 +2674,13 @@ function renderDetailPengajuanTinjau() {
         <div style="font-weight:700; color:#334155; margin-bottom:0.75rem;">Opsi Penanganan Perbaikan</div>
         
         <div style="margin-bottom:1rem;">
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Kerjakan Sendiri (Sparepart Tersedia / Tidak Butuh Sparepart)</div>
-          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">📦 Form Permintaan Barang Gudang / Proses Internal</button>
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Sanggup Dikerjakan Sendiri</div>
+          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">&#x1F6E0; Proses Pengerjaan Sendiri</button>
         </div>
 
         <div>
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Sanggup / Harus Beli Sparepart / Vendor</div>
-          <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5;">📄 Buat RAB & Teruskan ke Manager FMD</button>
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Memungkinkan (Pihak Ketiga / Vendor)</div>
+          <button class="btn btn-primary btn-full" onclick="openRABModal('Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)')" style="background:#4f46e5;">&#x1F3ED; Teruskan ke Vendor / Pihak Ketiga</button>
         </div>
       </div>`;
     } else if (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)) {
@@ -2438,10 +2701,14 @@ function renderDetailPengajuanTinjau() {
           <option value="">Pilih Pekerja...</option>
           ${allEmployees.map(e => `<option value="${e.full_name}">${e.full_name} (${e.position})</option>`).join('')}
         </select>
-        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})">💰 Cairkan Dana & Mulai Kerja</button>
+        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})" style="margin-bottom:1rem;">💰 Cairkan Dana & Mulai Kerja</button>
+        <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;">🖨️ Cetak PUM (PDF)</a>
       </div>`;
     } else if (req.status === 'in-progress' && (isPIC || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>`;
+      actionBtns = `
+        <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;margin-bottom:1rem;">🖨️ Cetak PUM (PDF)</a>
+        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>
+      `;
     } else {
       picMessage = reminderBox('⏳', 'Menunggu Proses',
         `Pengajuan sedang dalam tahap: <b>${getStatusLabel(req.status)}</b>. Tidak ada tindakan yang tersedia untuk peran Anda saat ini.`);
@@ -2611,6 +2878,7 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; color:#854d0e; display:block; margin-bottom:0.25rem;">Catatan / Riwayat:</span>
               <div style="white-space:pre-wrap; font-family:monospace; font-size:0.75rem; color:#374151; margin-top:0.25rem;">${req.note}</div>
             </div>` : ''}
+
           </div>
         </div>
       </div>
@@ -2622,6 +2890,11 @@ function renderDetailPengajuanTinjau() {
           <div class="card-desc">Tindakan yang tersedia untuk peran Anda</div>
         </div>
         <div class="card-body">
+          ${req.type === 'Repair' && req.status !== 'pending' ? `
+          <div id="rab-view-container" style="margin-bottom:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:1rem;">
+            <span style="font-weight:600; color:#475569; display:block; margin-bottom:0.5rem;">RAB / Rincian Biaya:</span>
+            <div style="color:#94a3b8; font-size:0.8rem;">&#x23F3; Memuat data RAB...</div>
+          </div>` : ''}
           ${isFinal ? `
             <div style="background:#f3f4f6; padding:1.5rem 1rem; text-align:center; border-radius:0.5rem; color:#6b7280; border:1px solid #e5e7eb;">
               Pengajuan ini telah selesai/ditutup.
@@ -2865,6 +3138,9 @@ async function loadRABView(requestId) {
           </tbody>
         </table>
       </div>
+      <div style="margin-top:1rem; text-align:right;">
+        <a href="${BASE_URL}api/print_pum.php?id=${requestId}" target="_blank" class="btn btn-primary" style="display:inline-block; font-size:0.875rem; background:#4f46e5; color:#fff; padding:0.5rem 1rem; border-radius:0.375rem; text-decoration:none;">&#x1F5A8;&#xFE0F; Cetak PUM (PDF)</a>
+      </div>
     </div>`;
 }
 
@@ -3056,8 +3332,10 @@ async function approveRABtoSupervisor(id) {
 }
 
 // ===== RAB MODAL =====
-function openRABModal() {
+function openRABModal(jenis = 'Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)') {
   rabItems = [];
+  const el = document.getElementById('rab-jenis');
+  if (el) el.value = jenis;
   renderRABTable();
   Modal.open('modal-rab');
 }
@@ -3127,19 +3405,30 @@ async function submitRAB() {
 // ===== GUDANG MODAL =====
 let gudangItems = [];
 
-function toggleGudangItems(value) {
+function toggleGudangItems(val) {
   const inputs = document.getElementById('gudang-item-inputs');
-  if (value === 'Tidak perlu sparepart (jasa)') {
+  const rabInputs = document.getElementById('gudang-rab-inputs');
+  
+  if (val === 'Perlu mengajukan pembelian sparepart (dikerjakan sendiri)') {
     inputs.style.display = 'none';
+    rabInputs.style.display = 'block';
+  } else if (val === 'Tidak perlu sparepart (jasa)') {
+    inputs.style.display = 'none';
+    rabInputs.style.display = 'none';
   } else {
     inputs.style.display = 'block';
+    rabInputs.style.display = 'none';
   }
 }
 
 function openGudangModal(id) {
   gudangItems = [];
+  grItems = [];
   document.getElementById('gudang-note').value = '';
+  document.getElementById('gudang-jenis').value = 'Sparepart tersedia di gudang';
+  toggleGudangItems('Sparepart tersedia di gudang');
   renderGudangTable();
+  renderGrTable();
   Modal.open('modal-gudang');
 }
 
@@ -3174,12 +3463,84 @@ function renderGudangTable() {
   }).join('');
 }
 
+// ===== INTERNAL RAB LOGIC =====
+let grItems = [];
+
+function renderGrTable() {
+  const tbody = document.getElementById('gr-table-body');
+  const totalEl = document.getElementById('gr-total');
+  if (!tbody || !totalEl) return;
+  
+  if (!grItems.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada item</td></tr>`;
+    totalEl.innerText = 'Rp 0';
+    return;
+  }
+  
+  let totalAll = 0;
+  tbody.innerHTML = grItems.map(i => {
+    const sum = i.quantity * i.unitPrice;
+    totalAll += sum;
+    return `<tr>
+      <td>${i.itemName}</td>
+      <td style="text-align:right;">${i.quantity}</td>
+      <td style="text-align:right;">Rp ${i.unitPrice.toLocaleString('id-ID')}</td>
+      <td style="text-align:right;font-weight:600;">Rp ${sum.toLocaleString('id-ID')}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-danger btn-sm" onclick="removeGrItem(${i.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+  
+  totalEl.innerText = `Rp ${totalAll.toLocaleString('id-ID')}`;
+}
+
+function addGrItem() {
+  const name  = document.getElementById('gr-item-name')?.value?.trim();
+  const qty   = parseInt(document.getElementById('gr-item-qty')?.value || '1');
+  const price = parseFloat(document.getElementById('gr-item-price')?.value || '0');
+  if (!name || price <= 0 || qty <= 0) { Toast.error('Mohon lengkapi data item RAB'); return; }
+  grItems.push({ id: Date.now(), itemName: name, quantity: qty, unitPrice: price });
+  document.getElementById('gr-item-name').value = '';
+  document.getElementById('gr-item-qty').value  = '1';
+  document.getElementById('gr-item-price').value = '0';
+  renderGrTable();
+}
+
+function removeGrItem(id) {
+  grItems = grItems.filter(i => i.id !== id);
+  renderGrTable();
+}
+
 async function submitGudang() {
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
   const jenis = document.getElementById('gudang-jenis')?.value || '';
   let note = document.getElementById('gudang-note')?.value?.trim() || '';
   
+  // If Beli Sparepart, submit as RAB
+  if (jenis === 'Perlu mengajukan pembelian sparepart (dikerjakan sendiri)') {
+    if (!grItems.length) { Toast.error('Minimal isi 1 item RAB.'); return; }
+    
+    const res = await apiPost(API_BASE + 'requests.php', {
+      action: 'submit_repair_budget',
+      request_id: currentRequestId,
+      jenis: jenis,
+      items: JSON.stringify(grItems),
+      note: note
+    });
+    
+    if (res.success) {
+      Toast.success('RAB Internal berhasil diajukan!');
+      Modal.close('modal-gudang');
+      switchView(previousView || 'dashboard');
+      await loadAllData();
+    } else {
+      Toast.error(res.message);
+    }
+    return;
+  }
+
   if (jenis === 'Sparepart tersedia di gudang' && gudangItems.length > 0) {
     const itemsStr = gudangItems.map(i => `${i.quantity}x ${i.itemName}`).join(', ');
     note = `[Internal: ${jenis}] Permintaan Barang: ${itemsStr}. ${note}`;
@@ -3578,15 +3939,19 @@ function renderMasterData() {
         title = 'Dormitory';
     }
     
-    const rows = dataList.map((item, index) => `
+    const rows = dataList.map((item, index) => {
+        const idSafe = String(item.id).replace(/'/g, "\\'");
+        const nameSafe = String(item.name).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `
         <tr>
             <td data-label="No" style="width:50px; text-align:center;">${index + 1}</td>
-            <td data-label="Nama" style="font-weight:600; color:var(--color-slate-800);">${item.name}</td>
+            <td data-label="Nama" style="font-weight:600; color:var(--color-slate-800);">${item.name} <span style="font-size:0.7rem; color:var(--color-slate-400); font-weight:normal; margin-left:8px;">(${item.id})</span></td>
             <td data-label="Aksi" style="text-align:right;">
-                <button class="btn btn-outline btn-sm" onclick="Toast.info('Fitur edit akan segera hadir')">Edit</button>
+                <button class="btn btn-outline btn-sm" onclick="openEditMasterData('${idSafe}', '${nameSafe}')" style="margin-right:4px;">Edit</button>
+                <button class="btn btn-outline btn-sm" onclick="deleteMasterData('${idSafe}')" style="color:var(--color-red-500); border-color:var(--color-red-200);">Hapus</button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
     
     const noData = '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Tidak ada data</td></tr>';
 
@@ -3594,7 +3959,7 @@ function renderMasterData() {
     <div class="page-header">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div><h1>Master Data</h1><p>Kelola data referensi fasilitas</p></div>
-            <button class="btn btn-primary" onclick="Toast.info('Fitur tambah data akan segera hadir')">
+            <button class="btn btn-primary" onclick="openAddMasterData()">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0.4rem"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Tambah Data
             </button>
@@ -3627,9 +3992,17 @@ function renderMasterData() {
 
 // --- SYSTEM SETTINGS ---
 function renderSystemSettings() {
+    const s = systemSettings || {};
+    const appName = s.APP_NAME?.setting_value || 'SILATAS';
+    const teleToken = s.TELE_TOKEN?.setting_value || '';
+    const teleGroupId = s.TELE_GROUP_ID?.setting_value || '';
+    const fonnteToken = s.FONNTE_TOKEN?.setting_value || '';
+    const isMaintenance = s.MAINTENANCE_MODE?.setting_value === '1';
+
     return `
-    <div class="page-header">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div><h1>Pengaturan Sistem</h1><p>Konfigurasi parameter operasional dan notifikasi aplikasi</p></div>
+        <button class="btn btn-primary" onclick="saveSystemSettings()">Simpan Pengaturan</button>
     </div>
     
     <div class="settings-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:1.5rem;">
@@ -3638,72 +4011,67 @@ function renderSystemSettings() {
             <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
                 <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-blue-500)"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                    Integrasi Notifikasi
+                    Identitas & Operasional
                 </h3>
             </div>
             <div style="padding:1.25rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                    <div>
-                        <div style="font-weight:600; color:var(--color-slate-800);">Telegram Bot</div>
-                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Kirim notifikasi persetujuan via Telegram</div>
-                    </div>
-                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
-                        <input type="checkbox" checked onchange="Toast.success('Pengaturan disimpan')" style="opacity:0; width:0; height:0;">
-                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
-                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
-                        </span>
-                    </label>
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label" style="font-weight:600;">Nama Aplikasi</label>
+                    <input type="text" id="sys-app-name" class="form-input" value="${appName}">
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-weight:600; color:var(--color-slate-800);">WhatsApp Gateway</div>
-                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Kirim notifikasi via CallMeBot API</div>
-                    </div>
-                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
-                        <input type="checkbox" checked onchange="Toast.success('Pengaturan disimpan')" style="opacity:0; width:0; height:0;">
-                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
-                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
-                        </span>
-                    </label>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
-                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-amber-500)"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Operasional Sistem
-                </h3>
-            </div>
-            <div style="padding:1.25rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
                     <div>
                         <div style="font-weight:600; color:var(--color-slate-800);">Maintenance Mode</div>
-                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Tutup akses untuk pemeliharaan</div>
+                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Tutup akses untuk pemeliharaan (Hanya Superadmin yg bisa akses)</div>
                     </div>
                     <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
-                        <input type="checkbox" onchange="const s = this.nextElementSibling.querySelector('span'); if(this.checked){this.nextElementSibling.style.backgroundColor='var(--color-emerald-500)'; s.style.left='23px'; Toast.success('Maintenance diaktifkan');} else {this.nextElementSibling.style.backgroundColor='#cbd5e1'; s.style.left='3px'; Toast.success('Maintenance dinonaktifkan');}" style="opacity:0; width:0; height:0;">
-                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#cbd5e1; border-radius:34px; transition:.4s;">
-                            <span style="position:absolute; content:''; height:18px; width:18px; left:3px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
-                        </span>
-                    </label>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-weight:600; color:var(--color-slate-800);">Auto-Archive</div>
-                        <div style="font-size:0.75rem; color:var(--color-slate-500);">Arsipkan pengajuan > 90 hari</div>
-                    </div>
-                    <label class="toggle-switch" style="position:relative; display:inline-block; width:44px; height:24px;">
-                        <input type="checkbox" checked onchange="const s = this.nextElementSibling.querySelector('span'); if(this.checked){this.nextElementSibling.style.backgroundColor='var(--color-emerald-500)'; s.style.left='23px'; Toast.success('Pengaturan disimpan');} else {this.nextElementSibling.style.backgroundColor='#cbd5e1'; s.style.left='3px'; Toast.success('Pengaturan disimpan');}" style="opacity:0; width:0; height:0;">
-                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:var(--color-emerald-500); border-radius:34px; transition:.4s;">
-                            <span style="position:absolute; content:''; height:18px; width:18px; left:23px; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
+                        <input type="checkbox" id="sys-maintenance" ${isMaintenance ? 'checked' : ''} onchange="const s = this.nextElementSibling.querySelector('span'); if(this.checked){this.nextElementSibling.style.backgroundColor='var(--color-emerald-500)'; s.style.left='23px'; Toast.success('Maintenance diaktifkan');} else {this.nextElementSibling.style.backgroundColor='#cbd5e1'; s.style.left='3px'; Toast.success('Maintenance dinonaktifkan');}" style="opacity:0; width:0; height:0;">
+                        <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:${isMaintenance ? 'var(--color-emerald-500)' : '#cbd5e1'}; border-radius:34px; transition:.4s;">
+                            <span style="position:absolute; content:''; height:18px; width:18px; left:${isMaintenance ? '23px' : '3px'}; bottom:3px; background-color:white; border-radius:50%; transition:.4s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span>
                         </span>
                     </label>
                 </div>
             </div>
         </div>
 
+        <div class="card">
+            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-emerald-500)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    Integrasi WhatsApp
+                </h3>
+            </div>
+            <div style="padding:1.25rem;">
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label" style="font-weight:600;">Token Fonnte</label>
+                    <div style="font-size:0.75rem; color:var(--color-slate-500); margin-bottom:0.25rem;">Digunakan untuk mengirim notifikasi persetujuan via WhatsApp</div>
+                    <input type="text" id="sys-fonnte-token" class="form-input" value="${fonnteToken}">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-blue-400)"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    Integrasi Telegram
+                </h3>
+            </div>
+            <div style="padding:1.25rem;">
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label" style="font-weight:600;">Telegram Bot Token</label>
+                    <input type="text" id="sys-tele-token" class="form-input" value="${teleToken}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="font-weight:600;">Telegram Group ID</label>
+                    <input type="text" id="sys-tele-group" class="form-input" value="${teleGroupId}">
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <div style="margin-top:2rem;">
         <div class="card">
             <div class="card-header" style="border-bottom: 1px solid #f1f5f9; padding: 1.25rem;">
                 <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-slate-800); display:flex; align-items:center; gap:0.5rem;">
@@ -3730,8 +4098,168 @@ function renderSystemSettings() {
     </div>
     `;
 }
+async function saveSystemSettings() {
+    const btn = document.querySelector('.page-header .btn');
+    if (btn) {
+        btn.textContent = 'Menyimpan...';
+        btn.disabled = true;
+    }
+    
+    const data = {
+        APP_NAME: document.getElementById('sys-app-name').value,
+        TELE_TOKEN: document.getElementById('sys-tele-token').value,
+        TELE_GROUP_ID: document.getElementById('sys-tele-group').value,
+        FONNTE_TOKEN: document.getElementById('sys-fonnte-token').value,
+        MAINTENANCE_MODE: document.getElementById('sys-maintenance').checked ? '1' : '0'
+    };
+    
+    const formData = new FormData();
+    formData.append('action', 'update_settings');
+    for (const key in data) {
+        formData.append(`settings[${key}]`, data[key]);
+    }
+
+    try {
+        const response = await fetch(API_BASE + 'settings.php', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            Toast.success('Pengaturan berhasil disimpan');
+            // update local cache
+            if (!systemSettings) systemSettings = {};
+            for (const key in data) {
+                if (!systemSettings[key]) systemSettings[key] = {};
+                systemSettings[key].setting_value = data[key];
+            }
+        } else {
+            Toast.error(result.message || 'Gagal menyimpan pengaturan');
+        }
+    } catch (e) {
+        console.error(e);
+        Toast.error('Terjadi kesalahan jaringan');
+    } finally {
+        if (btn) {
+            btn.textContent = 'Simpan Pengaturan';
+            btn.disabled = false;
+        }
+    }
+}
+
+// ===== MASTER DATA CRUD =====
+function openAddMasterData() {
+    document.getElementById('md-action').value = 'add';
+    document.getElementById('md-type').value = currentMasterTab;
+    document.getElementById('md-id').value = '';
+    document.getElementById('md-id').readOnly = false;
+    document.getElementById('md-name').value = '';
+    
+    let titleType = currentMasterTab === 'vehicle' ? 'Kendaraan' : (currentMasterTab === 'room' ? 'Ruangan' : 'Dormitory');
+    document.getElementById('md-modal-title').innerText = 'Tambah Data ' + titleType;
+    Modal.open('modal-master-data');
+}
+
+function openEditMasterData(id, name) {
+    document.getElementById('md-action').value = 'edit';
+    document.getElementById('md-type').value = currentMasterTab;
+    document.getElementById('md-id').value = id;
+    document.getElementById('md-id').readOnly = true; // ID cannot be changed to prevent FK issues
+    document.getElementById('md-name').value = name;
+    
+    let titleType = currentMasterTab === 'vehicle' ? 'Kendaraan' : (currentMasterTab === 'room' ? 'Ruangan' : 'Dormitory');
+    document.getElementById('md-modal-title').innerText = 'Edit Data ' + titleType;
+    Modal.open('modal-master-data');
+}
+
+async function submitMasterData() {
+    const action = document.getElementById('md-action').value;
+    const type = document.getElementById('md-type').value;
+    const id = document.getElementById('md-id').value.trim();
+    const name = document.getElementById('md-name').value.trim();
+    
+    if (!id || !name) {
+        Toast.error('ID dan Nama wajib diisi');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', action);
+    formData.append('type', type);
+    formData.append('id', id);
+    formData.append('name', name);
+    
+    try {
+        const response = await fetch(API_BASE + 'master_data.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.success) {
+            Toast.success(result.message);
+            Modal.close('modal-master-data');
+            // Refresh to get the new list from PHP injection (easiest way since it's global PHP state)
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            Toast.error(result.message);
+        }
+    } catch(err) {
+        console.error(err);
+        Toast.error('Terjadi kesalahan jaringan');
+    }
+}
+
+async function deleteMasterData(id) {
+    if (!confirm(`Anda yakin ingin menghapus data dengan ID ${id}? Data tidak dapat dihapus jika sudah pernah digunakan dalam pengajuan.`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'delete');
+    formData.append('type', currentMasterTab);
+    formData.append('id', id);
+    
+    try {
+        const response = await fetch(API_BASE + 'master_data.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.success) {
+            Toast.success(result.message);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            Toast.error(result.message);
+        }
+    } catch(err) {
+        console.error(err);
+        Toast.error('Terjadi kesalahan jaringan');
+    }
+}
 
 </script>
+
+<!-- Modal Master Data -->
+<div class="modal-overlay" id="modal-master-data">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="md-modal-title">Kelola Master Data</h3>
+      <button class="modal-close-btn" onclick="Modal.close('modal-master-data')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="md-action">
+      <input type="hidden" id="md-type">
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label" style="font-weight:600;">ID / Kode (Unik)</label>
+        <div style="font-size:0.75rem; color:var(--color-slate-500); margin-bottom:0.25rem;">Gunakan format unik tanpa spasi (cth: R001, V012)</div>
+        <input type="text" id="md-id" class="form-input" placeholder="Masukkan ID">
+      </div>
+      <div class="form-group" style="margin-bottom:1.5rem;">
+        <label class="form-label" style="font-weight:600;">Nama Fasilitas</label>
+        <input type="text" id="md-name" class="form-input" placeholder="Masukkan Nama/Deskripsi Lengkap">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Modal.close('modal-master-data')">Batal</button>
+      <button class="btn btn-primary" onclick="submitMasterData()">Simpan Data</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal Checklist Ruangan -->
 <div class="modal-overlay" id="modal-checklist-ruangan">
@@ -3804,6 +4332,95 @@ function renderSystemSettings() {
     <div class="modal-footer" style="margin-top:0;">
       <button class="btn btn-outline" onclick="Modal.close('modal-checklist-ruangan')">Batal</button>
       <button class="btn btn-primary" onclick="submitRoomChecklist()">Siap - Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL CRUD EDIT (SUPERADMIN) ===== -->
+<div class="modal-overlay" id="modal-crud-edit">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Edit Data Pengajuan</h3>
+      <button class="modal-close modal-close-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="crud-id">
+      <input type="hidden" id="crud-type">
+      
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Nama Pemohon</label>
+          <input type="text" id="crud-applicant_name" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unit/Departemen</label>
+          <input type="text" id="crud-applicant_unit" class="form-input">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Tujuan / Keperluan (Purpose)</label>
+        <textarea id="crud-purpose" class="form-input" rows="2"></textarea>
+      </div>
+      
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select id="crud-status" class="form-select">
+            <option value="pending">Pending</option>
+            <option value="verified">Verified</option>
+            <option value="waiting_manager_fmd">Waiting Manager FMD</option>
+            <option value="waiting_manager_fad">Waiting Manager FAD</option>
+            <option value="waiting_ppk">Waiting PPK</option>
+            <option value="waiting_bod">Waiting BOD</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="in-progress">In Progress</option>
+            <option value="ready_for_user">Ready for User</option>
+            <option value="completed">Completed</option>
+            <option value="returned">Returned</option>
+            <option value="approved_waiting_fund">Approved Waiting Fund</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Catatan (Note)</label>
+          <input type="text" id="crud-note" class="form-input">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Tanggal Mulai</label>
+          <input type="date" id="crud-date_start" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Waktu Mulai</label>
+          <input type="time" id="crud-time_start" class="form-input">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Tanggal Selesai</label>
+          <input type="date" id="crud-date_end" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Waktu Selesai</label>
+          <input type="time" id="crud-time_end" class="form-input">
+        </div>
+      </div>
+
+      <div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--color-slate-200);">
+        <h4 style="font-size:0.9rem; color:var(--color-slate-600); margin-bottom:1rem;">Kolom Spesifik Tipe Pengajuan</h4>
+        <div id="crud-type-specific" class="grid-2"></div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline modal-close-btn">Batal</button>
+      <button class="btn btn-primary" onclick="doCrudSave()">Simpan Perubahan</button>
     </div>
   </div>
 </div>

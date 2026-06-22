@@ -1010,7 +1010,7 @@ switch ($action) {
         $stmt = $conn->prepare("UPDATE repair_requests SET status = ?, note = CONCAT(IFNULL(note,''),?) WHERE id = ?");
         $stmt->bind_param("ssi", $newStatus, $noteLog, $requestId);
         if ($stmt->execute()) {
-            // KIRIM NOTIFIKASI TELEGRAM
+        // KIRIM NOTIFIKASI TELEGRAM
             notifyStatusUpdate($conn, 'repair_requests', $requestId, $newStatus, "RAB Disetujui Manager FMD - Lanjut ke: $statusDesc", 'System');
             
             jsonResponse(true, "RAB Disetujui! Status: $statusDesc");
@@ -1020,6 +1020,118 @@ switch ($action) {
         $stmt->close();
         break;
 
+    case 'superadmin_update_request':
+        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
+            jsonResponse(false, 'Akses ditolak.');
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        $type = $_POST['type'] ?? '';
+        $applicant_name = $_POST['applicant_name'] ?? '';
+        $applicant_unit = $_POST['applicant_unit'] ?? '';
+        $purpose = $_POST['purpose'] ?? '';
+        $status = $_POST['status'] ?? '';
+        $rawNote = $_POST['note'] ?? '';
+        $date_start = $_POST['date_start'] ?? null;
+        $date_end = $_POST['date_end'] ?? null;
+        $time_start = $_POST['time_start'] ?? null;
+        $time_end = $_POST['time_end'] ?? null;
+
+        $table = match($type) {
+            'Vehicle' => 'vehicle_requests',
+            'Room' => 'room_requests',
+            'Dormitory' => 'dormitory_requests',
+            'Zoom' => 'zoom_requests',
+            'Repair' => 'repair_requests',
+            'Item' => 'item_loan_requests',
+            default => ''
+        };
+        if (!$id || !$table) jsonResponse(false, 'Parameter tidak lengkap.');
+
+        $ts = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');
+        $note = $rawNote . "\n[$ts] [Superadmin]: Data pengajuan telah diubah manual oleh Superadmin.";
+
+        if ($type === 'Vehicle') {
+            $dest = $_POST['destination'] ?? '';
+            $vid = empty($_POST['vehicle_id']) ? null : (int)$_POST['vehicle_id'];
+            $driver = $_POST['driver_name'] ?? '';
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, destination=?, vehicle_id=?, driver_name=? WHERE id=?");
+            $stmt->bind_param("ssssssssssisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $dest, $vid, $driver, $id);
+        } else if ($type === 'Room') {
+            $rid = empty($_POST['room_id']) ? null : (int)$_POST['room_id'];
+            $part = (int)($_POST['participants'] ?? 0);
+            $sn = $_POST['special_needs'] ?? '';
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, room_id=?, participants=?, special_needs=? WHERE id=?");
+            $stmt->bind_param("sssssssssiisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $rid, $part, $sn, $id);
+        } else if ($type === 'Dormitory') {
+            $did = empty($_POST['dormitory_id']) ? null : (int)$_POST['dormitory_id'];
+            $occ = $_POST['occupant_name'] ?? '';
+            $part = (int)($_POST['participants'] ?? 0);
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, dormitory_id=?, occupant_name=?, participants=? WHERE id=?");
+            $stmt->bind_param("sssssssssisii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $did, $occ, $part, $id);
+        } else if ($type === 'Zoom') {
+            $zid = empty($_POST['zoom_account_id']) ? null : (int)$_POST['zoom_account_id'];
+            $part = (int)($_POST['participants'] ?? 0);
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, zoom_account_id=?, participants=? WHERE id=?");
+            $stmt->bind_param("sssssssssiii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $zid, $part, $id);
+        } else if ($type === 'Repair') {
+            $loc = $_POST['location_detail'] ?? '';
+            $iss = $_POST['issue_description'] ?? '';
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, status=?, note=?, incident_date=?, incident_time=?, location_detail=?, issue_description=? WHERE id=?");
+            $stmt->bind_param("ssssssssi", $applicant_name, $applicant_unit, $status, $note, $date_start, $time_start, $loc, $iss, $id);
+        } else if ($type === 'Item') {
+            $item = $_POST['item_name'] ?? '';
+            $qty = (int)($_POST['item_quantity'] ?? 0);
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, loan_date=?, return_date=?, loan_time=?, return_time=?, item_name=?, item_quantity=? WHERE id=?");
+            $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $item, $qty, $id);
+        }
+
+        if ($stmt->execute()) {
+            jsonResponse(true, 'Data berhasil diubah.');
+        } else {
+            jsonResponse(false, 'Gagal mengubah data: ' . $stmt->error);
+        }
+        $stmt->close();
+        break;
+
+    case 'superadmin_delete_request':
+        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
+            jsonResponse(false, 'Akses ditolak.');
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        $type = $_POST['type'] ?? '';
+        $table = match($type) {
+            'Vehicle' => 'vehicle_requests',
+            'Room' => 'room_requests',
+            'Dormitory' => 'dormitory_requests',
+            'Zoom' => 'zoom_requests',
+            'Repair' => 'repair_requests',
+            'Item' => 'item_loan_requests',
+            default => ''
+        };
+        if (!$id || !$table) jsonResponse(false, 'Parameter tidak lengkap.');
+
+        $conn->autocommit(false);
+        try {
+            if ($type === 'Repair') {
+                $conn->query("DELETE FROM repair_budgets WHERE repair_request_id = $id");
+            }
+            if ($type === 'Room') {
+                $conn->query("DELETE FROM room_checklists WHERE request_id = $id");
+            }
+            $stmt = $conn->prepare("DELETE FROM `$table` WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $stmt->close();
+            $conn->commit();
+            jsonResponse(true, 'Data berhasil dihapus.');
+        } catch (Exception $e) {
+            $conn->rollback();
+            jsonResponse(false, 'Gagal menghapus: ' . $e->getMessage());
+        } finally {
+            $conn->autocommit(true);
+        }
+        break;
+
     default:
-        jsonResponse(false, "Action '$action' tidak dikenali.");
+        jsonResponse(false, 'Aksi tidak dikenali.');
 }

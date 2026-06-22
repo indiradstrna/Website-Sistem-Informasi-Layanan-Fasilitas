@@ -348,13 +348,7 @@ renderPageHead('Dashboard Admin');
       </button>
     </div>
     <div class="modal-body">
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Jenis Penanganan</label>
-        <select id="rab-jenis" class="form-select">
-          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
-          <option value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)</option>
-        </select>
-      </div>
+      <input type="hidden" id="rab-jenis" value="Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)">
       <div class="grid-3" style="margin-bottom:1rem;">
         <div class="form-group" style="grid-column:1/3;">
           <label class="form-label">Nama Item</label>
@@ -393,7 +387,7 @@ renderPageHead('Dashboard Admin');
 <div class="modal-overlay" id="modal-gudang">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <h3 class="modal-title">Form Permintaan Barang Gudang</h3>
+      <h3 class="modal-title">Form Pengerjaan Sendiri</h3>
       <button class="modal-close modal-close-btn">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -404,6 +398,7 @@ renderPageHead('Dashboard Admin');
         <select id="gudang-jenis" class="form-select" onchange="toggleGudangItems(this.value)">
           <option value="Sparepart tersedia di gudang">Sparepart tersedia di gudang</option>
           <option value="Tidak perlu sparepart (jasa)">Tidak perlu sparepart (jasa)</option>
+          <option value="Perlu mengajukan pembelian sparepart (dikerjakan sendiri)">Perlu mengajukan pembelian sparepart (dikerjakan sendiri)</option>
         </select>
       </div>
       <div id="gudang-item-inputs">
@@ -425,6 +420,36 @@ renderPageHead('Dashboard Admin');
             <thead><tr><th>Barang</th><th style="text-align:right">Jumlah</th><th></th></tr></thead>
             <tbody id="gudang-table-body"><tr><td colspan="3" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada barang</td></tr></tbody>
           </table>
+        </div>
+      </div>
+      
+      <!-- INTERNAL RAB FORM -->
+      <div id="gudang-rab-inputs" style="display:none;">
+        <div class="grid-3" style="margin-bottom:1rem;">
+          <div class="form-group" style="grid-column:1/3;">
+            <label class="form-label">Nama Item</label>
+            <input type="text" id="gr-item-name" class="form-input" placeholder="Contoh: Cat Tembok" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Qty</label>
+            <input type="number" id="gr-item-qty" class="form-input" value="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Harga Satuan (Rp)</label>
+            <input type="number" id="gr-item-price" class="form-input" value="0" min="0" />
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn btn-primary btn-full" onclick="addGrItem()">+ Tambah</button>
+          </div>
+        </div>
+        <div class="rab-table-wrap">
+          <table>
+            <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th><th style="text-align:right">Total</th><th></th></tr></thead>
+            <tbody id="gr-table-body"><tr><td colspan="5" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada item</td></tr></tbody>
+          </table>
+        </div>
+        <div style="margin-top:1rem;text-align:right;font-weight:700;font-size:1rem;">
+          Total RAB: <span id="gr-total" style="color:var(--color-blue-600);">Rp 0</span>
         </div>
       </div>
       <div class="form-group" style="margin-top:1rem;">
@@ -2266,7 +2291,7 @@ function renderDetailPengajuanTinjau() {
     </div>` : '';
 
   // ── Bagian assign Zoom ──
-  const zoomSection = (req.type === 'Zoom' && req.status === 'approved' && (isPIC || isSuperAdmin)) ? `
+  const zoomSection = (req.type === 'Zoom' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
     <div style="background:#ecfeff; border:1px solid #cffafe; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#155e75; margin-bottom:0.75rem;">Link / Host Key (Optional)</div>
       <div class="form-group" style="margin-bottom:0">
@@ -2364,13 +2389,13 @@ function renderDetailPengajuanTinjau() {
         <div style="font-weight:700; color:#334155; margin-bottom:0.75rem;">Opsi Penanganan Perbaikan</div>
         
         <div style="margin-bottom:1rem;">
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Kerjakan Sendiri (Sparepart Tersedia / Tidak Butuh Sparepart)</div>
-          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">📦 Form Permintaan Barang Gudang / Proses Internal</button>
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">1. Sanggup Dikerjakan Sendiri</div>
+          <button class="btn btn-primary btn-full" onclick="openGudangModal(${req.id})" style="background:#059669;">&#x1F6E0; Proses Pengerjaan Sendiri</button>
         </div>
 
         <div>
-          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Memungkinkan / Harus Beli Sparepart / Vendor</div>
-          <button class="btn btn-primary btn-full" onclick="openRABModal()" style="background:#4f46e5;">📄 Buat RAB & Teruskan ke Manager FMD</button>
+          <div style="font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:#475569;">2. Tidak Memungkinkan (Pihak Ketiga / Vendor)</div>
+          <button class="btn btn-primary btn-full" onclick="openRABModal('Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)')" style="background:#4f46e5;">&#x1F3ED; Teruskan ke Vendor / Pihak Ketiga</button>
         </div>
       </div>`;
     } else if (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)) {
@@ -2391,10 +2416,14 @@ function renderDetailPengajuanTinjau() {
           <option value="">Pilih Pekerja...</option>
           ${allEmployees.map(e => `<option value="${e.full_name}">${e.full_name} (${e.position})</option>`).join('')}
         </select>
-        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})">💰 Cairkan Dana & Mulai Kerja</button>
+        <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})" style="margin-bottom:1rem;">&#x1F4B0; Cairkan Dana & Mulai Kerja</button>
+        <a href="${BASE_URL}/api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;">&#x1F5A8;&#xFE0F; Cetak PUM (PDF)</a>
       </div>`;
     } else if (req.status === 'in-progress' && (isPIC || isSuperAdmin)) {
-      actionBtns = `<button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>`;
+      actionBtns = `
+        <a href="${BASE_URL}/api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;margin-bottom:1rem;">&#x1F5A8;&#xFE0F; Cetak PUM (PDF)</a>
+        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">&#x2705; Tandai Selesai</button>
+      `;
     } else {
       picMessage = reminderBox('⏳', 'Menunggu Proses',
         `Pengajuan sedang dalam tahap: <b>${getStatusLabel(req.status)}</b>. Tidak ada tindakan yang tersedia untuk peran Anda saat ini.`);
@@ -2564,6 +2593,7 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; color:#854d0e; display:block; margin-bottom:0.25rem;">Catatan / Riwayat:</span>
               <div style="white-space:pre-wrap; font-family:monospace; font-size:0.75rem; color:#374151; margin-top:0.25rem;">${req.note}</div>
             </div>` : ''}
+
           </div>
         </div>
       </div>
@@ -2575,6 +2605,11 @@ function renderDetailPengajuanTinjau() {
           <div class="card-desc">Tindakan yang tersedia untuk peran Anda</div>
         </div>
         <div class="card-body">
+          ${req.type === 'Repair' && req.status !== 'pending' ? `
+          <div id="rab-view-container" style="margin-bottom:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:1rem;">
+            <span style="font-weight:600; color:#475569; display:block; margin-bottom:0.5rem;">RAB / Rincian Biaya:</span>
+            <div style="color:#94a3b8; font-size:0.8rem;">&#x23F3; Memuat data RAB...</div>
+          </div>` : ''}
           ${isFinal ? `
             <div style="background:#f3f4f6; padding:1.5rem 1rem; text-align:center; border-radius:0.5rem; color:#6b7280; border:1px solid #e5e7eb;">
               Pengajuan ini telah selesai/ditutup.
@@ -2818,6 +2853,9 @@ async function loadRABView(requestId) {
           </tbody>
         </table>
       </div>
+      <div style="margin-top:1rem; text-align:right;">
+        <a href="${BASE_URL}/api/print_pum.php?id=${requestId}" target="_blank" class="btn btn-primary" style="display:inline-block; font-size:0.875rem; background:#4f46e5; color:#fff; padding:0.5rem 1rem; border-radius:0.375rem; text-decoration:none;">&#x1F5A8;&#xFE0F; Cetak PUM (PDF)</a>
+      </div>
     </div>`;
 }
 
@@ -3009,8 +3047,10 @@ async function approveRABtoSupervisor(id) {
 }
 
 // ===== RAB MODAL =====
-function openRABModal() {
+function openRABModal(jenis = 'Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)') {
   rabItems = [];
+  const el = document.getElementById('rab-jenis');
+  if (el) el.value = jenis;
   renderRABTable();
   Modal.open('modal-rab');
 }
@@ -3080,19 +3120,30 @@ async function submitRAB() {
 // ===== GUDANG MODAL =====
 let gudangItems = [];
 
-function toggleGudangItems(value) {
+function toggleGudangItems(val) {
   const inputs = document.getElementById('gudang-item-inputs');
-  if (value === 'Tidak perlu sparepart (jasa)') {
+  const rabInputs = document.getElementById('gudang-rab-inputs');
+  
+  if (val === 'Perlu mengajukan pembelian sparepart (dikerjakan sendiri)') {
     inputs.style.display = 'none';
+    rabInputs.style.display = 'block';
+  } else if (val === 'Tidak perlu sparepart (jasa)') {
+    inputs.style.display = 'none';
+    rabInputs.style.display = 'none';
   } else {
     inputs.style.display = 'block';
+    rabInputs.style.display = 'none';
   }
 }
 
 function openGudangModal(id) {
   gudangItems = [];
+  grItems = [];
   document.getElementById('gudang-note').value = '';
+  document.getElementById('gudang-jenis').value = 'Sparepart tersedia di gudang';
+  toggleGudangItems('Sparepart tersedia di gudang');
   renderGudangTable();
+  renderGrTable();
   Modal.open('modal-gudang');
 }
 
@@ -3127,12 +3178,84 @@ function renderGudangTable() {
   }).join('');
 }
 
+// ===== INTERNAL RAB LOGIC =====
+let grItems = [];
+
+function renderGrTable() {
+  const tbody = document.getElementById('gr-table-body');
+  const totalEl = document.getElementById('gr-total');
+  if (!tbody || !totalEl) return;
+  
+  if (!grItems.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--color-slate-400);padding:1.5rem;">Belum ada item</td></tr>`;
+    totalEl.innerText = 'Rp 0';
+    return;
+  }
+  
+  let totalAll = 0;
+  tbody.innerHTML = grItems.map(i => {
+    const sum = i.quantity * i.unitPrice;
+    totalAll += sum;
+    return `<tr>
+      <td>${i.itemName}</td>
+      <td style="text-align:right;">${i.quantity}</td>
+      <td style="text-align:right;">Rp ${i.unitPrice.toLocaleString('id-ID')}</td>
+      <td style="text-align:right;font-weight:600;">Rp ${sum.toLocaleString('id-ID')}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-danger btn-sm" onclick="removeGrItem(${i.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+  
+  totalEl.innerText = `Rp ${totalAll.toLocaleString('id-ID')}`;
+}
+
+function addGrItem() {
+  const name  = document.getElementById('gr-item-name')?.value?.trim();
+  const qty   = parseInt(document.getElementById('gr-item-qty')?.value || '1');
+  const price = parseFloat(document.getElementById('gr-item-price')?.value || '0');
+  if (!name || price <= 0 || qty <= 0) { Toast.error('Mohon lengkapi data item RAB'); return; }
+  grItems.push({ id: Date.now(), itemName: name, quantity: qty, unitPrice: price });
+  document.getElementById('gr-item-name').value = '';
+  document.getElementById('gr-item-qty').value  = '1';
+  document.getElementById('gr-item-price').value = '0';
+  renderGrTable();
+}
+
+function removeGrItem(id) {
+  grItems = grItems.filter(i => i.id !== id);
+  renderGrTable();
+}
+
 async function submitGudang() {
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
   const jenis = document.getElementById('gudang-jenis')?.value || '';
   let note = document.getElementById('gudang-note')?.value?.trim() || '';
   
+  // If Beli Sparepart, submit as RAB
+  if (jenis === 'Perlu mengajukan pembelian sparepart (dikerjakan sendiri)') {
+    if (!grItems.length) { Toast.error('Minimal isi 1 item RAB.'); return; }
+    
+    const res = await apiPost(API_BASE + 'requests.php', {
+      action: 'submit_repair_budget',
+      request_id: currentRequestId,
+      jenis: jenis,
+      items: JSON.stringify(grItems),
+      note: note
+    });
+    
+    if (res.success) {
+      Toast.success('RAB Internal berhasil diajukan!');
+      Modal.close('modal-gudang');
+      switchView(previousView || 'dashboard');
+      await loadAllData();
+    } else {
+      Toast.error(res.message);
+    }
+    return;
+  }
+
   if (jenis === 'Sparepart tersedia di gudang' && gudangItems.length > 0) {
     const itemsStr = gudangItems.map(i => `${i.quantity}x ${i.itemName}`).join(', ');
     note = `[Internal: ${jenis}] Permintaan Barang: ${itemsStr}. ${note}`;

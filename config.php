@@ -84,10 +84,29 @@ function jsonResponse(bool $success, string $message = '', $data = null): void {
 }
 
 // ============================================================
-// Telegram Config (Tetap sama)
+// System Settings (DB)
 // ============================================================
-define('TELE_TOKEN', '8680128600:AAH_uuititcIn83IEKFwOTAxUqrHBP-nrxw');
-define('TELE_GROUP_ID', '-4997587400');
+$sysSettings = [];
+if (isset($conn) && !$conn->connect_error) {
+    $res = $conn->query("SELECT setting_key, setting_value FROM system_settings");
+    if ($res) {
+        while ($r = $res->fetch_assoc()) {
+            $sysSettings[$r['setting_key']] = $r['setting_value'];
+        }
+    }
+}
+
+// ============================================================
+// Maintenance Mode
+// ============================================================
+define('APP_NAME', $sysSettings['APP_NAME'] ?? 'SILATAS');
+define('MAINTENANCE_MODE', ($sysSettings['MAINTENANCE_MODE'] ?? '0') === '1');
+
+// ============================================================
+// Telegram Config
+// ============================================================
+define('TELE_TOKEN', $sysSettings['TELE_TOKEN'] ?? '8680128600:AAH_uuititcIn83IEKFwOTAxUqrHBP-nrxw');
+define('TELE_GROUP_ID', $sysSettings['TELE_GROUP_ID'] ?? '-4997587400');
 
 function sendTelegramPHP(string $message, ?string $chatId = null): bool {
     $targetChatId = $chatId ?: TELE_GROUP_ID;
@@ -107,7 +126,7 @@ function sendTelegramPHP(string $message, ?string $chatId = null): bool {
 // ============================================================
 // WhatsApp Config (Fonnte)
 // ============================================================
-define('FONNTE_TOKEN', 'PsfPFiD5cUyvoT9eiyow'); // Token Fonnte Admin
+define('FONNTE_TOKEN', $sysSettings['FONNTE_TOKEN'] ?? 'PsfPFiD5cUyvoT9eiyow'); // Token Fonnte Admin
 
 function sendWhatsAppFonnte(string $message, string $phone): bool {
     $token = FONNTE_TOKEN;
@@ -143,4 +162,27 @@ function sendWhatsAppFonnte(string $message, string $phone): bool {
     sleep(2);
     
     return true; 
+}
+
+// ============================================================
+// Maintenance Mode Blocker
+// ============================================================
+if (MAINTENANCE_MODE) {
+    $current_uri = $_SERVER['REQUEST_URI'] ?? '';
+    // Izinkan login, logout, dan file statis
+    if (strpos($current_uri, 'login.php') === false && strpos($current_uri, 'logout.php') === false) {
+        $role = strtolower($_SESSION['role'] ?? '');
+        $is_superadmin = ($role === 'superadmin' || $role === 'super admin');
+        
+        if (!$is_superadmin) {
+            // Jika request API, balas dengan JSON
+            if (strpos($current_uri, '/api/') !== false) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Sistem sedang dalam mode pemeliharaan (Maintenance Mode).']);
+                exit;
+            }
+            // Jika halaman web, tampilkan halaman maintenance
+            die('<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Maintenance Mode</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:"Inter",sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#475569;text-align:center;margin:0;}h1{color:#1e293b;margin-bottom:0.5rem;}p{max-width:400px;margin:0 auto;line-height:1.5;}</style></head><body><div><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><h1>Sedang Pemeliharaan</h1><p>Mohon maaf, sistem SILATAS sedang dalam proses pemeliharaan atau peningkatan fitur. Silakan kembali lagi nanti.</p></div></body></html>');
+        }
+    }
 }

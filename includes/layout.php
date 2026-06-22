@@ -71,6 +71,7 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
             'items'    => [
                 ['id' => 'request_management', 'label' => 'Manajemen Pengajuan',  'icon' => 'file-text', 'badge' => 'pending_count'],
                 ['id' => 'track_reports',      'label' => 'Track Pengajuan',      'icon' => 'history', 'badge' => 'track_count'],
+                ['id' => 'crud_requests',      'label' => 'Kelola Data Pengajuan (CRUD)', 'icon' => 'database'],
             ]
         ],
         ['id' => 'analytics',          'label' => 'Laporan & Statistik',  'icon' => 'bar-chart-2'],
