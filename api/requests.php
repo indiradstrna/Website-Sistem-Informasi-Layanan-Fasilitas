@@ -239,9 +239,11 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         $res = $conn->query("SELECT * FROM `$table` WHERE id = $id");
         if ($res && $row = $res->fetch_assoc()) {
             if ($type === 'Vehicle') {
-                $detailTxt .= "<b>Lokasi Tujuan:</b> " . htmlspecialchars($row['destination'] ?? '-') . "\n";
-                $detailTxt .= "<b>Item:</b> Operasional\n";
-                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
+                $detailTxt .= "<b>Nama Penumpang:</b> " . htmlspecialchars($row['passenger_name'] ?? '-') . "\n";
+                $detailTxt .= "<b>Keberangkatan:</b> " . htmlspecialchars($row['departure'] ?? '-') . "\n";
+                $detailTxt .= "<b>Tujuan:</b> " . htmlspecialchars($row['destination'] ?? '-') . "\n";
+                $detailTxt .= "<b>Hari/Waktu:</b> " . ($row['date_start'] ?? '-') . " " . substr($row['time_start'] ?? '', 0, 5) . "\n";
+                $detailTxt .= "<b>Biaya Ditanggung:</b> " . htmlspecialchars($row['cost_bearer'] ?? '-') . "\n";
             } elseif ($type === 'Room') {
                 $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($row['room_id'] ?? '') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
@@ -377,7 +379,7 @@ switch ($action) {
     // 1. GET ALL REQUESTS (Admin melihat semua)
     // ============================================================
     case 'get_vehicle':
-        $res = $conn->query("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests ORDER BY created_at DESC LIMIT 100");
+        $res = $conn->query("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests ORDER BY created_at DESC LIMIT 100");
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
@@ -410,7 +412,7 @@ switch ($action) {
     // 1b. GET REQUESTS BY USER
     // ============================================================
     case 'get_vehicle_by_user':
-        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -467,18 +469,21 @@ switch ($action) {
     // 2. SUBMIT REQUESTS
     // ============================================================
     case 'submit_vehicle':
-        $vehicle_id     = $_POST['vehicle_id']     ?? 'PENDING_ASSIGNMENT';
-        $applicant_name = $_POST['applicant_name'] ?? '';
-        $applicant_unit = $_POST['applicant_unit'] ?? '';
+        $vehicle_id     = $_POST['vehicle_id']      ?? 'PENDING_ASSIGNMENT';
+        $applicant_name = $_POST['applicant_name']  ?? '';
+        $applicant_unit = $_POST['applicant_unit']  ?? '';
         $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
         $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
         $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
         $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
-        $destination    = $_POST['destination']    ?? '';
-        $purpose        = $_POST['purpose']        ?? '';
+        $destination    = $_POST['destination']     ?? '';
+        $passenger_name = $_POST['passenger_name']  ?? '';
+        $departure      = $_POST['departure']       ?? '';
+        $cost_bearer    = $_POST['cost_bearer']     ?? '';
+        $purpose        = $_POST['purpose']         ?? '';
 
-        $stmt = $conn->prepare("INSERT INTO vehicle_requests (user_id, vehicle_id, applicant_name, applicant_unit, destination, date_start, time_start, date_end, time_end, purpose, status) VALUES (?,?,?,?,?,?,?,?,?,?,'pending')");
-        $stmt->bind_param("isssssssss", $userId, $vehicle_id, $applicant_name, $applicant_unit, $destination, $date_start, $time_start, $date_end, $time_end, $purpose);
+        $stmt = $conn->prepare("INSERT INTO vehicle_requests (user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, date_start, time_start, date_end, time_end, purpose, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending')");
+        $stmt->bind_param("issssssssssss", $userId, $vehicle_id, $applicant_name, $applicant_unit, $destination, $passenger_name, $departure, $cost_bearer, $date_start, $time_start, $date_end, $time_end, $purpose);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
             notifyNewRequest('Vehicle', $newId, $applicant_name, $applicant_unit, $purpose);

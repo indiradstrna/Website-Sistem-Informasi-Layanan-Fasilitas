@@ -105,12 +105,15 @@ define('MAINTENANCE_MODE', ($sysSettings['MAINTENANCE_MODE'] ?? '0') === '1');
 // ============================================================
 // Telegram Config
 // ============================================================
-define('TELE_TOKEN', $sysSettings['TELE_TOKEN'] ?? '8680128600:AAH_uuititcIn83IEKFwOTAxUqrHBP-nrxw');
-define('TELE_GROUP_ID', $sysSettings['TELE_GROUP_ID'] ?? '-4997587400');
+define('TELE_TOKEN', trim($sysSettings['TELE_TOKEN'] ?? '8680128600:AAH_uuititcIn83IEKFwOTAxUqrHBP-nrxw'));
+define('TELE_GROUP_ID', trim($sysSettings['TELE_GROUP_ID'] ?? '-4997587400'));
 
 function sendTelegramPHP(string $message, ?string $chatId = null): bool {
-    $targetChatId = $chatId ?: TELE_GROUP_ID;
-    $url = "https://api.telegram.org/bot" . TELE_TOKEN . "/sendMessage";
+    $token = trim(TELE_TOKEN);
+    $targetChatId = trim($chatId ?: TELE_GROUP_ID);
+    if (empty($token) || empty($targetChatId)) return false;
+
+    $url = "https://api.telegram.org/bot{$token}/sendMessage";
     $payload = ['chat_id' => $targetChatId, 'text' => $message, 'parse_mode' => 'HTML'];
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -118,9 +121,21 @@ function sendTelegramPHP(string $message, ?string $chatId = null): bool {
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
+    $curlErr  = curl_error($ch);
     curl_close($ch);
-    return true; // Simple return for brevity
+
+    if ($curlErr) {
+        error_log("[Telegram] CURL Error: $curlErr");
+        return false;
+    }
+    $result = json_decode($response, true);
+    if (empty($result['ok'])) {
+        error_log("[Telegram] API Error: " . ($result['description'] ?? $response));
+        return false;
+    }
+    return true;
 }
 
 // ============================================================

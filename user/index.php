@@ -1383,14 +1383,23 @@ function buildForm(type) {
 
   if (type === 'vehicle') return `
   ${nameUnit}
-  <div class="grid-2">
-    <div class="form-group"><label class="form-label">Tanggal Mulai</label><input type="date" id="f-date-start" class="form-input" required /></div>
-    <div class="form-group"><label class="form-label">Jam Mulai</label><input type="time" id="f-time-start" class="form-input" required /></div>
-    <div class="form-group"><label class="form-label">Tanggal Selesai</label><input type="date" id="f-date-end" class="form-input" required /></div>
-    <div class="form-group"><label class="form-label">Jam Selesai</label><input type="time" id="f-time-end" class="form-input" required /></div>
+  <div class="form-group">
+    <label class="form-label">Nama Penumpang</label>
+    <div id="passenger-list" style="display:flex; flex-direction:column; gap:0.5rem;">
+      <div style="display:flex; gap:0.5rem;" class="passenger-row">
+        <input type="text" class="form-input f-passenger-item" required placeholder="Nama Penumpang 1" style="flex:1;" />
+        <button type="button" class="btn btn-outline" style="padding: 0.5rem 1rem;" onclick="addPassengerField()">+</button>
+      </div>
+    </div>
   </div>
-  <div class="form-group"><label class="form-label">Lokasi Tujuan</label><input type="text" id="f-destination" class="form-input" required placeholder="Masukkan lokasi tujuan..." /></div>
-  <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan penggunaan kendaraan..."></textarea></div>`;
+  <div class="grid-2">
+    <div class="form-group"><label class="form-label">Hari / Tanggal</label><input type="date" id="f-date-start" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Waktu</label><input type="time" id="f-time-start" class="form-input" required /></div>
+  </div>
+  <div class="form-group"><label class="form-label">Keberangkatan</label><input type="text" id="f-departure" class="form-input" required placeholder="Lokasi keberangkatan..." /></div>
+  <div class="form-group"><label class="form-label">Tujuan</label><input type="text" id="f-destination" class="form-input" required placeholder="Lokasi tujuan..." /></div>
+  <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan penggunaan kendaraan..."></textarea></div>
+  <div class="form-group"><label class="form-label">Biaya Ditanggung Oleh</label><input type="text" id="f-cost-bearer" class="form-input" required placeholder="Contoh: DIPA / Mandiri / Pihak Ketiga" /></div>`;
 
   if (type === 'room') return `
   ${nameUnit}
@@ -1497,7 +1506,7 @@ async function doSubmitForm() {
 
   const data = { action: 'submit_' + currentFormType, applicant_name: name, applicant_unit: unit };
 
-  if (['vehicle','room','dormitory','zoom','item'].includes(currentFormType)) {
+  if (['room','dormitory','zoom','item'].includes(currentFormType)) {
     data.date_start = document.getElementById('f-date-start')?.value || '';
     data.time_start = document.getElementById('f-time-start')?.value || '';
     data.date_end   = document.getElementById('f-date-end')?.value   || '';
@@ -1505,8 +1514,16 @@ async function doSubmitForm() {
     data.purpose    = document.getElementById('f-purpose')?.value    || '';
   }
   if (currentFormType === 'vehicle') {
-    data.vehicle_id = 'PENDING_ASSIGNMENT';
-    data.destination = document.getElementById('f-destination')?.value || '';
+    data.vehicle_id      = 'PENDING_ASSIGNMENT';
+    data.date_start      = document.getElementById('f-date-start')?.value || '';
+    data.time_start      = document.getElementById('f-time-start')?.value || '';
+    const passengerInputs = Array.from(document.querySelectorAll('.f-passenger-item'));
+    data.passenger_name  = passengerInputs.map(inp => inp.value.trim()).filter(v => v).join(', ');
+    data.departure       = document.getElementById('f-departure')?.value || '';
+    data.destination     = document.getElementById('f-destination')?.value || '';
+    data.purpose         = document.getElementById('f-purpose')?.value || '';
+    data.cost_bearer     = document.getElementById('f-cost-bearer')?.value || '';
+
   } else if (currentFormType === 'room') {
     data.room_id      = document.getElementById('f-room-id')?.value || '';
     data.participants = document.getElementById('f-participants')?.value || '1';
@@ -1709,8 +1726,20 @@ function buildDetailBody(req) {
       </div>` : ''}
       ${type === 'vehicle' ? `
       <div class="tv-row">
-        <div class="tv-label">Lokasi Tujuan</div>
+        <div class="tv-label">Nama Penumpang</div>
+        <div class="tv-value" style="font-weight:600;">${req.passenger_name || '-'}</div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Keberangkatan</div>
+        <div class="tv-value" style="font-weight:600;">${req.departure || '-'}</div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Tujuan</div>
         <div class="tv-value" style="font-weight:600;">${req.destination || '-'}</div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Biaya Ditanggung</div>
+        <div class="tv-value" style="font-weight:600;">${req.cost_bearer || '-'}</div>
       </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Kategori</div>
@@ -2697,6 +2726,23 @@ window.addOccupantField = function() {
   `;
   container.appendChild(div);
   syncParticipantsCount();
+};
+
+window.addPassengerField = function() {
+  const container = document.getElementById('passenger-list');
+  if (!container) return;
+  const count = container.children.length + 1;
+  const div = document.createElement('div');
+  div.className = 'passenger-row';
+  div.style.display = 'flex';
+  div.style.gap = '0.5rem';
+  div.innerHTML = `
+    <input type="text" class="form-input f-passenger-item" required placeholder="Nama Penumpang ${count}" style="flex:1;" />
+    <button type="button" class="btn btn-danger" style="padding: 0.5rem 1rem;" onclick="this.parentElement.remove();">-</button>
+  `;
+  container.appendChild(div);
+  // Focus the new input
+  div.querySelector('input')?.focus();
 };
 
 window.syncParticipantsCount = function() {
