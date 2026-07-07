@@ -746,7 +746,10 @@ switch ($action) {
                     $drvName = $reqRow['driver_name'];
                     $appName = $reqRow['applicant_name'];
                     $dest    = $reqRow['destination'] ?: '-';
-                    $waktu   = $reqRow['ds'] . " jam " . substr($reqRow['time_start'], 0, 5) . " s/d " . $reqRow['de'] . " jam " . substr($reqRow['time_end'], 0, 5);
+                    $waktu   = $reqRow['ds'] . " jam " . substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
+                    if (!empty($reqRow['de']) && !empty($reqRow['time_end'])) {
+                        $waktu .= " s/d " . $reqRow['de'] . " jam " . substr($reqRow['time_end'], 0, 5);
+                    }
                     $purp    = $reqRow['purpose'] ?: '-';
 
                     if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
@@ -784,8 +787,8 @@ switch ($action) {
 
         if (!$reqRow) jsonResponse(false, 'Request tidak ditemukan.');
 
-        $startDT = $reqRow['ds'] . ' ' . substr($reqRow['time_start'], 0, 5);
-        $endDT   = $reqRow['de'] . ' ' . substr($reqRow['time_end'], 0, 5);
+        $startDT = $reqRow['ds'] . ' ' . substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
+        $endDT   = ($reqRow['de'] ?? $reqRow['ds']) . ' ' . substr($reqRow['time_end'] ?? '23:59:59', 0, 5);
 
         // Cek konflik kendaraan
         if ($vehicleId && $vehicleId !== 'PENDING_ASSIGNMENT') {
