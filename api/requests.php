@@ -269,7 +269,7 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
                 $detailTxt .= "<b>Nama Penumpang:</b> " . htmlspecialchars($row['passenger_name'] ?? '-') . "\n";
                 $detailTxt .= "<b>Keberangkatan:</b> " . htmlspecialchars($row['departure'] ?? '-') . "\n";
                 $detailTxt .= "<b>Tujuan:</b> " . htmlspecialchars($row['destination'] ?? '-') . "\n";
-                $detailTxt .= "<b>Hari/Waktu:</b> " . ($row['date_start'] ?? '-') . " " . substr($row['time_start'] ?? '', 0, 5) . "\n";
+                $detailTxt .= "<b>Waktu:</b> " . ($row['date_start'] ?? '-') . " s/d " . ($row['date_end'] ?? '-') . " (Jam: " . substr($row['time_start'] ?? '', 0, 5) . ")\n";
                 $detailTxt .= "<b>Biaya Ditanggung:</b> " . htmlspecialchars($row['cost_bearer'] ?? '-') . "\n";
             } elseif ($type === 'Room') {
                 $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($row['room_id'] ?? '') . "\n";
@@ -831,10 +831,11 @@ switch ($action) {
                     $drvName = $reqRow['driver_name'];
                     $appName = $reqRow['applicant_name'];
                     $dest    = $reqRow['destination'] ?: '-';
-                    $waktu   = $reqRow['ds'] . " jam " . substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
-                    if (!empty($reqRow['de']) && !empty($reqRow['time_end'])) {
-                        $waktu .= " s/d " . $reqRow['de'] . " jam " . substr($reqRow['time_end'], 0, 5);
+                    $waktu   = $reqRow['ds'];
+                    if (!empty($reqRow['de'])) {
+                        $waktu .= " s/d " . $reqRow['de'];
                     }
+                    $waktu .= " (Jam: " . substr($reqRow['time_start'] ?? '00:00:00', 0, 5) . ")";
                     $purp    = $reqRow['purpose'] ?: '-';
 
                     if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
