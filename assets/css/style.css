@@ -1332,6 +1332,12 @@ tbody tr:last-child td {
     .stats-grid {
         grid-template-columns: 1fr 1fr;
     }
+
+    .grid-2 > [style*="grid-column"],
+    .grid-3 > [style*="grid-column"],
+    .grid-4 > [style*="grid-column"] {
+        grid-column: 1 / -1 !important;
+    }
 }
 
 @media (max-width: 480px) {

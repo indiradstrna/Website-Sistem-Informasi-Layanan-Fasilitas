@@ -37,6 +37,7 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         ['id' => 'zoom',          'label' => 'Pengajuan Zoom',   'icon' => 'video'],
         ['id' => 'repair',        'label' => 'Pengajuan Perbaikan',      'icon' => 'wrench'],
         ['id' => 'item',          'label' => 'Pengajuan Peminjaman Barang','icon' => 'package'],
+        ['id' => 'item2',         'label' => 'Permintaan Barang','icon' => 'box'],
         ['id' => 'my_reports',    'label' => 'Riwayat Pengajuan',   'icon' => 'activity'],
         ['id' => 'profile',       'label' => 'Profil',         'icon' => 'user'],
     ];
@@ -45,9 +46,11 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         if ($role === 'admin') {
             // Kita di Admin Dashboard, tambahkan menu ke User View
             $adminMenus[] = ['id' => 'switch_to_user', 'label' => 'Beralih ke User', 'icon' => 'eye', 'url' => $basePath . 'user/index.php'];
+            $adminMenus[] = ['id' => 'go_inventory', 'label' => 'Web Inventory Gudang', 'icon' => 'package', 'url' => $basePath . 'inventory/index.php'];
         } else {
             // Kita di User Dashboard, tambahkan menu ke Admin View
             $userMenus[] = ['id' => 'switch_to_admin', 'label' => 'Kembali ke Admin', 'icon' => 'layout', 'url' => $basePath . 'admin/index.php'];
+            $userMenus[] = ['id' => 'go_inventory', 'label' => 'Web Inventory Gudang', 'icon' => 'package', 'url' => $basePath . 'inventory/index.php'];
         }
     }
 
@@ -95,7 +98,7 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         'admin'      => 'Administrator',
         'supervisor' => 'Supervisor FMD',
         'superadmin' => 'Super Administrator',
-        'super admin'=> 'Super Administrator',
+        'super admin'=> 'Super Administrator', 
         default      => 'Staff / User',
     };
     ?>
@@ -145,13 +148,20 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
             </div>
             <div class="nav-dropdown-menu" style="padding-left:1rem; display:none;">
                 <?php foreach($menu['items'] as $sub): ?>
-                    <button class="nav-item <?= $activeView === $sub['id'] ? 'active' : '' ?>" style="padding:0.4rem 1rem; font-size:0.8rem; margin:0.2rem 0.75rem;" data-view="<?= htmlspecialchars($sub['id']) ?>" onclick="switchView('<?= htmlspecialchars($sub['id']) ?>')">
-                        <?= getSvgIcon($sub['icon'] ?? 'circle') ?>
-                        <span><?= htmlspecialchars($sub['label']) ?></span>
-                        <?php if (isset($sub['badge'])): ?>
-                            <span class="nav-badge-count" id="<?= htmlspecialchars($sub['badge']) ?>">...</span>
-                        <?php endif; ?>
-                    </button>
+                    <?php if (isset($sub['url'])): ?>
+                        <a href="<?= htmlspecialchars($sub['url']) ?>" class="nav-item <?= $activeView === $sub['id'] ? 'active' : '' ?>" style="padding:0.4rem 1rem; font-size:0.8rem; margin:0.2rem 0.75rem; text-decoration:none; display:flex;">
+                            <?= getSvgIcon($sub['icon'] ?? 'circle') ?>
+                            <span><?= htmlspecialchars($sub['label']) ?></span>
+                        </a>
+                    <?php else: ?>
+                        <button class="nav-item <?= $activeView === $sub['id'] ? 'active' : '' ?>" style="padding:0.4rem 1rem; font-size:0.8rem; margin:0.2rem 0.75rem;" data-view="<?= htmlspecialchars($sub['id']) ?>" onclick="switchView('<?= htmlspecialchars($sub['id']) ?>')">
+                            <?= getSvgIcon($sub['icon'] ?? 'circle') ?>
+                            <span><?= htmlspecialchars($sub['label']) ?></span>
+                            <?php if (isset($sub['badge'])): ?>
+                                <span class="nav-badge-count" id="<?= htmlspecialchars($sub['badge']) ?>">...</span>
+                            <?php endif; ?>
+                        </button>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -241,6 +251,8 @@ function getSvgIcon(string $name): string {
         'database'        => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
         'settings'        => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
         'circle'          => '<circle cx="12" cy="12" r="10"/>',
+        'box'             => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+
     ];
     $path = $paths[$name] ?? '<circle cx="12" cy="12" r="10"/>';
     return '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $path . '</svg>';
@@ -275,6 +287,14 @@ function renderPageHead(string $title, string $basePath = '../'): void {
 
         $resD = $conn->query("SELECT id, name FROM master_dormitories ORDER BY id ASC");
         if ($resD) { while($row = $resD->fetch_assoc()) $masterDormitories[] = $row; }
+        
+        $invItems = [];
+        $resI = $conn->query("SELECT id, name, stock, unit, image, item_code FROM inv_items ORDER BY CASE WHEN stock > 0 THEN 0 ELSE 1 END ASC, name ASC");
+        if ($resI) { while($row = $resI->fetch_assoc()) $invItems[] = $row; }
+
+        $invSkel = [];
+        $resS = $conn->query("SELECT kd_skelbrg as code, ur_skel as name FROM inv_bmn_skel ORDER BY kd_skelbrg ASC");
+        if ($resS) { while($row = $resS->fetch_assoc()) $invSkel[] = $row; }
     }
   ?>
   <script>
@@ -286,6 +306,10 @@ function renderPageHead(string $title, string $basePath = '../'): void {
 
     const ALL_DORMITORIES = <?= json_encode($masterDormitories) ?>;
     const DORMITORY_MAP = Object.fromEntries(ALL_DORMITORIES.map(r => [r.id, r.name]));
+    
+    const ALL_INV_ITEMS = <?= json_encode($invItems ?? []) ?>;
+    const INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
+    const ALL_INV_SKEL = <?= json_encode($invSkel ?? []) ?>;
   </script>
 </head>
 <body>

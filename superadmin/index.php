@@ -511,13 +511,14 @@ window._adminCalSelected = null;
 // ===== LOAD ALL DATA =====
 async function loadAllData(silent = false) {
   try {
-    const [vehicles, rooms, dormitories, zooms, repairs, items, users, employees, settingsRaw] = await Promise.all([
+    const [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees, settingsRaw] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle').catch(e => []),
       api(API_BASE + 'requests.php?action=get_room').catch(e => []),
       api(API_BASE + 'requests.php?action=get_dormitory').catch(e => []),
       api(API_BASE + 'requests.php?action=get_zoom').catch(e => []),
       api(API_BASE + 'requests.php?action=get_repair').catch(e => []),
       api(API_BASE + 'requests.php?action=get_item').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_item2').catch(e => []),
       api(API_BASE + 'users.php?action=get_all').catch(e => []),
       api(API_BASE + 'users.php?action=get_employees').catch(e => []),
       api(API_BASE + 'settings.php?action=get_all').catch(e => ({data:{}}))
@@ -539,9 +540,10 @@ async function loadAllData(silent = false) {
                type === 'Dormitory'? `${item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
                type === 'Zoom'    ? item.zoom_account_id :
                type === 'Repair'  ? `${item.location_detail}: ${item.issue_description}` :
-               type === 'Item'    ? `${item.item_name} (${item.item_quantity})` : '-',
-      date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : item.date_start,
-      raw_time_start: item.time_start || item.incident_time || '',
+               type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
+               type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
+      date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
+      raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.incident_time || ''),
       raw_time_end:   item.time_end   || '',
       raw_date_end:   item.return_date || item.date_end || '',
       driver_name:    item.driver_name || '',
@@ -556,6 +558,11 @@ async function loadAllData(silent = false) {
       occupant_name:   item.occupant_name  || '',
       location_detail: item.location_detail || '',
       item_name:       item.item_name      || '',
+      passenger_name:  item.passenger_name || '',
+      departure:       item.departure      || '',
+      destination:     item.destination    || '',
+      cost_bearer:     item.cost_bearer    || '',
+      items_json:      item.items_json     || '',
     }));
 
     const statusWeight = {
@@ -581,6 +588,7 @@ async function loadAllData(silent = false) {
       ...norm(zooms    || [], 'Zoom'),
       ...norm(repairs  || [], 'Repair'),
       ...norm(items    || [], 'Item'),
+      ...norm(items2   || [], 'Item2'),
     ].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
     allUsers = Array.isArray(users) ? users : [];
@@ -643,15 +651,15 @@ async function loadAllData(silent = false) {
 
     // IF SILENT: Don't refresh the whole view, but if in management/track, refresh table only
     if (silent) {
-        if (currentView === 'request_management' && !document.getElementById('req-search')?.value) {
-            const status = document.getElementById('req-status-filter')?.value || 'all';
-            const type   = document.getElementById('req-type-filter')?.value   || 'all';
+        if (currentView === 'request_management' && !(document.getElementById('req-search') || {}).value) {
+            const status = (document.getElementById('req-status-filter') || {}).value || 'all';
+            const type   = (document.getElementById('req-type-filter') || {}).value   || 'all';
             if (status === 'all' && type === 'all') {
                 filterRequests(true); // true to preserve current page
             }
-        } else if (currentView === 'track_reports' && !document.getElementById('track-search')?.value) {
-            const type = document.getElementById('track-type')?.value || 'all';
-            const status = document.getElementById('track-status')?.value || 'all';
+        } else if (currentView === 'track_reports' && !(document.getElementById('track-search') || {}).value) {
+            const type = (document.getElementById('track-type') || {}).value || 'all';
+            const status = (document.getElementById('track-status') || {}).value || 'all';
             if (type === 'all' && status === 'all') {
                 filterTrack();
             }
@@ -915,9 +923,9 @@ function setReqTab(tab) {
 }
 
 function filterRequests(preservePage = false) {
-  const search = (document.getElementById('req-search')?.value || '').toLowerCase();
-  const type   = document.getElementById('req-type-filter')?.value || 'all';
-  const status = document.getElementById('req-status-filter')?.value || 'all';
+  const search = ((document.getElementById('req-search') || {}).value || '').toLowerCase();
+  const type   = (document.getElementById('req-type-filter') || {}).value || 'all';
+  const status = (document.getElementById('req-status-filter') || {}).value || 'all';
   
   let filtered = currentReqTab === 'my_tasks' ? picPendingRequests : allRequests;
   if (status !== 'all') {
@@ -1086,9 +1094,9 @@ function renderTrackRows(data, page) {
 }
 
 function getFilteredTrackRequests() {
-  const search = (document.getElementById('track-search')?.value || '').toLowerCase();
-  const type   = document.getElementById('track-type')?.value || 'all';
-  const status = document.getElementById('track-status')?.value || 'all';
+  const search = ((document.getElementById('track-search') || {}).value || '').toLowerCase();
+  const type   = (document.getElementById('track-type') || {}).value || 'all';
+  const status = (document.getElementById('track-status') || {}).value || 'all';
   
   let data = allRequests;
   
@@ -1241,7 +1249,7 @@ function renderUserRows(data, page) {
 }
 
 function filterUsers() {
-  const search = (document.getElementById('user-search')?.value || '').toLowerCase();
+  const search = ((document.getElementById('user-search') || {}).value || '').toLowerCase();
   let data = allUsers;
   if (search) {
     data = data.filter(u => 
@@ -1288,7 +1296,7 @@ function changeUserRows(val) {
 
 function goUserPage(page) {
   currentPage = page;
-  const search = (document.getElementById('user-search')?.value || '').toLowerCase();
+  const search = ((document.getElementById('user-search') || {}).value || '').toLowerCase();
   let data = allUsers;
   if (search) {
     data = data.filter(u => 
@@ -1340,7 +1348,7 @@ function renderCrudRequests() {
 }
 
 function filterCrud() {
-  const search = (document.getElementById('crud-search')?.value || '').toLowerCase();
+  const search = ((document.getElementById('crud-search') || {}).value || '').toLowerCase();
   let data = allRequests;
   if (search) {
     data = data.filter(r => 
@@ -1535,8 +1543,8 @@ async function doCrudDelete(id, type) {
 // --- ANALYTICS ---
 function renderAnalytics() {
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-  const currentMonth = document.getElementById('stat-month')?.value || months[new Date().getMonth()];
-  const currentYear = document.getElementById('stat-year')?.value || new Date().getFullYear();
+  const currentMonth = (document.getElementById('stat-month') || {}).value || months[new Date().getMonth()];
+  const currentYear = (document.getElementById('stat-year') || {}).value || new Date().getFullYear();
 
   const html = `
   <div class="page-header mb-4" style="display:flex; justify-content:space-between; align-items:flex-end;">
@@ -1825,9 +1833,9 @@ function renderAnalytics() {
   return html;
 }
 window.exportPDF = function(subType) {
-  const monthName = document.getElementById('stat-month')?.value;
-  const yearStr = document.getElementById('stat-year')?.value;
-  const selectedStatus = document.getElementById('stat-status')?.value;
+  const monthName = (document.getElementById('stat-month') || {}).value;
+  const yearStr = (document.getElementById('stat-year') || {}).value;
+  const selectedStatus = (document.getElementById('stat-status') || {}).value;
   
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const monthIdx = months.indexOf(monthName);
@@ -1926,7 +1934,7 @@ function initAnalyticsListeners() {
   const y = document.getElementById('stat-year');
   if(!m || !y) return;
   
-  [t, s, m, y].forEach(el => el?.addEventListener('change', updateAnalyticsDashboard));
+  [t, s, m, y].forEach(el => (el && el.addEventListener)('change', updateAnalyticsDashboard));
   
   // Register Chart.js defaults
   if (typeof Chart !== 'undefined') {
@@ -1938,10 +1946,10 @@ function initAnalyticsListeners() {
 }
 
 function updateAnalyticsDashboard() {
-  const type = document.getElementById('stat-type')?.value;
-  const status = document.getElementById('stat-status')?.value;
-  const monthName = document.getElementById('stat-month')?.value;
-  const year = parseInt(document.getElementById('stat-year')?.value);
+  const type = (document.getElementById('stat-type') || {}).value;
+  const status = (document.getElementById('stat-status') || {}).value;
+  const monthName = (document.getElementById('stat-month') || {}).value;
+  const year = parseInt((document.getElementById('stat-year') || {}).value);
 
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const monthIdx = months.indexOf(monthName);
@@ -2028,7 +2036,7 @@ function updateAnalyticsDashboard() {
   } else {
       const data = sortedDays.map(k => dailyCountsByType[type][k] || 0);
       datasets.push({
-          label: typeConfig[type]?.label || 'Volume',
+          label: (typeConfig[type] || {}).label || 'Volume',
           data: data,
           borderColor: '#4e73df',
           backgroundColor: 'rgba(78, 115, 223, 0.1)',
@@ -2042,7 +2050,7 @@ function updateAnalyticsDashboard() {
 
   // Render Daily Volume Chart
   if (chartInstances.dailyVolume) chartInstances.dailyVolume.destroy();
-  const ctxDaily = document.getElementById('dailyVolumeChart')?.getContext('2d');
+  const ctxDailyEl = document.getElementById('dailyVolumeChart'); const ctxDaily = ctxDailyEl ? ctxDailyEl.getContext('2d') : null;
   if (ctxDaily && dailyLabels.length > 0) {
       chartInstances.dailyVolume = new Chart(ctxDaily, {
           type: 'line',
@@ -2082,7 +2090,7 @@ function updateAnalyticsDashboard() {
 
   // Render Channel Chart
   if (chartInstances.channel) chartInstances.channel.destroy();
-  const ctxChannel = document.getElementById('channelChart')?.getContext('2d');
+  const ctxChannelEl = document.getElementById('channelChart'); const ctxChannel = ctxChannelEl ? ctxChannelEl.getContext('2d') : null;
   if (ctxChannel && typeLabels.length > 0) {
       chartInstances.channel = new Chart(ctxChannel, {
           type: 'doughnut',
@@ -2114,7 +2122,7 @@ function updateAnalyticsDashboard() {
 
   // Render Top Users Chart
   if (chartInstances.topUsers) chartInstances.topUsers.destroy();
-  const ctxTopUsers = document.getElementById('topUsersChart')?.getContext('2d');
+  const ctxTopUsersEl = document.getElementById('topUsersChart'); const ctxTopUsers = ctxTopUsersEl ? ctxTopUsersEl.getContext('2d') : null;
   if (ctxTopUsers && topUsers.length > 0) {
       chartInstances.topUsers = new Chart(ctxTopUsers, {
           type: 'bar',
@@ -2218,7 +2226,7 @@ function updateAnalyticsDashboard() {
 
   // Render Top Items Chart
   if (chartInstances.topItems) chartInstances.topItems.destroy();
-  const ctxTopItems = document.getElementById('topItemsChart')?.getContext('2d');
+  const ctxTopItemsEl = document.getElementById('topItemsChart'); const ctxTopItems = ctxTopItemsEl ? ctxTopItemsEl.getContext('2d') : null;
   if (ctxTopItems) {
       if (topItems.length > 0) {
           chartInstances.topItems = new Chart(ctxTopItems, {
@@ -2539,7 +2547,7 @@ function renderDetailPengajuanTinjau() {
   const jadwalVal = `${ds}${de}<br><span style="font-size:.75rem;color:#6b7280;">Jam: ${timeStr}</span>`;
 
   // ── Category label ──
-  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
+  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang', Item2:'Permintaan Barang' }[req.type] || req.type;
 
   // ── Strict Role-Based Workflow Logic (deklarasi di awal agar bisa digunakan di seluruh fungsi) ──
   const PIC_MAP_LOCAL = {
@@ -2584,7 +2592,7 @@ function renderDetailPengajuanTinjau() {
           <option value="TANPA_SUPIR" style="color:#ea580c; font-weight:bold;">[0] Tanpa Supir (Tidak Ada Driver Tersedia)</option>
           ${(Array.isArray(allEmployees) ? allEmployees : []).filter(emp => emp.position && (String(emp.position).toLowerCase().includes('driver') || String(emp.position).toLowerCase().includes('pengemudi'))).map(emp => {
             const conflict = checkResourceConflict(req, 'driver', emp.full_name);
-            return `<option value="${emp.full_name}"${req.driver_name?.includes(emp.full_name) ? ' selected' : ''}${conflict ? ' disabled' : ''}>${emp.full_name} - ${emp.position}${conflict ? ' (Bertugas)' : ''}</option>`;
+            return `<option value="${emp.full_name}"${(req.driver_name && req.driver_name.includes(emp.full_name)) ? ' selected' : ''}${conflict ? ' disabled' : ''}>${emp.full_name} - ${emp.position}${conflict ? ' (Bertugas)' : ''}</option>`;
           }).join('')}
         </select>
       </div>
@@ -2851,7 +2859,7 @@ function renderDetailPengajuanTinjau() {
             <div style="grid-column:1/3;">
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Item / Lokasi:</span>
               <div style="font-weight:500; font-size:1.1rem; color:var(--color-blue-700);">
-                ${req.type === 'Vehicle' ? (ALL_VEHICLES.find(v => v.id === req.vehicle_id)?.name || req.details) : (ROOM_MAP[req.room_id] || req.details)}
+                ${req.type === 'Vehicle' ? ((ALL_VEHICLES.find(v => v.id === req.vehicle_id) || {}).name || req.details) : (ROOM_MAP[req.room_id] || req.details)}
                 ${req.type === 'Vehicle' && req.driver_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Driver: ${req.driver_name === 'TANPA_SUPIR' ? 'Tidak Ada' : req.driver_name})</span>` : ''}
               </div>
             </div>
@@ -2859,6 +2867,36 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Waktu / Tanggal:</span>
               ${jadwalVal}
             </div>
+            ${req.type === 'Dormitory' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Penghuni:</span>
+              ${req.occupant_name || '-'} <span style="font-size:0.85rem;color:#6b7280;">(${req.participants || '0'} orang)</span>
+            </div>` : ''}
+            ${req.type === 'Vehicle' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Penumpang:</span>
+              ${req.passenger_name || '-'} <span style="font-size:0.85rem;color:#6b7280;">(${req.passenger_name ? req.passenger_name.split(',').length : 0} orang)</span>
+            </div>
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Rute Perjalanan:</span>
+              ${req.departure || '-'} &rarr; ${req.destination || '-'}
+            </div>
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Pembebanan Biaya:</span>
+              ${req.cost_bearer || '-'}
+            </div>` : ''}
+            ${req.type === 'Item2' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Daftar Barang:</span>
+              <ul style="margin:0; padding-left:1.25rem; font-size:0.85rem; color:#1e293b; line-height:1.5;">
+                ${(function(){
+                  try {
+                    let items = JSON.parse(req.items_json);
+                    return items.map(i => `<li><strong>${i.name}</strong> (${i.quantity} unit)</li>`).join('');
+                  } catch(e) { return '<li>Format data invalid</li>'; }
+                })()}
+              </ul>
+            </div>` : ''}
             <div style="grid-column:1/3; background:#f8fafc; padding:0.75rem 1rem; border-radius:0.5rem; border:1px solid #f1f5f9;">
               ${req.type === 'Zoom' ? `
                 <div style="display:flex;flex-direction:column;gap:0.5rem;">
@@ -2957,10 +2995,10 @@ function buildDetailBody(req) {
   const jadwalVal = `${ds}${de}<div style="font-size:.75rem;color:#6b7280;margin-top:.2rem;">${timeStr}</div>`;
 
   // ── Category label ──
-  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
+  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang', Item2:'Permintaan Barang' }[req.type] || req.type;
 
   const type_lower = (req.type || '').toLowerCase();
-  const detail = type_lower === 'vehicle' ? (ALL_VEHICLES.find(v => String(v.id) === String(req.vehicle_id))?.name || req.details || 'Menunggu Plotting') :
+  const detail = type_lower === 'vehicle' ? ((ALL_VEHICLES.find(v => String(v.id) === String(req.vehicle_id)) || {}).name || req.details || 'Menunggu Plotting') :
                  type_lower === 'room'    ? (ROOM_MAP[req.room_id] || req.room_id || req.details) :
                  type_lower === 'zoom'    ? (req.zoom_account_id || req.details) :
                  type_lower === 'repair'  ? (req.location_detail || req.details) :
@@ -3028,9 +3066,17 @@ function buildDetailBody(req) {
       ${req.type === 'Dormitory' ? `
       <div class="tv-row">
         <div class="tv-label">Penghuni</div>
-        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'}</div>
+        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'} <span style="font-size:0.85rem;color:#6b7280;font-weight:400;">(${req.participants || '0'} orang)</span></div>
       </div>` : ''}
       ${req.type === 'Vehicle' ? `
+      <div class="tv-row">
+        <div class="tv-label">Penumpang</div>
+        <div class="tv-value" style="font-weight:600;">${req.passenger_name || '-'} <span style="font-size:0.85rem;color:#6b7280;font-weight:400;">(${req.passenger_name ? req.passenger_name.split(',').length : 0} orang)</span></div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Lokasi Awal</div>
+        <div class="tv-value" style="font-weight:600;">${req.departure || '-'}</div>
+      </div>
       <div class="tv-row">
         <div class="tv-label">Lokasi Tujuan</div>
         <div class="tv-value" style="font-weight:600;">${req.destination || '-'}</div>
@@ -3043,6 +3089,25 @@ function buildDetailBody(req) {
         <div class="tv-label">Item / Lokasi</div>
         <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>
       </div>
+      ${req.type === 'Item2' ? `
+      <div class="tv-row" style="grid-column:1/3; margin-top:0.5rem;">
+        <div class="tv-label" style="margin-bottom:0.5rem;">Daftar Permintaan:</div>
+        <div class="tv-value" style="width:100%;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead style="background:#f1f5f9; border-bottom:1px solid #e2e8f0;">
+              <tr><th style="padding:0.5rem;text-align:left;">Nama Barang</th><th style="padding:0.5rem;text-align:center;">Jumlah</th></tr>
+            </thead>
+            <tbody>
+              ${(function(){
+                try {
+                  let items = JSON.parse(req.items_json);
+                  return items.map(i => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:0.5rem;">${i.name}</td><td style="padding:0.5rem;text-align:center;font-weight:600;">${i.quantity}</td></tr>`).join('');
+                } catch(e) { return '<tr><td colspan="2" style="padding:0.5rem;color:red;">Format data invalid</td></tr>'; }
+              })()}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ''}
       ${req.type === 'Zoom' ? `
       <div class="tv-row">
         <div class="tv-label">Nama Kegiatan</div>
@@ -3144,7 +3209,7 @@ async function loadRABView(requestId) {
 
 // ===== UPDATE STATUS =====
 async function updateStatus(id, type, newStatus) {
-  const note     = document.getElementById('admin-note')?.value || '';
+  const note     = (document.getElementById('admin-note') || {}).value || '';
   const prevNote = currentRequestNote;
   const res = await apiPost(API_BASE + 'requests.php', {
     action: 'update_status', id, type, status: newStatus, note, prev_note: prevNote
@@ -3184,7 +3249,7 @@ async function handleApproveRAB(id) {
 }
 
 async function doDisburseRepair(id) {
-  const worker = document.getElementById('assign-worker')?.value || '';
+  const worker = (document.getElementById('assign-worker') || {}).value || '';
   if (!worker) {
     Toast.error('Pilih pekerja/staff terlebih dahulu!');
     return;
@@ -3199,15 +3264,15 @@ async function doDisburseRepair(id) {
 async function doApproveRequest(id, type, targetStatus = 'approved') {
   let noteAppend = '';
   if (type === 'Zoom') {
-    const info = document.getElementById('assign-zoom')?.value;
+    const info = (document.getElementById('assign-zoom') || {}).value;
     if (info) noteAppend = `Zoom Info: ${info}. `;
   } else if (type === 'Item') {
-    const info = document.getElementById('assign-item')?.value;
+    const info = (document.getElementById('assign-item') || {}).value;
     if (info) noteAppend = `Asset Info: ${info}. `;
   }
   
   const noteEl    = document.getElementById('admin-note');
-  const rawNote   = noteEl?.value || '';
+  const rawNote   = (noteEl || {}).value || '';
   
   let finalNote = noteAppend ? (noteAppend + rawNote) : rawNote;
   
@@ -3229,10 +3294,10 @@ async function doApproveRequest(id, type, targetStatus = 'approved') {
 }
 
 async function doVehicleAssign(id, targetStatus = 'approved') {
-  const vehicleId  = document.getElementById('assign-vehicle')?.value || '';
-  const driverName = document.getElementById('assign-driver')?.value  || '';
+  const vehicleId  = (document.getElementById('assign-vehicle') || {}).value || '';
+  const driverName = (document.getElementById('assign-driver') || {}).value  || '';
   const noteEl     = document.getElementById('admin-note');
-  const rawNote    = noteEl?.value || '';
+  const rawNote    = (noteEl || {}).value || '';
 
   if (!vehicleId || !driverName) {
     Toast.error('Pilih kendaraan dinas dan driver!');
@@ -3244,7 +3309,7 @@ async function doVehicleAssign(id, targetStatus = 'approved') {
   });
   if (!res.success) { Toast.error(res.message); return; }
 
-  const vName = ALL_VEHICLES.find(v => v.id === vehicleId)?.name || vehicleId;
+  const vName = (ALL_VEHICLES.find(v => v.id === vehicleId) || {}).name || vehicleId;
   const isChanged = (String(vehicleId) !== String(currentDetailReq.vehicle_id)) || (String(driverName) !== String(currentDetailReq.driver_name));
 
   if (noteEl) {
@@ -3261,9 +3326,9 @@ async function doVehicleAssign(id, targetStatus = 'approved') {
 }
 
 async function doRoomApprove(id, targetStatus = 'approved') {
-  const roomId = document.getElementById('assign-room')?.value || '';
+  const roomId = (document.getElementById('assign-room') || {}).value || '';
   const noteEl = document.getElementById('admin-note');
-  const rawNote = noteEl?.value || '';
+  const rawNote = (noteEl || {}).value || '';
 
   if (!roomId) {
     Toast.error('Pilih ruangan yang akan ditetapkan!');
@@ -3293,9 +3358,9 @@ async function doRoomApprove(id, targetStatus = 'approved') {
 }
 
 async function doDormitoryApprove(id, targetStatus = 'approved') {
-  const dormitoryId = document.getElementById('assign-dormitory')?.value || '';
+  const dormitoryId = (document.getElementById('assign-dormitory') || {}).value || '';
   const noteEl = document.getElementById('admin-note');
-  const rawNote = noteEl?.value || '';
+  const rawNote = (noteEl || {}).value || '';
 
   if (!dormitoryId) {
     Toast.error('Pilih dormitory yang akan ditetapkan!');
@@ -3339,9 +3404,9 @@ function openRABModal(jenis = 'Tidak memungkinkan dikerjakan sendiri (pihak keti
 }
 
 function addRabItem() {
-  const name  = document.getElementById('rab-item-name')?.value?.trim();
-  const qty   = parseInt(document.getElementById('rab-item-qty')?.value || '1');
-  const price = parseFloat(document.getElementById('rab-item-price')?.value || '0');
+  const nameEl = document.getElementById('rab-item-name'); const name = (nameEl ? nameEl.value : '').trim();
+  const qty   = parseInt((document.getElementById('rab-item-qty') || {}).value || '1');
+  const price = parseFloat((document.getElementById('rab-item-price') || {}).value || '0');
   if (!name || price <= 0 || qty <= 0) { Toast.error('Mohon lengkapi data item RAB'); return; }
   rabItems.push({ id: Date.now(), itemName: name, quantity: qty, unitPrice: price });
   document.getElementById('rab-item-name').value = '';
@@ -3382,7 +3447,7 @@ async function submitRAB() {
   if (!rabItems.length) { Toast.error('Minimal isi 1 item RAB.'); return; }
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
-  const jenis = document.getElementById('rab-jenis')?.value || '';
+  const jenis = (document.getElementById('rab-jenis') || {}).value || '';
 
   const res = await apiPost(API_BASE + 'requests.php', {
     action: 'submit_repair_budget',
@@ -3431,8 +3496,8 @@ function openGudangModal(id) {
 }
 
 function addGudangItem() {
-  const name = document.getElementById('gudang-item-name')?.value?.trim();
-  const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
+  const nameEl2 = document.getElementById('gudang-item-name'); const name = (nameEl2 ? nameEl2.value : '').trim();
+  const qty  = parseInt((document.getElementById('gudang-item-qty') || {}).value || '1');
   if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
   gudangItems.push({ id: Date.now(), itemName: name, quantity: qty });
   document.getElementById('gudang-item-name').value = '';
@@ -3494,9 +3559,9 @@ function renderGrTable() {
 }
 
 function addGrItem() {
-  const name  = document.getElementById('gr-item-name')?.value?.trim();
-  const qty   = parseInt(document.getElementById('gr-item-qty')?.value || '1');
-  const price = parseFloat(document.getElementById('gr-item-price')?.value || '0');
+  const nameEl3 = document.getElementById('gr-item-name'); const name = (nameEl3 ? nameEl3.value : '').trim();
+  const qty   = parseInt((document.getElementById('gr-item-qty') || {}).value || '1');
+  const price = parseFloat((document.getElementById('gr-item-price') || {}).value || '0');
   if (!name || price <= 0 || qty <= 0) { Toast.error('Mohon lengkapi data item RAB'); return; }
   grItems.push({ id: Date.now(), itemName: name, quantity: qty, unitPrice: price });
   document.getElementById('gr-item-name').value = '';
@@ -3513,8 +3578,8 @@ function removeGrItem(id) {
 async function submitGudang() {
   if (!currentRequestId) { Toast.error('Tidak ada request terpilih.'); return; }
 
-  const jenis = document.getElementById('gudang-jenis')?.value || '';
-  let note = document.getElementById('gudang-note')?.value?.trim() || '';
+  const jenis = (document.getElementById('gudang-jenis') || {}).value || '';
+  const noteEl2 = document.getElementById('gudang-note'); let note = (noteEl2 ? noteEl2.value : '').trim() || '';
   
   // If Beli Sparepart, submit as RAB
   if (jenis === 'Perlu mengajukan pembelian sparepart (dikerjakan sendiri)') {
@@ -3636,11 +3701,11 @@ window.openEditUser = function(id) {
 };
 
 window.submitUserForm = async function() {
-  const id       = document.getElementById('edit-user-id')?.value;
-  const full_name= document.getElementById('user-fullname')?.value;
-  const emp_id   = document.getElementById('user-employee-id')?.value;
-  const role     = document.getElementById('user-role')?.value;
-  const password = document.getElementById('user-password')?.value;
+  const id       = (document.getElementById('edit-user-id') || {}).value;
+  const full_name= (document.getElementById('user-fullname') || {}).value;
+  const emp_id   = (document.getElementById('user-employee-id') || {}).value;
+  const role     = (document.getElementById('user-role') || {}).value;
+  const password = (document.getElementById('user-password') || {}).value;
 
   if(!full_name || !emp_id || !role) {
     Toast.error('Mohon lengkapi data wajib.');
@@ -3828,8 +3893,8 @@ window.showAdminDayDetail = function(dateStr, updateGrid = true) {
 };
 
 function exportExcel() {
-  const month = document.getElementById('stat-month')?.value || '';
-  const year = document.getElementById('stat-year')?.value || new Date().getFullYear();
+  const month = (document.getElementById('stat-month') || {}).value || '';
+  const year = (document.getElementById('stat-year') || {}).value || new Date().getFullYear();
   window.open(API_BASE + `export_excel.php?month=${month}&year=${year}`, '_blank');
 }
 
@@ -3991,11 +4056,11 @@ function renderMasterData() {
 // --- SYSTEM SETTINGS ---
 function renderSystemSettings() {
     const s = systemSettings || {};
-    const appName = s.APP_NAME?.setting_value || 'SILATAS';
-    const teleToken = s.TELE_TOKEN?.setting_value || '';
-    const teleGroupId = s.TELE_GROUP_ID?.setting_value || '';
-    const fonnteToken = s.FONNTE_TOKEN?.setting_value || '';
-    const isMaintenance = s.MAINTENANCE_MODE?.setting_value === '1';
+    const appName = (s.APP_NAME && s.APP_NAME.setting_value) || 'SILATAS';
+    const teleToken = (s.TELE_TOKEN && s.TELE_TOKEN.setting_value) || '';
+    const teleGroupId = (s.TELE_GROUP_ID && s.TELE_GROUP_ID.setting_value) || '';
+    const fonnteToken = (s.FONNTE_TOKEN && s.FONNTE_TOKEN.setting_value) || '';
+    const isMaintenance = (s.MAINTENANCE_MODE && s.MAINTENANCE_MODE.setting_value) === '1';
 
     return `
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -4422,6 +4487,28 @@ async function deleteMasterData(id) {
     </div>
   </div>
 </div>
+
+<?php if (empty($session['whatsapp_number'])): ?>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    Swal.fire({
+        title: 'Nomor WhatsApp Belum Diisi!',
+        text: 'Untuk menerima notifikasi status pengajuan, harap melengkapi nomor WhatsApp Anda di menu Profil.',
+        icon: 'info',
+        confirmButtonText: 'Lengkapi Sekarang',
+        showCancelButton: true,
+        cancelButtonText: 'Nanti Saja'
+    }).then((result) => {
+        if (result.isConfirmed && typeof renderView === 'function') {
+            renderView('profile');
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            const pMenu = document.getElementById('menu-profile');
+            if (pMenu) pMenu.classList.add('active');
+        }
+    });
+});
+</script>
+<?php endif; ?>
 
 </body>
 </html>

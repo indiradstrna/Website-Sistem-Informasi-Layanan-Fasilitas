@@ -495,9 +495,9 @@ let currentRequestNote = '';
 // PIC Mapping for highlighting
 const PIC_MAP = {
   'Vehicle': ['198605082025211053'], // Alfi Dwi Nugroho
-  'Item':    ['198902222025211044'], // Indra Septian
+  'Item':    ['198902222025211044', '16268300055'], // Indra Septian, Dhany
   'Zoom':    ['198902222025211044'], // Indra Septian
-  'Room':    ['199008092025212052', '198902222025211044'], // Lastiah, Indra
+  'Room':    ['199008092025212052', '198902222025211044', '16268300055'], // Lastiah, Indra, Dhany
   'Dormitory':['199008092025212052', '198902222025211044'],
   'Repair':  ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi
 };
@@ -510,13 +510,14 @@ window._adminCalSelected = null;
 // ===== LOAD ALL DATA =====
 async function loadAllData(silent = false) {
   try {
-    const [vehicles, rooms, dormitories, zooms, repairs, items, users, employees] = await Promise.all([
+    const [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle'),
       api(API_BASE + 'requests.php?action=get_room'),
       api(API_BASE + 'requests.php?action=get_dormitory'),
       api(API_BASE + 'requests.php?action=get_zoom'),
       api(API_BASE + 'requests.php?action=get_repair'),
       api(API_BASE + 'requests.php?action=get_item'),
+      api(API_BASE + 'requests.php?action=get_item2'),
       api(API_BASE + 'users.php?action=get_all'),
       api(API_BASE + 'users.php?action=get_employees'),
     ]);
@@ -535,9 +536,10 @@ async function loadAllData(silent = false) {
                type === 'Dormitory'? `${item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
                type === 'Zoom'    ? item.zoom_account_id :
                type === 'Repair'  ? `${item.location_detail}: ${item.issue_description}` :
-               type === 'Item'    ? `${item.item_name} (${item.item_quantity})` : '-',
-      date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : item.date_start,
-      raw_time_start: item.time_start || item.incident_time || '',
+               type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
+               type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
+      date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
+      raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.incident_time || ''),
       raw_time_end:   item.time_end   || '',
       raw_date_end:   item.return_date || item.date_end || '',
       driver_name:    item.driver_name || '',
@@ -552,6 +554,11 @@ async function loadAllData(silent = false) {
       occupant_name:   item.occupant_name  || '',
       location_detail: item.location_detail || '',
       item_name:       item.item_name      || '',
+      passenger_name:  item.passenger_name || '',
+      departure:       item.departure      || '',
+      destination:     item.destination    || '',
+      cost_bearer:     item.cost_bearer    || '',
+      items_json:      item.items_json     || '',
     }));
 
     const statusWeight = {
@@ -577,6 +584,7 @@ async function loadAllData(silent = false) {
       ...norm(zooms    || [], 'Zoom'),
       ...norm(repairs  || [], 'Repair'),
       ...norm(items    || [], 'Item'),
+      ...norm(items2   || [], 'Item2'),
     ].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
     allUsers = Array.isArray(users) ? users : [];
@@ -2254,7 +2262,7 @@ function renderDetailPengajuanTinjau() {
   const jadwalVal = `${ds}${de}<br><span style="font-size:.75rem;color:#6b7280;">Jam: ${timeStr}</span>`;
 
   // ── Category label ──
-  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
+  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang', Item2:'Permintaan Barang' }[req.type] || req.type;
 
   // ── Strict Role-Based Workflow Logic (deklarasi di awal agar bisa digunakan di seluruh fungsi) ──
   const PIC_MAP_LOCAL = {
@@ -2574,6 +2582,36 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Waktu / Tanggal:</span>
               ${jadwalVal}
             </div>
+            ${req.type === 'Dormitory' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Penghuni:</span>
+              ${req.occupant_name || '-'} <span style="font-size:0.85rem;color:#6b7280;">(${req.participants || '0'} orang)</span>
+            </div>` : ''}
+            ${req.type === 'Vehicle' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Penumpang:</span>
+              ${req.passenger_name || '-'} <span style="font-size:0.85rem;color:#6b7280;">(${req.passenger_name ? req.passenger_name.split(',').length : 0} orang)</span>
+            </div>
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Rute Perjalanan:</span>
+              ${req.departure || '-'} &rarr; ${req.destination || '-'}
+            </div>
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Pembebanan Biaya:</span>
+              ${req.cost_bearer || '-'}
+            </div>` : ''}
+            ${req.type === 'Item2' ? `
+            <div style="grid-column:1/3;">
+              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Daftar Barang:</span>
+              <ul style="margin:0; padding-left:1.25rem; font-size:0.85rem; color:#1e293b; line-height:1.5;">
+                ${(function(){
+                  try {
+                    let items = JSON.parse(req.items_json);
+                    return items.map(i => `<li><strong>${i.name}</strong> (${i.quantity} unit)</li>`).join('');
+                  } catch(e) { return '<li>Format data invalid</li>'; }
+                })()}
+              </ul>
+            </div>` : ''}
             <div style="grid-column:1/3; background:#f8fafc; padding:0.75rem 1rem; border-radius:0.5rem; border:1px solid #f1f5f9;">
               ${req.type === 'Zoom' ? `
                 <div style="display:flex;flex-direction:column;gap:0.5rem;">
@@ -2672,7 +2710,7 @@ function buildDetailBody(req) {
   const jadwalVal = `${ds}${de}<div style="font-size:.75rem;color:#6b7280;margin-top:.2rem;">${timeStr}</div>`;
 
   // ── Category label ──
-  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang' }[req.type] || req.type;
+  const catLabel = { Vehicle:'Kendaraan Dinas', Room:'Ruangan', Zoom:'Zoom Meeting', Repair:'Perbaikan Fasilitas', Item:'Peminjaman Barang', Item2:'Peminjaman Barang' }[req.type] || req.type;
 
   const type_lower = (req.type || '').toLowerCase();
   const detail = type_lower === 'vehicle' ? (ALL_VEHICLES.find(v => String(v.id) === String(req.vehicle_id))?.name || req.details || 'Menunggu Plotting') :
@@ -2743,12 +2781,24 @@ function buildDetailBody(req) {
       ${req.type === 'Dormitory' ? `
       <div class="tv-row">
         <div class="tv-label">Penghuni</div>
-        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'}</div>
+        <div class="tv-value" style="font-weight:600;">${req.occupant_name || '-'} <span style="font-size:0.85rem;color:#6b7280;font-weight:400;">(${req.participants || '0'} orang)</span></div>
       </div>` : ''}
       ${req.type === 'Vehicle' ? `
       <div class="tv-row">
+        <div class="tv-label">Penumpang</div>
+        <div class="tv-value" style="font-weight:600;">${req.passenger_name || '-'} <span style="font-size:0.85rem;color:#6b7280;font-weight:400;">(${req.passenger_name ? req.passenger_name.split(',').length : 0} orang)</span></div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Lokasi Awal</div>
+        <div class="tv-value" style="font-weight:600;">${req.departure || '-'}</div>
+      </div>
+      <div class="tv-row">
         <div class="tv-label">Lokasi Tujuan</div>
         <div class="tv-value" style="font-weight:600;">${req.destination || '-'}</div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Pembebanan Biaya</div>
+        <div class="tv-value" style="font-weight:600;">${req.cost_bearer || '-'}</div>
       </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Kategori</div>
@@ -2758,6 +2808,25 @@ function buildDetailBody(req) {
         <div class="tv-label">Item / Lokasi</div>
         <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>
       </div>
+      ${req.type === 'Item2' ? `
+        <div class="tv-row" style="grid-column:1/3; margin-top:0.5rem;">
+          <div class="tv-label" style="margin-bottom:0.5rem;">Daftar Permintaan:</div>
+          <div class="tv-value" style="width:100%;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+              <thead style="background:#f1f5f9; border-bottom:1px solid #e2e8f0;">
+                <tr><th style="padding:0.5rem;text-align:left;">Nama Barang</th><th style="padding:0.5rem;text-align:center;">Jumlah</th></tr>
+              </thead>
+              <tbody>
+                ${(function(){
+                  try {
+                    let items = JSON.parse(req.items_json);
+                    return items.map(i => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:0.5rem;">${i.name}</td><td style="padding:0.5rem;text-align:center;font-weight:600;">${i.quantity}</td></tr>`).join('');
+                  } catch(e) { return '<tr><td colspan="2" style="padding:0.5rem;color:red;">Format data invalid</td></tr>'; }
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
       ${req.type === 'Zoom' ? `
       <div class="tv-row">
         <div class="tv-label">Nama Kegiatan</div>
@@ -3705,6 +3774,28 @@ window.submitRoomChecklist = async function() {
     </div>
   </div>
 </div>
+
+<?php if (empty($session['whatsapp_number'])): ?>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    Swal.fire({
+        title: 'Nomor WhatsApp Belum Diisi!',
+        text: 'Untuk menerima notifikasi status pengajuan, harap melengkapi nomor WhatsApp Anda di menu Profil.',
+        icon: 'info',
+        confirmButtonText: 'Lengkapi Sekarang',
+        showCancelButton: true,
+        cancelButtonText: 'Nanti Saja'
+    }).then((result) => {
+        if (result.isConfirmed && typeof renderView === 'function') {
+            renderView('profile');
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            const pMenu = document.getElementById('menu-profile');
+            if (pMenu) pMenu.classList.add('active');
+        }
+    });
+});
+</script>
+<?php endif; ?>
 
 </body>
 </html>

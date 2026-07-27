@@ -44,6 +44,7 @@ $tableMap = [
     'Zoom'    => 'zoom_requests',
     'Repair'  => 'repair_requests',
     'Item'    => 'item_loan_requests',
+    'Item2'   => 'item_requests',
 ];
 
 /**
@@ -63,12 +64,33 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         'Dormitory'=> 'DRM',
         'Zoom'    => 'ZOM',
         'Repair'  => 'REP',
-        'Item'    => 'ITM'
+        'Item'    => 'ITM',
+        'Item2'   => 'ITM'
     ];
     $code = $typeCodes[$type] ?? 'REQ';
     $approvableStatuses = ['pending', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund', 'approved', 'ready_for_user'];
     
     if (in_array($newStatus, $approvableStatuses)) {
+        if ($newStatus === 'pending') {
+            $promptWa = "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'waiting_manager_fmd') {
+            $promptWa = "\n*Untuk menyetujui pengajuan ini (Manager FMD), balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manager FMD), balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'waiting_manager_fad') {
+            $promptWa = "\n*Untuk menyetujui pengajuan ini (Manager FAD), balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manager FAD), balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'waiting_ppk') {
+            $promptWa = "\n*Untuk menyetujui pengajuan ini (PPK), balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (PPK), balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'waiting_bod') {
+            $promptWa = "\n*Untuk menyetujui pengajuan ini (BOD), balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (BOD), balas:</b>\nSETUJU {$code}-{$id}";
+        } else {
+            $promptWa = "\n*Untuk memproses pengajuan ini, balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk memproses pengajuan ini, balas:</b>\nSETUJU {$code}-{$id}";
+        }
+
         if ($newStatus === 'pending' && $type === 'Vehicle') {
             $waMsg .= "\n\n---\n*PILIHAN KENDARAAN:*\n";
             $tgMsg .= "\n\n---\n<b>PILIHAN KENDARAAN:</b>\n";
@@ -93,8 +115,8 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                     $dCount++;
                 }
             }
-            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A1\n_(Ganti A & 1 sesuai pilihan)_";
-            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A1\n<i>(Ganti A & 1 sesuai pilihan)</i>";
+            $waMsg .= $promptWa . " A1\n_(Ganti A & 1 sesuai pilihan)_";
+            $tgMsg .= $promptTg . " A1\n<i>(Ganti A & 1 sesuai pilihan)</i>";
         } else if ($newStatus === 'pending' && $type === 'Room') {
             $waMsg .= "\n\n---\n*PILIHAN RUANGAN:*\n";
             $tgMsg .= "\n\n---\n<b>PILIHAN RUANGAN:</b>\n";
@@ -107,8 +129,8 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                     $rCount++;
                 }
             }
-            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_";
-            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>";
+            $waMsg .= $promptWa . " A\n_(Ganti A sesuai pilihan)_";
+            $tgMsg .= $promptTg . " A\n<i>(Ganti A sesuai pilihan)</i>";
         } else if ($newStatus === 'pending' && $type === 'Dormitory') {
             $waMsg .= "\n\n---\n*PILIHAN DORMITORY:*\n";
             $tgMsg .= "\n\n---\n<b>PILIHAN DORMITORY:</b>\n";
@@ -121,18 +143,20 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
                     $rCount++;
                 }
             }
-            $waMsg .= "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id} A\n_(Ganti A sesuai pilihan)_";
-            $tgMsg .= "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id} A\n<i>(Ganti A sesuai pilihan)</i>";
+            $waMsg .= $promptWa . " A\n_(Ganti A sesuai pilihan)_";
+            $tgMsg .= $promptTg . " A\n<i>(Ganti A sesuai pilihan)</i>";
         } else {
-            $waMsg .= "\n\n---\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
-            $tgMsg .= "\n\n---\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
+            $waMsg .= "\n\n---" . $promptWa;
+            $tgMsg .= "\n\n---" . $promptTg;
         }
     }
+    
     $targetNumbers = [];
     $targetTelegramIds = [];
     $picMap = [
         'Vehicle' => ['198605082025211053'], // Alfi
         'Item'    => ['198902222025211044'], // Indra
+        'Item2'   => ['198902222025211044'], // Indra
         'Zoom'    => ['198902222025211044'], // Indra
         'Room'    => ['199008092025212052', '16268300055'], // Lastiah, Dani
         'Dormitory'=> ['199008092025212052', '16268300055'], // Lastiah, Dani
@@ -212,7 +236,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         'Room'    => '🏢',
         'Zoom'    => '📹',
         'Repair'  => '🛠️',
-        'Item'    => '📦'
+        'Item'    => '📦',
+        'Item2'   => '📦'
     ][$type] ?? '🔔';
     
     $typeLabel = [
@@ -220,7 +245,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         'Room'    => 'RUANGAN',
         'Zoom'    => 'ZOOM MEETING',
         'Repair'  => 'PERBAIKAN',
-        'Item'    => 'PEMINJAMAN BARANG'
+        'Item'    => 'PEMINJAMAN BARANG',
+        'Item2'   => 'PEMINJAMAN BARANG'
     ][$type] ?? strtoupper($type);
 
     // Fetch details for better formatting
@@ -232,7 +258,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
     'Dormitory'=> 'dormitory_requests',
         'Zoom'    => 'zoom_requests',
         'Repair'  => 'repair_requests',
-        'Item'    => 'item_loan_requests'
+        'Item'    => 'item_loan_requests',
+        'Item2'   => 'item_requests'
     ][$type] ?? '';
 
     if ($table) {
@@ -262,6 +289,16 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
             } elseif ($type === 'Item') {
                 $detailTxt .= "<b>Barang:</b> " . htmlspecialchars($row['item_name'] ?? '') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $row['loan_date'] . " " . substr($row['loan_time'], 0, 5) . " s/d " . $row['return_date'] . " " . substr($row['return_time'], 0, 5) . "\n";
+            } elseif ($type === 'Item2') {
+                $items = json_decode($row['items_json'] ?? '[]', true);
+                if (is_array($items) && count($items) > 0) {
+                    $detailTxt .= "<b>Daftar Barang:</b>\n";
+                    foreach ($items as $idx => $itm) {
+                        $name = trim($itm['name'] ?? 'Unknown');
+                        $qty = $itm['quantity'] ?? 1;
+                        $detailTxt .= ($idx + 1) . ". " . htmlspecialchars($name) . " (" . $qty . "x)\n";
+                    }
+                }
             }
         }
     }
@@ -359,7 +396,8 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             'dormitory_requests' => 'Dormitory',
             'zoom_requests'    => 'Zoom',
             'repair_requests'  => 'Repair',
-            'item_loan_requests' => 'Item'
+            'item_loan_requests' => 'Item',
+            'item_requests' => 'Item2'
         ];
         $type = $tableToType[$table] ?? 'Unknown';
         
@@ -405,6 +443,11 @@ switch ($action) {
 
     case 'get_item':
         $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, item_name, item_quantity, DATE_FORMAT(loan_date,'%Y-%m-%d') as loan_date, loan_time, DATE_FORMAT(return_date,'%Y-%m-%d') as return_date, return_time, purpose, status, note, created_at FROM item_loan_requests ORDER BY created_at DESC LIMIT 100");
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
+        break;
+
+    case 'get_item2':
+        $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, purpose, items_json, status, note, created_at FROM item_requests ORDER BY created_at DESC LIMIT 100");
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
@@ -458,6 +501,15 @@ switch ($action) {
 
     case 'get_item_by_user':
         $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, item_name, item_quantity, DATE_FORMAT(loan_date,'%Y-%m-%d') as loan_date, loan_time, DATE_FORMAT(return_date,'%Y-%m-%d') as return_date, return_time, purpose, status, note, created_at FROM item_loan_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
+        $stmt->close();
+        break;
+
+    case 'get_item2_by_user':
+        $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, purpose, items_json, status, note, created_at FROM item_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -606,6 +658,39 @@ switch ($action) {
             $newId = $conn->insert_id;
             notifyNewRequest('Item', $newId, $applicant_name, $applicant_unit, $purpose);
             jsonResponse(true, 'Permohonan peminjaman barang berhasil disimpan!', ['id' => $newId]);
+        } else {
+            jsonResponse(false, 'Gagal menyimpan data.');
+        }
+        $stmt->close();
+        break;
+
+    case 'submit_item2':
+        $applicant_name = $_POST['applicant_name'] ?? '';
+        $applicant_unit = $_POST['applicant_unit'] ?? '';
+        $purpose        = $_POST['purpose']        ?? '';
+        $items_json     = $_POST['items_json']     ?? '[]';
+
+        $stmt = $conn->prepare("INSERT INTO item_requests (user_id, applicant_name, applicant_unit, purpose, items_json, status) VALUES (?,?,?,?,?,'pending')");
+        $stmt->bind_param("issss", $userId, $applicant_name, $applicant_unit, $purpose, $items_json);
+        if ($stmt->execute()) {
+            $newId = $conn->insert_id;
+            
+            // Loop through JSON and insert into item_request_details
+            $items = json_decode($items_json, true);
+            if (is_array($items)) {
+                $stmtDet = $conn->prepare("INSERT INTO item_request_details (request_id, item_id, item_name, quantity) VALUES (?,?,?,?)");
+                foreach ($items as $itm) {
+                    $iId = $itm['id'] ?? 0;
+                    $iName = $itm['name'] ?? '';
+                    $iQty = $itm['quantity'] ?? 1;
+                    $stmtDet->bind_param("iisi", $newId, $iId, $iName, $iQty);
+                    $stmtDet->execute();
+                }
+                $stmtDet->close();
+            }
+
+            notifyNewRequest('Item2', $newId, $applicant_name, $applicant_unit, $purpose);
+            jsonResponse(true, 'Permintaan barang berhasil dikirim!', ['id' => $newId]);
         } else {
             jsonResponse(false, 'Gagal menyimpan data.');
         }

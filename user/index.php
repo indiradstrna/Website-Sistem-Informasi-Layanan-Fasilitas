@@ -281,7 +281,7 @@ let USER_WA_NUMBER = <?= json_encode($waNumber) ?>;
 let USER_WA_APIKEY = <?= json_encode($waApikey) ?>;
 const API_BASE  = '<?= BASE_URL ?>/api/';
 
-let myVehicle = [], myRoom = [], myDormitory = [], myZoom  = [], myRepair = [], myItem  = [];
+let myVehicle=[], myRoom=[], myDormitory=[], myZoom=[], myRepair=[], myItem=[], myItem2=[];
 let allVehicle= [], allRoom  = [], allDormitory = [], allZoom  = [], allRepair = [];
 let currentRequests = [];
 let currentPage = 1;
@@ -417,13 +417,14 @@ const ZOOM_ACCOUNTS = [
 
 async function loadMyData(silent = false) {
   try {
-    const [v,r,d,z,rep,itm, av, ar, ad, az, arep] = await Promise.all([
+    const [v,r,d,z,rep,itm,itm2, av, ar, ad, az, arep] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle_by_user'),
       api(API_BASE + 'requests.php?action=get_room_by_user'),
       api(API_BASE + 'requests.php?action=get_dormitory_by_user'),
       api(API_BASE + 'requests.php?action=get_zoom_by_user'),
       api(API_BASE + 'requests.php?action=get_repair_by_user'),
       api(API_BASE + 'requests.php?action=get_item_by_user'),
+      api(API_BASE + 'requests.php?action=get_item2_by_user'),
       api(API_BASE + 'requests.php?action=get_vehicle'),
       api(API_BASE + 'requests.php?action=get_room'),
       api(API_BASE + 'requests.php?action=get_dormitory'),
@@ -436,6 +437,7 @@ async function loadMyData(silent = false) {
     myZoom    = Array.isArray(z)   ? z   : [];
     myRepair  = Array.isArray(rep) ? rep : [];
     myItem    = Array.isArray(itm) ? itm : [];
+    myItem2   = Array.isArray(itm2) ? itm2 : [];
     allVehicle= Array.isArray(av)  ? av  : [];
     allRoom   = Array.isArray(ar)  ? ar  : [];
     allDormitory = Array.isArray(ad) ? ad : [];
@@ -449,6 +451,7 @@ async function loadMyData(silent = false) {
       ...myZoom.map(r=>({...r,_type:'Zoom'})),
       ...myRepair.map(r=>({...r,_type:'Repair'})),
       ...myItem.map(r=>({...r,_type:'Item'})),
+      ...myItem2.map(r=>({...r,_type:'Item2'})),
     ].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 
     renderNotifDropdown();
@@ -483,7 +486,7 @@ async function loadMyData(silent = false) {
 
 function switchView(viewId) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === viewId));
-  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
+  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', item2:'Permintaan Barang', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[viewId] || viewId;
   previousView = window._currentView || 'dashboard';
@@ -516,7 +519,8 @@ function renderCurrentView() {
     case 'dormitory':   ct.innerHTML = renderServicePage('dormitory');   break;
     case 'zoom':        ct.innerHTML = renderServicePage('zoom');   break;
     case 'repair':      ct.innerHTML = renderServicePage('repair'); break;
-    case 'item':        ct.innerHTML = renderServicePage('item');   break;
+    case 'item':        ct.innerHTML = renderServicePage('item');   break; 
+    case 'item2':       ct.innerHTML = renderServicePage('item2');   break; 
     case 'my_reports':  ct.innerHTML = renderMyReports();          break;
     case 'profile':     ct.innerHTML = renderProfile();            break;
     case 'detail_pengajuan': ct.innerHTML = renderDetailPengajuan(); break;
@@ -562,6 +566,7 @@ function renderDashboard() {
           {id:'zoom',icon:'💻',label:'Zoom Meeting',desc:'Request akun Zoom untuk rapat online'},
           {id:'repair',icon:'🔧',label:'Perbaikan',desc:'Laporkan kerusakan fasilitas'},
           {id:'item',icon:'📦',label:'Peminjaman Barang',desc:'Pinjam peralatan kantor'},
+          {id:'item2',icon:'📦',label:'Permintaan Barang',desc:'Permintaan barang kebutuhan operasional'},
         ].map(s=>`
         <div style="padding:.75rem;border:1px solid var(--color-slate-200);border-radius:var(--radius-md);cursor:pointer;transition:all .15s;" onclick="switchView('${s.id}')" onmouseover="this.style.borderColor='var(--color-primary-500)';this.style.background='var(--color-primary-50)'" onmouseout="this.style.borderColor='var(--color-slate-200)';this.style.background=''">
           <div style="font-size:1.5rem;margin-bottom:.3rem;">${s.icon}</div>
@@ -615,6 +620,7 @@ function renderServicePage(type) {
     zoom:   { title:'Zoom Meeting',    desc:'Request akun Zoom untuk online meeting' },
     repair: { title:'Laporan Perbaikan', desc:'Laporkan kerusakan/masalah fasilitas' },
     item:   { title:'Peminjaman Barang', desc:'Ajukan peminjaman peralatan' },
+    item2:   { title:'Permintaan Barang', desc:'Ajukan pemintaan barang' },
   };
   const info = typeInfo[type];
 
@@ -638,7 +644,73 @@ function renderServicePage(type) {
   </div>`;
 
   let layoutHTML = tableHTML;
-  if(type === 'vehicle') {
+
+  if (type === 'item2') {
+    layoutHTML = `
+    <div class="card">
+      <!-- Tab Navigation -->
+      <div style="display:flex; border-bottom:2px solid var(--color-slate-100); padding: 0 1.25rem;">
+        <button id="tab-btn-katalog" onclick="switchItem2Tab('katalog')" style="padding:0.9rem 1.5rem; font-size:0.9rem; font-weight:700; border:none; background:none; cursor:pointer; color:var(--primary); border-bottom:2px solid var(--primary); margin-bottom:-2px; transition:all .2s;">
+          📦 Katalog Barang
+        </button>
+        <button id="tab-btn-riwayat" onclick="switchItem2Tab('riwayat')" style="padding:0.9rem 1.5rem; font-size:0.9rem; font-weight:700; border:none; background:none; cursor:pointer; color:var(--color-slate-400); border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .2s;">
+          🕐 Riwayat Pengajuan
+        </button>
+      </div>
+
+      <!-- Tab: Katalog -->
+      <div id="tab-pane-katalog">
+        <div style="padding: 1rem 1.25rem 0 1.25rem;">
+          <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+            <div style="position: relative; flex:1; min-width:200px; max-width:350px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:1rem; top:50%; transform:translateY(-50%); color:var(--color-slate-400);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="catalog-search" class="form-input" placeholder="Cari nama barang..." oninput="filterCatalog()" style="padding-left: 2.5rem;" />
+            </div>
+            <div style="flex:1; min-width:200px; max-width:350px;">
+              <select id="catalog-skel-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
+                <option value="">-- Semua Sub-Kelompok --</option>
+                ${(typeof ALL_INV_SKEL !== 'undefined' ? ALL_INV_SKEL : []).map(s => `<option value="${s.code}">${s.name}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap" style="padding: 0; margin-top:0.75rem;">
+          <table id="catalog-grid" style="width:100%;">
+            <thead>
+              <tr>
+                <th>Nama Barang</th>
+                <th style="width:100px;">Stok</th>
+                <th style="width:80px;">Satuan</th>
+                <th style="width:170px; text-align:center;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="catalog-grid-body">
+              <!-- Content rendered by renderCatalogPage() -->
+            </tbody>
+          </table>
+        </div>
+        <div id="catalog-pagination" style="padding: 0.75rem 1.25rem; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--color-slate-100);"></div>
+      </div>
+
+      <!-- Tab: Riwayat -->
+      <div id="tab-pane-riwayat" style="display:none;">
+        <div class="table-wrap" style="padding: 0;">
+          <table style="width:100%;">
+            <thead><tr>
+              <th>Detail</th>
+              <th>Status</th>
+              <th>Dibuat</th>
+              <th style="text-align:center">Aksi</th>
+            </tr></thead>
+            <tbody id="my-item2-table-body">
+              ${renderMyTypeRows(type)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+    setTimeout(() => { if (window._currentView === 'item2') { filteredCatalogItems = ALL_INV_ITEMS; renderCatalogPage(1); } }, 50);
+  } else if(type === 'vehicle') {
     layoutHTML = `
     <div style="display:grid; grid-template-columns: 100%; gap:1.5rem; align-items:start;">
       <div class="grid-main">
@@ -864,16 +936,23 @@ function renderServicePage(type) {
   <div class="page-header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><h1>${info.title}</h1><p>${info.desc}</p></div>
-      <button class="btn btn-primary" onclick="openForm('${type}')">+ Buat Pengajuan</button>
+      ${type === 'item2' 
+        ? `<button class="btn btn-primary" onclick="openForm('${type}')" style="position:relative; display:flex; align-items:center; gap:0.5rem;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+             Lihat Permintaan 
+             <span id="cart-badge" style="background:var(--color-rose-500); color:white; border-radius:10px; padding:2px 8px; font-size:0.75rem; font-weight:bold;">${window.item2Cart ? window.item2Cart.length : 0}</span>
+           </button>`
+        : `<button class="btn btn-primary" onclick="openForm('${type}')">+ Buat Pengajuan</button>`
+      }
     </div>
   </div>
   ${layoutHTML}`;
 }
 
 function renderMyTypeRows(type) {
-  const dataMap = { vehicle: myVehicle, room: myRoom, dormitory: myDormitory, zoom: myZoom, repair: myRepair, item: myItem };
+  const dataMap = { vehicle: myVehicle, room: myRoom, dormitory: myDormitory, zoom: myZoom, repair: myRepair, item: myItem, item2: myItem2 };
   const data    = dataMap[type] || [];
-  if (!data.length) return `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Belum ada pengajuan ${type}</td></tr>`;
+  if (!data.length) return `<tr><td colspan="${type === 'item2' ? 4 : 5}" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Belum ada pengajuan ${type}</td></tr>`;
 
   return data.map(r => {
     let detail = '-';
@@ -892,10 +971,18 @@ function renderMyTypeRows(type) {
       </span>`; 
     }
     else if (type === 'item')   { detail = `${r.item_name} (${r.item_quantity}x)`; period = `${r.loan_date||''} → ${r.return_date||''}`; }
+    else if (type === 'item2')  { 
+      let itemsList = [];
+      try { itemsList = JSON.parse(r.items_json || '[]'); } catch(e) {}
+      let summary = itemsList.map(i => `${i.name} (${i.quantity}x)`).join(', ');
+      detail = `<div style="font-weight:700;" title="${summary}">${summary || '-'}</div><div style="font-size:0.75rem;color:var(--color-slate-500);">${r.purpose}</div>`; 
+      period = '-'; 
+    }
+    const periodColumn = (type === 'item2') ? '' : `<td data-label="${type === 'repair' ? 'Prioritas' : 'Periode'}" style="font-size:.78rem;color:var(--color-slate-500);">${period}</td>`;
     return `
     <tr>
       <td data-label="${type === 'repair' ? 'Lokasi' : 'Detail'}" style="font-weight:600;font-size:.875rem;">${detail}</td>
-      <td data-label="${type === 'repair' ? 'Prioritas' : 'Periode'}" style="font-size:.78rem;color:var(--color-slate-500);">${period}</td>
+      ${periodColumn}
       <td data-label="Status">${getStatusBadge(r.status)}</td>
       <td data-label="Dibuat" style="font-size:.78rem;color:var(--color-slate-400);">${formatDate(r.created_at)}</td>
       <td data-label="Aksi" style="text-align:center"><button class="btn btn-ghost btn-sm" onclick="openReportDetail(${r.id},'${type}')">Detail</button></td>
@@ -1296,7 +1383,7 @@ function openForm(type) {
   document.getElementById('modal-form-title').textContent = {
     vehicle:'Form Peminjaman Kendaraan Dinas', room:'Form Booking Ruangan', dormitory:'Form Booking Dormitory',
     zoom:'Form Request Zoom Meeting', repair:'Form Laporan Perbaikan',
-    item:'Form Peminjaman Barang'
+    item:'Form Peminjaman Barang', item2:'Form Permintaan Barang'
   }[type] || 'Form Pengajuan';
 
   document.getElementById('modal-form-body').innerHTML = buildForm(type);
@@ -1392,9 +1479,10 @@ function buildForm(type) {
       </div>
     </div>
   </div>
-  <div class="grid-2">
-    <div class="form-group"><label class="form-label">Hari / Tanggal</label><input type="date" id="f-date-start" class="form-input" required /></div>
-    <div class="form-group"><label class="form-label">Waktu</label><input type="time" id="f-time-start" class="form-input" required /></div>
+  <div class="grid-3">
+    <div class="form-group"><label class="form-label">Tanggal Mulai</label><input type="date" id="f-date-start" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Tanggal Selesai</label><input type="date" id="f-date-end" class="form-input" required /></div>
+    <div class="form-group"><label class="form-label">Jam Keberangkatan</label><input type="time" id="f-time-start" class="form-input" required /></div>
   </div>
   <div class="form-group"><label class="form-label">Keberangkatan</label><input type="text" id="f-departure" class="form-input" required placeholder="Lokasi keberangkatan..." /></div>
   <div class="form-group"><label class="form-label">Tujuan</label><input type="text" id="f-destination" class="form-input" required placeholder="Lokasi tujuan..." /></div>
@@ -1491,7 +1579,193 @@ function buildForm(type) {
   <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan..."></textarea></div>
   <div class="form-group"><label class="form-label">Kebutuhan Khusus</label><textarea id="f-special-needs" class="form-textarea" placeholder="Extra bed, dll..."></textarea></div>`;
 
+  if (type === 'item2') {
+    let cartHTML = '';
+    if (!window.item2Cart || window.item2Cart.length === 0) {
+      cartHTML = `<div style="text-align:center; padding:2rem; color:var(--color-slate-400);">Keranjang kosong. Silakan pilih barang dari katalog.</div>`;
+    } else {
+      cartHTML = `
+      <div style="max-height:300px; overflow-y:auto; margin-bottom:1rem; border:1px solid var(--color-slate-200); border-radius:var(--radius-md); padding:0.5rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--color-slate-200); text-align:left;">
+              <th style="padding:0.5rem;">Barang</th>
+              <th style="padding:0.5rem; width:80px;">Qty</th>
+              <th style="padding:0.5rem; width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${window.item2Cart.map((item, index) => `
+              <tr style="border-bottom:1px solid var(--color-slate-100);">
+                <td style="padding:0.5rem;">${item.name}</td>
+                <td style="padding:0.5rem;">
+                  <input type="number" class="form-input" style="padding:0.25rem; height:auto;" min="1" value="${item.quantity}" onchange="updateCartQty(${index}, this.value)" />
+                </td>
+                <td style="padding:0.5rem; text-align:center;">
+                  <button type="button" onclick="removeFromCart(${index})" style="color:var(--color-rose-500); background:none; border:none; cursor:pointer;" title="Hapus">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    }
+    
+    return `
+    ${nameUnit}
+    <div style="font-weight:600; margin-bottom:0.5rem;">Daftar Permintaan:</div>
+    ${cartHTML}
+    <div class="form-group"><label class="form-label">Keperluan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan keperluan permintaan barang ini..."></textarea></div>`;
+  }
+
   return '';
+}
+
+window.item2Cart = window.item2Cart || [];
+
+function addToCart(itemId) {
+  const item = ALL_INV_ITEMS.find(x => x.id == itemId);
+  if (item) {
+    const existing = window.item2Cart.find(x => x.id == itemId);
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      window.item2Cart.push({ id: item.id, name: item.name, quantity: 1 });
+    }
+    
+    const badge = document.getElementById('cart-badge');
+    if (badge) badge.textContent = window.item2Cart.length;
+    
+    if (typeof Toast !== 'undefined') Toast.success(item.name + ' ditambahkan ke keranjang');
+  }
+}
+
+function updateCartQty(index, qty) {
+  if (window.item2Cart[index]) {
+    window.item2Cart[index].quantity = parseInt(qty) || 1;
+  }
+}
+
+function removeFromCart(index) {
+  if (window.item2Cart[index]) {
+    window.item2Cart.splice(index, 1);
+    openForm('item2'); // refresh form
+    const badge = document.getElementById('cart-badge');
+    if (badge) badge.textContent = window.item2Cart.length;
+  }
+}
+
+function updateItem2Id() {
+  const input = document.getElementById('f-item2-name');
+  const idInput = document.getElementById('f-item2-id');
+  if (!input || !idInput) return;
+  const val = input.value;
+  const item = ALL_INV_ITEMS.find(x => x.name === val);
+  if (item) {
+    idInput.value = item.id;
+  } else {
+    idInput.value = ''; // custom or not found
+  }
+}
+
+let currentCatalogPage = 1;
+const CATALOG_ITEMS_PER_PAGE = 10;
+let filteredCatalogItems = null;
+
+function renderCatalogPage(page = 1) {
+  currentCatalogPage = page;
+  const tbody = document.getElementById('catalog-grid-body');
+  const pag = document.getElementById('catalog-pagination');
+  if (!tbody) return;
+  
+  if (!filteredCatalogItems) {
+      filteredCatalogItems = ALL_INV_ITEMS || [];
+  }
+
+  const totalPages = Math.ceil(filteredCatalogItems.length / CATALOG_ITEMS_PER_PAGE) || 1;
+  if (currentCatalogPage > totalPages) currentCatalogPage = totalPages;
+  if (currentCatalogPage < 1) currentCatalogPage = 1;
+
+  const start = (currentCatalogPage - 1) * CATALOG_ITEMS_PER_PAGE;
+  const end = start + CATALOG_ITEMS_PER_PAGE;
+  const pageItems = filteredCatalogItems.slice(start, end);
+
+  if (pageItems.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 2rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</td></tr>';
+    if(pag) pag.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = pageItems.map(item => `
+    <tr style="transition:background .15s;" onmouseover="this.style.background='var(--color-slate-50)'" onmouseout="this.style.background=''">
+      <td style="font-weight:600; font-size:0.875rem; color:var(--color-slate-800);">${item.name}</td>
+      <td>
+        <span style="font-weight:700; color:${item.stock > 0 ? 'var(--color-emerald-600)' : 'var(--color-rose-600)'}">${item.stock}</span>
+      </td>
+      <td style="font-size:0.8rem; color:var(--color-slate-500);">${item.unit || '-'}</td>
+      <td style="text-align:center;">
+        <button class="btn btn-${item.stock > 0 ? 'primary' : 'outline'} btn-sm" style="font-size:0.78rem; font-weight:600;" onclick="addToCart(${item.id})" ${item.stock <= 0 ? 'disabled' : ''}>
+          ${item.stock > 0 ? '+ Tambah ke Keranjang' : 'Stok Habis'}
+        </button>
+      </td>
+    </tr>
+  `).join('');
+
+  if (pag) {
+    const totalShowing = Math.min(end, filteredCatalogItems.length);
+    pag.innerHTML = `
+      <span style="font-size:0.82rem; color:var(--color-slate-500);">Menampilkan ${start + 1}–${totalShowing} dari ${filteredCatalogItems.length} barang</span>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button class="btn btn-outline btn-sm" onclick="renderCatalogPage(${currentCatalogPage - 1})" ${currentCatalogPage === 1 ? 'disabled' : ''}>← Sebelumnya</button>
+        <span style="font-size:0.85rem; font-weight:600; color:var(--color-slate-700);">Hal ${currentCatalogPage} / ${totalPages}</span>
+        <button class="btn btn-outline btn-sm" onclick="renderCatalogPage(${currentCatalogPage + 1})" ${currentCatalogPage === totalPages ? 'disabled' : ''}>Selanjutnya →</button>
+      </div>
+    `;
+  }
+}
+
+let searchTimeout;
+function filterCatalog() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    const searchVal = (document.getElementById('catalog-search')?.value || '').toLowerCase();
+    const skelFilter = document.getElementById('catalog-skel-filter')?.value || '';
+    
+    filteredCatalogItems = (ALL_INV_ITEMS || []).filter(item => {
+      const matchSearch = !searchVal || (item.name || '').toLowerCase().includes(searchVal);
+      // skelFilter code is 7 chars (kd_skelbrg), item_code starts with 10-char sskel code which starts with skel code
+      const matchSkel = !skelFilter || (item.item_code || '').startsWith(skelFilter);
+      return matchSearch && matchSkel;
+    });
+    renderCatalogPage(1);
+  }, 200);
+}
+
+// ===== ITEM2 TAB SWITCH =====
+function switchItem2Tab(tab) {
+  const katalogPane = document.getElementById('tab-pane-katalog');
+  const riwayatPane = document.getElementById('tab-pane-riwayat');
+  const btnKatalog  = document.getElementById('tab-btn-katalog');
+  const btnRiwayat  = document.getElementById('tab-btn-riwayat');
+  if (!katalogPane || !riwayatPane) return;
+
+  if (tab === 'katalog') {
+    katalogPane.style.display = '';
+    riwayatPane.style.display = 'none';
+    btnKatalog.style.color = 'var(--primary)';
+    btnKatalog.style.borderBottomColor = 'var(--primary)';
+    btnRiwayat.style.color = 'var(--color-slate-400)';
+    btnRiwayat.style.borderBottomColor = 'transparent';
+  } else {
+    katalogPane.style.display = 'none';
+    riwayatPane.style.display = '';
+    btnRiwayat.style.color = 'var(--primary)';
+    btnRiwayat.style.borderBottomColor = 'var(--primary)';
+    btnKatalog.style.color = 'var(--color-slate-400)';
+    btnKatalog.style.borderBottomColor = 'transparent';
+  }
 }
 
 // ===== SUBMIT FORM =====
@@ -1516,7 +1790,9 @@ async function doSubmitForm() {
   if (currentFormType === 'vehicle') {
     data.vehicle_id      = 'PENDING_ASSIGNMENT';
     data.date_start      = document.getElementById('f-date-start')?.value || '';
+    data.date_end        = document.getElementById('f-date-end')?.value || '';
     data.time_start      = document.getElementById('f-time-start')?.value || '';
+    data.time_end        = ''; // Jam selesai dihapuskan
     const passengerInputs = Array.from(document.querySelectorAll('.f-passenger-item'));
     data.passenger_name  = passengerInputs.map(inp => inp.value.trim()).filter(v => v).join(', ');
     data.departure       = document.getElementById('f-departure')?.value || '';
@@ -1555,6 +1831,14 @@ async function doSubmitForm() {
     data.return_date = document.getElementById('f-return-date')?.value || '';
     data.return_time = document.getElementById('f-return-time')?.value || '';
     data.purpose     = document.getElementById('f-purpose')?.value     || '';
+  } else if (currentFormType === 'item2') {
+    if (!window.item2Cart || window.item2Cart.length === 0) {
+      if (typeof Toast !== 'undefined') Toast.error('Keranjang kosong!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    data.items_json  = JSON.stringify(window.item2Cart);
+    data.purpose     = document.getElementById('f-purpose')?.value || '';
   }
 
   const res = await apiPost(API_BASE + 'requests.php', data);
@@ -1563,12 +1847,24 @@ async function doSubmitForm() {
 
   if (res.success) {
     Toast.success(res.message || 'Pengajuan berhasil dikirim!');
-    Modal.close('modal-form');
+    
+    if (currentFormType === 'item2') {
+      window.item2Cart = []; // reset cart
+      const badge = document.getElementById('cart-badge');
+      if (badge) badge.textContent = '0';
+    }
+    
+    closeModal('modal-form');
 
     // Notification is now handled entirely by the backend (api/requests.php)
     // ----------------------------
 
     await loadMyData();
+    // Update the history table body in-place without full re-render
+    const tbody = document.getElementById('my-' + currentFormType + '-table-body');
+    if (tbody) tbody.innerHTML = renderMyTypeRows(currentFormType);
+    // Auto-switch to riwayat tab for item2
+    if (currentFormType === 'item2') switchItem2Tab('riwayat');
   } else {
     Toast.error(res.message || 'Gagal mengirim pengajuan.');
   }
@@ -1576,9 +1872,9 @@ async function doSubmitForm() {
 
 // ===== OPEN REPORT DETAIL =====
 function openReportDetail(id, type) {
-  const dataMap = { vehicle:allVehicle, room:allRoom, zoom:allZoom, repair:myRepair, item:myItem };
+  const dataMap = { vehicle:allVehicle, room:allRoom, zoom:allZoom, repair:myRepair, item:myItem, item2:myItem2 };
   // Since allVehicle, allRoom, allZoom contain all data, we use those for details to be safe
-  // For repair and item, we use the user's list as they contain what they need
+  // For repair, item, item2, we use the user's list as they contain what they need
   const rows = dataMap[type] || [];
   const r = rows.find(x => String(x.id) === String(id));
   if (!r) {
@@ -1656,7 +1952,7 @@ function buildDetailBody(req) {
   const jadwalVal = `${ds}${de}<div style="font-size:.75rem;color:#6b7280;margin-top:.2rem;">${timeStr}</div>`;
 
   const type = (req._type || req.type || '').toLowerCase();
-  const catLabel = { vehicle:'Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang' }[type] || type;
+  const catLabel = { vehicle:'Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', item2:'Permintaan Barang' }[type] || type;
 
   // Timeline Section
   const timelineEvents = getTimelineEvents(req);
@@ -1695,12 +1991,19 @@ function buildDetailBody(req) {
       }).reverse().join('')}
     </div>`;
 
-  const detail = type === 'vehicle' ? (VEHICLE_MAP[req.vehicle_id] || 'Menunggu Plotting') :
-                 type === 'room'    ? req.room_id :
-                 type === 'dormitory' ? req.dormitory_id :
-                 type === 'zoom'    ? req.zoom_account_id :
-                 type === 'repair'  ? req.location_detail :
-                 type === 'item'    ? req.item_name : '-';
+  let detail = '-';
+  if (type === 'vehicle') detail = (VEHICLE_MAP[req.vehicle_id] || 'Menunggu Plotting');
+  else if (type === 'room') detail = req.room_id;
+  else if (type === 'dormitory') detail = req.dormitory_id;
+  else if (type === 'zoom') detail = req.zoom_account_id;
+  else if (type === 'repair') detail = req.location_detail;
+  else if (type === 'item') detail = req.item_name;
+  else if (type === 'item2') {
+    try {
+      const itemsList = JSON.parse(req.items_json || '[]');
+      detail = `<ul style="margin:0; padding-left:1.25rem;">` + itemsList.map(i => `<li style="margin-bottom:0.25rem;">${i.name} (<strong>${i.quantity}x</strong>)</li>`).join('') + `</ul>`;
+    } catch(e) {}
+  }
 
   return `
   <div class="tv-card" style="border:none; box-shadow:none; border-radius:0; margin:0;">
@@ -1766,10 +2069,11 @@ function buildDetailBody(req) {
         <div class="tv-label">Keterangan</div>
         <div class="tv-value" style="color:#374151;line-height:1.6;">${req.purpose || '-'}</div>
       </div>`}
+      ${type !== 'item2' ? `
       <div class="tv-row">
         <div class="tv-label">Jadwal</div>
         <div class="tv-value">${jadwalVal}</div>
-      </div>
+      </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Status</div>
         <div class="tv-value">${getStatusBadge(req.status)}</div>
@@ -2944,5 +3248,28 @@ window.showRepairDayDetail = function(key, updateGrid = true) {
     </div>`;
 };
 </script>
+
+<?php if (empty($session['whatsapp_number'])): ?>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    Swal.fire({
+        title: 'Nomor WhatsApp Belum Diisi!',
+        text: 'Untuk menerima notifikasi status pengajuan, harap melengkapi nomor WhatsApp Anda di menu Profil.',
+        icon: 'info',
+        confirmButtonText: 'Lengkapi Sekarang',
+        showCancelButton: true,
+        cancelButtonText: 'Nanti Saja'
+    }).then((result) => {
+        if (result.isConfirmed && typeof renderView === 'function') {
+            renderView('profile');
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            const pMenu = document.getElementById('menu-profile');
+            if (pMenu) pMenu.classList.add('active');
+        }
+    });
+});
+</script>
+<?php endif; ?>
+
 </body>
 </html>
