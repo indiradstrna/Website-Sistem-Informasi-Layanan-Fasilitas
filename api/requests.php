@@ -246,7 +246,7 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
         'Zoom'    => 'ZOOM MEETING',
         'Repair'  => 'PERBAIKAN',
         'Item'    => 'PEMINJAMAN BARANG',
-        'Item2'   => 'PEMINJAMAN BARANG'
+        'Item2'   => 'PERMINTAAN BARANG'
     ][$type] ?? strtoupper($type);
 
     // Fetch details for better formatting
@@ -743,6 +743,7 @@ switch ($action) {
                     'Dormitory'=> 'Dormitory',
                     'Zoom'    => 'Akun Zoom/Link',
                     'Item'    => 'Peminjaman Barang',
+                    'Item2'   => 'Permintaan Barang',
                     'Repair'  => 'Perbaikan'
                 ];
                 $label = $typeLabels[$type] ?? $type;
