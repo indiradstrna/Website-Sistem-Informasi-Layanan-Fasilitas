@@ -814,7 +814,7 @@ switch ($action) {
             
             // JIKA VEHICLE DAN APPROVED, KIRIM NOTIF KE DRIVER
             if ($type === 'Vehicle' && $newStatus === 'approved') {
-                $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
+                $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, v.passenger_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
                 $stmtDrv->bind_param("i", $id);
                 $stmtDrv->execute();
                 $reqRow = $stmtDrv->get_result()->fetch_assoc();
@@ -828,22 +828,24 @@ switch ($action) {
                     if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
                     $stmtV->close();
 
-                    $drvName = $reqRow['driver_name'];
-                    $appName = $reqRow['applicant_name'];
-                    $dest    = $reqRow['destination'] ?: '-';
-                    $waktu   = $reqRow['ds'];
-                    if (!empty($reqRow['de'])) {
-                        $waktu .= " s/d " . $reqRow['de'];
+                    $drvName  = $reqRow['driver_name'];
+                    $appName  = $reqRow['applicant_name'];
+                    $passName = $reqRow['passenger_name'] ?: '-';
+                    $dest     = $reqRow['destination'] ?: '-';
+                    
+                    $waktuTanggal = $reqRow['ds'];
+                    if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
+                        $waktuTanggal .= " - " . $reqRow['de'];
                     }
-                    $waktu .= " (Jam: " . substr($reqRow['time_start'] ?? '00:00:00', 0, 5) . ")";
-                    $purp    = $reqRow['purpose'] ?: '-';
+                    $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
+                    $purp     = $reqRow['purpose'] ?: '-';
 
                     if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Waktu:* $waktu\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
                         sendWhatsAppFonnte($msgDriver, $reqRow['whatsapp_number']);
                     }
                     if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
-                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Waktu:</b> $waktu\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
                         sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
                     }
                 }
