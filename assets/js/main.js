@@ -119,13 +119,30 @@ async function api(url, options = {}) {
     }
 }
 
+window._apiLocks = window._apiLocks || new Set();
+
 // POST ke API
 async function apiPost(url, data = {}) {
+    const lockKey = url + '|' + JSON.stringify(data);
+    if (window._apiLocks.has(lockKey)) {
+        console.warn('Blocked duplicate API request');
+        return { success: false, message: 'Permintaan sedang diproses...' };
+    }
+    window._apiLocks.add(lockKey);
+
     const body = new FormData();
     for (const [k, v] of Object.entries(data)) {
         if (v !== null && v !== undefined) body.append(k, v);
     }
-    return api(url, { method: 'POST', body });
+    
+    try {
+        const res = await api(url, { method: 'POST', body });
+        setTimeout(() => window._apiLocks.delete(lockKey), 1000);
+        return res;
+    } catch (err) {
+        setTimeout(() => window._apiLocks.delete(lockKey), 1000);
+        throw err;
+    }
 }
 
 // ===== PAGINATION HELPER =====

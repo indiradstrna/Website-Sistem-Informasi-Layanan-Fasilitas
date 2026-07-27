@@ -1771,6 +1771,7 @@ function switchItem2Tab(tab) {
 // ===== SUBMIT FORM =====
 async function doSubmitForm() {
   const btn    = document.getElementById('modal-submit-btn');
+  if (btn.disabled) return;
   const btnTxt = document.getElementById('submit-btn-text');
   btn.disabled = true;
   btnTxt.innerHTML = '<span class="spinner"></span> Mengirim...';
