@@ -411,8 +411,8 @@ const DORMITORIES = [
   { id: 'DORMITORY_L', name: 'Dormitory L' }
 ];
 const ZOOM_ACCOUNTS = [
-  { id: 'zoom_01', name: 'Zoom Premium 1 (Kap. 100)' },
-  { id: 'zoom_02', name: 'Zoom Webinar (Kap. 500)' },
+  { id: 'zoom_01', name: 'Zoom Premium 1 (Kap. 300)' },
+  { id: 'zoom_02', name: 'Zoom Webinar (Kap. 300)' },
 ];
 
 async function loadMyData(silent = false) {

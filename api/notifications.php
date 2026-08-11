@@ -296,11 +296,11 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
             } elseif ($type === 'Zoom') {
                 $zName = $row['zoom_account_id'] ?? '-';
                 if (!empty($row['zoom_account_id'])) {
-                    $stmtZ = $conn->prepare("SELECT name FROM master_zoom_accounts WHERE id = ?");
-                    $stmtZ->bind_param("s", $row['zoom_account_id']);
-                    $stmtZ->execute();
-                    if ($resZ = $stmtZ->get_result()->fetch_assoc()) $zName = $resZ['name'];
-                    $stmtZ->close();
+                    $zoomMap = [
+                        'zoom_01' => 'Zoom Premium 1 (Kap. 300)',
+                        'zoom_02' => 'Zoom Webinar (Kap. 300)'
+                    ];
+                    $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
                 }
                 if (!empty($row['zoom_account_id'])) $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($zName) . "\n";
                 $detailTxt .= "<b>Nama Kegiatan:</b> " . htmlspecialchars($row['purpose'] ?? '-') . "\n";
@@ -494,11 +494,11 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         } elseif ($type === 'Zoom') {
             $zName = $row['zoom_account_id'] ?? '-';
             if (!empty($row['zoom_account_id'])) {
-                $stmtZ = $conn->prepare("SELECT name FROM master_zoom_accounts WHERE id = ?");
-                $stmtZ->bind_param("s", $row['zoom_account_id']);
-                $stmtZ->execute();
-                if ($resZ = $stmtZ->get_result()->fetch_assoc()) $zName = $resZ['name'];
-                $stmtZ->close();
+                $zoomMap = [
+                    'zoom_01' => 'Zoom Premium 1 (Kap. 300)',
+                    'zoom_02' => 'Zoom Webinar (Kap. 300)'
+                ];
+                $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
             }
             if (!empty($row['zoom_account_id'])) $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($zName) . "\n";
             $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type'] ?? '-') . "\n";
