@@ -73,7 +73,7 @@ function getStatusLabel(status) {
         verified: 'Verified (Admin)',
         approved: 'Approved',
         rejected: 'Rejected',
-        canceled: 'Canceled',
+        canceled: 'Declined / Canceled',
         completed: 'Completed',
         returned: 'Returned',
         'in-progress': 'In Progress',
@@ -120,7 +120,6 @@ async function api(url, options = {}) {
 }
 
 window._apiLocks = window._apiLocks || new Set();
-
 // POST ke API
 async function apiPost(url, data = {}) {
     const lockKey = url + '|' + JSON.stringify(data);
@@ -130,6 +129,21 @@ async function apiPost(url, data = {}) {
     }
     window._apiLocks.add(lockKey);
 
+    // Dapatkan tombol yang diklik (active element)
+    let activeBtn = document.activeElement;
+    let btnWasDisabled = false;
+    let oldCursor = '';
+    let oldTitle = '';
+    
+    if (activeBtn && (activeBtn.tagName === 'BUTTON' || activeBtn.tagName === 'A' || activeBtn.type === 'submit' || activeBtn.type === 'button')) {
+        btnWasDisabled = true;
+        oldCursor = activeBtn.style.cursor;
+        oldTitle = activeBtn.title;
+        activeBtn.disabled = true;
+        activeBtn.style.cursor = 'not-allowed';
+        activeBtn.title = 'Pengajuan sudah diproses';
+    }
+
     const body = new FormData();
     for (const [k, v] of Object.entries(data)) {
         if (v !== null && v !== undefined) body.append(k, v);
@@ -138,8 +152,21 @@ async function apiPost(url, data = {}) {
     try {
         const res = await api(url, { method: 'POST', body });
         setTimeout(() => window._apiLocks.delete(lockKey), 1000);
+        
+        // Jika gagal, kembalikan tombol ke state awal. Jika sukses, biarkan tombol tetap disabled & forbidden
+        if (btnWasDisabled && activeBtn && !res.success) {
+            activeBtn.disabled = false;
+            activeBtn.style.cursor = oldCursor;
+            activeBtn.title = oldTitle;
+        }
+        
         return res;
     } catch (err) {
+        if (btnWasDisabled && activeBtn) {
+            activeBtn.disabled = false;
+            activeBtn.style.cursor = oldCursor;
+            activeBtn.title = oldTitle;
+        }
         setTimeout(() => window._apiLocks.delete(lockKey), 1000);
         throw err;
     }

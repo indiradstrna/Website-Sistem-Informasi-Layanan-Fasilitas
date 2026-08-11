@@ -5,6 +5,7 @@
 // ============================================================
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/notifications.php';
 
 // Fonnte payload can be JSON or Form Data
 $rawInput = file_get_contents('php://input');
@@ -137,6 +138,11 @@ $isPIC = in_array($username, $picMap[$typeCode] ?? []);
 // Logika Transisi Status
 if ($currentStatus === 'pending') {
     if ($isPIC) {
+        if ($typeCode === 'REP') {
+            sendWhatsAppFonnte("Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.", $sender);
+            http_response_code(200);
+            exit;
+        }
         if ($actionType === 'TOLAK') {
             sendWhatsAppFonnte("Maaf, PIC tidak dapat menolak pengajuan. Semua pengajuan harus diteruskan ke Manager FMD. Balas SETUJU untuk meneruskan.", $sender);
             http_response_code(200);
@@ -252,6 +258,9 @@ if ($stmt->execute()) {
             sendWhatsAppFonnte($msgDriver, $drv['whatsapp_number']);
         }
     }
+    
+    // Panggil fungsi notifikasi agar dikirim ke Manager FMD / User / Approver berikutnya
+    notifyStatusUpdate($conn, $table, $reqId, $finalStatus, $actionNote, $user['full_name']);
 } else {
     sendWhatsAppFonnte("❌ Gagal mengupdate database server.", $sender);
 }

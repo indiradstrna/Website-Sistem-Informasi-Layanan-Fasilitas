@@ -403,9 +403,12 @@ renderPageHead('Dashboard Admin');
       </div>
       <div id="gudang-item-inputs">
         <div class="grid-3" style="margin-bottom:1rem;">
-          <div class="form-group" style="grid-column:1/3;">
+          <div class="form-group" style="grid-column:1/3; position:relative;">
             <label class="form-label">Nama Barang</label>
-            <input type="text" id="gudang-item-name" class="form-input" placeholder="Contoh: Lampu LED 18W" />
+            <input type="text" id="gudang-item-name" class="form-input" placeholder="Cari nama atau kode barang..." autocomplete="off" />
+            <input type="hidden" id="gudang-item-id" />
+            <input type="hidden" id="gudang-item-stock" />
+            <div id="gudang-item-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border); border-radius:4px; max-height:200px; overflow-y:auto; z-index:1000; box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
           </div>
           <div class="form-group">
             <label class="form-label">Jumlah</label>
@@ -496,6 +499,7 @@ let currentRequestNote = '';
 const PIC_MAP = {
   'Vehicle': ['198605082025211053'], // Alfi Dwi Nugroho
   'Item':    ['198902222025211044', '16268300055'], // Indra Septian, Dhany
+  'Item2':   ['198902222025211044'],
   'Zoom':    ['198902222025211044'], // Indra Septian
   'Room':    ['199008092025212052', '198902222025211044', '16268300055'], // Lastiah, Indra, Dhany
   'Dormitory':['199008092025212052', '198902222025211044'],
@@ -593,7 +597,7 @@ async function loadAllData(silent = false) {
     const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === '197707072025211067');
     
     const picPending = allRequests.filter(r => {
-      if (r.status === 'pending') {
+      if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
         const allowed = PIC_MAP[r.type] || [];
         return allowed.length === 0 || allowed.includes(ADMIN_USERNAME);
       }
@@ -1034,7 +1038,7 @@ function renderTrackReports() {
           <option value="completed">Completed</option>
           <option value="returned">Returned</option>
           <option value="rejected">Rejected</option>
-          <option value="canceled">Canceled</option>
+          <option value="canceled">Declined / Canceled</option>
         </select>
       </div>
     </div>
@@ -2075,7 +2079,7 @@ function getTimelineEvents(req) {
         else if (status === 'completed') { title = 'Completed'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'returned') { title = 'Returned'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'rejected') { title = 'Rejected'; color = '#dc2626'; icon = 'x-circle'; }
-        else if (status === 'canceled') { title = 'Canceled'; color = '#6b7280'; icon = 'x-circle'; }
+        else if (status === 'canceled') { title = 'Declined / Canceled'; color = '#6b7280'; icon = 'x-circle'; }
         else if (status === 'verified') { title = 'Verified by Admin'; color = '#6366f1'; icon = 'check-circle'; }
         else if (status === 'in-progress') { title = 'Processed by PIC'; color = '#f97316'; icon = 'wrench'; }
         else if (status === 'waiting_manager_fmd') { title = 'Waiting for FMD Manager'; color = '#6366f1'; }
@@ -2268,6 +2272,7 @@ function renderDetailPengajuanTinjau() {
   const PIC_MAP_LOCAL = {
     'Vehicle': ['198605082025211053'],
     'Item':    ['198902222025211044'],
+    'Item2':   ['198902222025211044'],
     'Zoom':    ['198902222025211044'],
     'Room':    ['199008092025212052', '198902222025211044'],
     'Dormitory': ['199008092025212052', '198902222025211044'],
@@ -2281,7 +2286,7 @@ function renderDetailPengajuanTinjau() {
   const isSuperAdmin = SUPER_ADMIN_NIKS_LOCAL.includes(ADMIN_USERNAME);
 
   // ── Bagian assign kendaraan ──
-  const vehicleSection = (req.type === 'Vehicle' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
+  const vehicleSection = (req.type === 'Vehicle' && (isPIC || isSuperAdmin || isManagerFMD) && !['canceled', 'rejected', 'completed', 'returned'].includes(req.status)) ? `
     <div style="background:#fff7ed; border:1px solid #ffedd5; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#9a3412; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 11l1.5-4.5h11L19 11M3 11h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5M7 16v-2M17 16v-2"/></svg>
@@ -2290,6 +2295,7 @@ function renderDetailPengajuanTinjau() {
       <div class="form-group" style="margin-bottom:1.5rem">
         <select id="assign-vehicle" class="form-select" style="background:#fff;">
           <option value="">Pilih Kendaraan Dinas...</option>
+          <option value="TANPA_KENDARAAN" style="color:#ea580c; font-weight:bold;">[0] Tanpa Kendaraan (Hanya Jasa Driver / Mobil Pribadi)</option>
           ${ALL_VEHICLES.map(v => {
             const conflict = checkResourceConflict(req, 'Vehicle', v.id);
             return `<option value="${v.id}"${req.vehicle_id === v.id ? ' selected' : ''}${conflict ? ' disabled' : ''}>${v.name}${conflict ? ' (Digunakan)' : ''}</option>`;
@@ -2312,6 +2318,12 @@ function renderDetailPengajuanTinjau() {
         </select>
       </div>
       <div style="font-size:0.75rem; color:#ea580c; font-style:italic; margin-top:1rem;">* Kendaraan dan Driver wajib dipilih sebelum melakukan verifikasi ke Manager.</div>
+      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+        <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doVehicleAssign(${req.id}, '${req.status}')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Update Penempatan Kendaraan / Driver
+        </button>
+      ` : ''}
     </div>` : '';
 
   // ── Bagian assign Zoom ──
@@ -2333,7 +2345,7 @@ function renderDetailPengajuanTinjau() {
     </div>` : '';
 
   // ── Bagian assign Room ──
-  const roomSection = (req.type === 'Room' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
+  const roomSection = (req.type === 'Room' && (isPIC || isSuperAdmin || isManagerFMD) && !['canceled', 'rejected', 'completed', 'returned'].includes(req.status)) ? `
     <div style="background:#f0fdf4; border:1px solid #dcfce7; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#166534; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
@@ -2349,10 +2361,16 @@ function renderDetailPengajuanTinjau() {
         </select>
         <div style="font-size:0.75rem; color:#15803d; font-style:italic; margin-top:0.5rem;">* Anda dapat mengubah ruangan yang dipilih user jika diperlukan.</div>
       </div>
+      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+        <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doRoomApprove(${req.id}, '${req.status}')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Update Penempatan Ruangan
+        </button>
+      ` : ''}
     </div>` : '';
 
   // ── Bagian assign Dormitory ──
-  const dormitorySection = (req.type === 'Dormitory' && (req.status === 'pending' || (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)))) ? `
+  const dormitorySection = (req.type === 'Dormitory' && (isPIC || isSuperAdmin || isManagerFMD) && !['canceled', 'rejected', 'completed', 'returned'].includes(req.status)) ? `
     <div style="background:#fdf4ff; border:1px solid #fbcfe8; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
       <div style="font-weight:700; color:#831843; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -2368,6 +2386,12 @@ function renderDetailPengajuanTinjau() {
         </select>
         <div style="font-size:0.75rem; color:#be185d; font-style:italic; margin-top:0.5rem;">* Anda wajib memploting dormitory untuk user.</div>
       </div>
+      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+        <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doDormitoryApprove(${req.id}, '${req.status}')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Update Penempatan Dormitory
+        </button>
+      ` : ''}
     </div>` : '';
 
   // NOTE: All users on admin/index.php have CURRENT_ROLE='admin' (from login redirect).
@@ -2508,7 +2532,7 @@ function renderDetailPengajuanTinjau() {
           <strong>✅ Disetujui Manager FMD.</strong><br>Lakukan persiapan & pemeriksaan kebutuhan pengajuan ini. Klik tombol di bawah jika semua sudah siap dan sedang dalam pelaksanaan.
         </div>
         <button class="btn btn-primary btn-full" ${btnAction}>📋 ${checkLabel}</button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Batalkan Pengajuan</button>
+        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Tolak / Batalkan (Decline)</button>
       </div>`;
     } else if (isManagerFMD) {
       picMessage = reminderBox('✅', 'Pengajuan Telah Disetujui',
@@ -2529,7 +2553,7 @@ function renderDetailPengajuanTinjau() {
         <button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'${req.type}','${req.type === 'Item' ? 'returned' : 'completed'}')">
           ✓ ${doneLabel}
         </button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Batalkan Pengajuan</button>
+        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Tolak / Batalkan (Decline)</button>
       </div>`;
     } else {
       picMessage = reminderBox('📋', 'Siap Digunakan (Ready for User)',
@@ -2574,7 +2598,7 @@ function renderDetailPengajuanTinjau() {
             <div style="grid-column:1/3;">
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Item / Lokasi:</span>
               <div style="font-weight:500; font-size:1.1rem; color:var(--color-blue-700);">
-                ${req.type === 'Vehicle' ? (ALL_VEHICLES.find(v => v.id === req.vehicle_id)?.name || req.details) : (ROOM_MAP[req.room_id] || req.details)}
+                ${req.type === 'Vehicle' ? (req.vehicle_id === 'TANPA_KENDARAAN' ? 'Tanpa Kendaraan (Hanya Jasa Driver)' : (ALL_VEHICLES.find(v => v.id === req.vehicle_id)?.name || req.details)) : (ROOM_MAP[req.room_id] || req.details)}
                 ${req.type === 'Vehicle' && req.driver_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Driver: ${req.driver_name === 'TANPA_SUPIR' ? 'Tidak Ada' : req.driver_name})</span>` : ''}
               </div>
             </div>
@@ -3028,7 +3052,7 @@ async function doVehicleAssign(id, targetStatus = 'approved') {
   });
   if (!res.success) { Toast.error(res.message); return; }
 
-  const vName = ALL_VEHICLES.find(v => v.id === vehicleId)?.name || vehicleId;
+  const vName = vehicleId === 'TANPA_KENDARAAN' ? 'Tanpa Kendaraan (Hanya Jasa Driver)' : (ALL_VEHICLES.find(v => v.id === vehicleId)?.name || vehicleId);
   const isChanged = (String(vehicleId) !== String(currentDetailReq.vehicle_id)) || (String(driverName) !== String(currentDetailReq.driver_name));
 
   if (noteEl) {
@@ -3214,12 +3238,72 @@ function openGudangModal(id) {
   Modal.open('modal-gudang');
 }
 
+function setupGudangSearchDropdown() {
+  const input = document.getElementById('gudang-item-name');
+  const dropdown = document.getElementById('gudang-item-dropdown');
+  const stockInput = document.getElementById('gudang-item-stock');
+  const idInput = document.getElementById('gudang-item-id');
+  if (!input || !dropdown) return;
+  let timeout = null;
+
+  input.addEventListener('input', function() {
+    clearTimeout(timeout);
+    if (idInput) idInput.value = '';
+    const q = this.value.trim();
+    if(q.length < 2) {
+      dropdown.style.display = 'none';
+      return;
+    }
+    
+    timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(API_BASE + `requests.php?action=search_inventory_items&q=${encodeURIComponent(q)}`);
+        const items = await res.json();
+        
+        dropdown.innerHTML = '';
+        if(items.length === 0) {
+          dropdown.innerHTML = '<div style="padding: 0.5rem 1rem; color: #64748b;">Barang tidak ditemukan</div>';
+        } else {
+          items.forEach(item => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding: 0.5rem 1rem; cursor: pointer; border-bottom: 1px solid #eee; transition: background 0.2s;';
+            div.onmouseover = () => div.style.background = '#f1f5f9';
+            div.onmouseout = () => div.style.background = 'white';
+            div.textContent = `${item.item_code} - ${item.name} (Stok: ${item.stock})`;
+            div.onclick = () => {
+              input.value = item.name;
+              if (idInput) idInput.value = item.id;
+              if (stockInput) stockInput.value = item.stock;
+              const qtyInput = document.getElementById('gudang-item-qty');
+              if (qtyInput) qtyInput.max = item.stock;
+              dropdown.style.display = 'none';
+            };
+            dropdown.appendChild(div);
+          });
+        }
+        dropdown.style.display = 'block';
+      } catch (err) {
+        console.error(err);
+      }
+    }, 300);
+  });
+  
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+}
+setupGudangSearchDropdown();
+
 function addGudangItem() {
   const name = document.getElementById('gudang-item-name')?.value?.trim();
+  const idInput = document.getElementById('gudang-item-id'); const itemId = idInput ? idInput.value : '';
   const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
   if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
-  gudangItems.push({ id: Date.now(), itemName: name, quantity: qty });
+  gudangItems.push({ id: Date.now(), itemId: itemId, itemName: name, quantity: qty });
   document.getElementById('gudang-item-name').value = '';
+  if (idInput) idInput.value = '';
   document.getElementById('gudang-item-qty').value  = '1';
   renderGudangTable();
 }
@@ -3337,7 +3421,8 @@ async function submitGudang() {
     type: 'Repair', 
     status: 'waiting_manager_fmd', 
     note: note, 
-    prev_note: currentRequestNote
+    prev_note: currentRequestNote,
+    gudang_items: JSON.stringify(jenis === 'Sparepart tersedia di gudang' ? gudangItems : [])
   });
 
   if (res.success) {

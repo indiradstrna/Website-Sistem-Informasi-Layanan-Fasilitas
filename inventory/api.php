@@ -86,7 +86,7 @@ switch ($action) {
         }
         
         $stmt = $conn->prepare("
-            SELECT i.id, i.item_code, i.name, i.stock, i.unit,
+            SELECT i.id, i.item_code, i.name, i.stock, i.unit, i.location_id,
                    COALESCE((SELECT unit_price FROM inv_transactions WHERE item_id = i.id AND type='in' ORDER BY id DESC LIMIT 1), 0) as last_price
             FROM inv_items i 
             WHERE $whereSql

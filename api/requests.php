@@ -26,6 +26,18 @@ $userId  = (int)$_SESSION['user_id'];
 $actorName = $_SESSION['full_name'] ?? 'Admin';
 
 // ============================================================
+// Mencegah Double Submit (Debounce 3 detik) untuk semua submit
+// ============================================================
+if (strpos($action, 'submit_') === 0) {
+    $lastSubmit = $_SESSION['last_submit_time'] ?? 0;
+    $currentTime = time();
+    if ($currentTime - $lastSubmit < 3) {
+        jsonResponse(false, 'Harap tunggu beberapa saat sebelum mengirim pengajuan kembali (Mencegah Double Submit).');
+    }
+    $_SESSION['last_submit_time'] = $currentTime;
+}
+
+// ============================================================
 function makeNoteLog(string $actor, string $status, string $note): string {
     $ts = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');
     $noteClean = str_replace(["\r\n", "\r", "\n"], "<br>", $note);
@@ -47,371 +59,28 @@ $tableMap = [
     'Item2'   => 'item_requests',
 ];
 
-/**
- * Kirim notifikasi WA ke Approver berdasarkan status
- */
-function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
-    if (!function_exists('sendWhatsAppFonnte')) return;
-
-    $waMsg = str_replace(['<b>','</b>','<i>','</i>'], ['*','*','_','_'], $msg);
-    $waMsg = strip_tags($waMsg);
-    
-    $tgMsg = $msg; // Telegram uses HTML
-
-    $typeCodes = [
-        'Vehicle' => 'VEH',
-        'Room'    => 'ROM',
-        'Dormitory'=> 'DRM',
-        'Zoom'    => 'ZOM',
-        'Repair'  => 'REP',
-        'Item'    => 'ITM',
-        'Item2'   => 'ITM'
-    ];
-    $code = $typeCodes[$type] ?? 'REQ';
-    $approvableStatuses = ['pending', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund', 'approved', 'ready_for_user'];
-    
-    if (in_array($newStatus, $approvableStatuses)) {
-        if ($newStatus === 'pending') {
-            $promptWa = "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
-        } else if ($newStatus === 'waiting_manager_fmd') {
-            $promptWa = "\n*Untuk menyetujui pengajuan ini (Manager FMD), balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manager FMD), balas:</b>\nSETUJU {$code}-{$id}";
-        } else if ($newStatus === 'waiting_manager_fad') {
-            $promptWa = "\n*Untuk menyetujui pengajuan ini (Manager FAD), balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manager FAD), balas:</b>\nSETUJU {$code}-{$id}";
-        } else if ($newStatus === 'waiting_ppk') {
-            $promptWa = "\n*Untuk menyetujui pengajuan ini (PPK), balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (PPK), balas:</b>\nSETUJU {$code}-{$id}";
-        } else if ($newStatus === 'waiting_bod') {
-            $promptWa = "\n*Untuk menyetujui pengajuan ini (BOD), balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (BOD), balas:</b>\nSETUJU {$code}-{$id}";
-        } else {
-            $promptWa = "\n*Untuk memproses pengajuan ini, balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk memproses pengajuan ini, balas:</b>\nSETUJU {$code}-{$id}";
-        }
-
-        if ($newStatus === 'pending' && $type === 'Vehicle') {
-            $waMsg .= "\n\n---\n*PILIHAN KENDARAAN:*\n";
-            $tgMsg .= "\n\n---\n<b>PILIHAN KENDARAAN:</b>\n";
-            $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC");
-            if ($resV) {
-                $vCount = 0;
-                while($row = $resV->fetch_assoc()) {
-                    $waMsg .= chr(65 + $vCount) . ". " . $row['name'] . "\n";
-                    $tgMsg .= chr(65 + $vCount) . ". " . $row['name'] . "\n";
-                    $vCount++;
-                }
-            }
-            
-            $waMsg .= "\n*PILIHAN SUPIR:*\n0. Tanpa Supir\n";
-            $tgMsg .= "\n<b>PILIHAN SUPIR:</b>\n0. Tanpa Supir\n";
-            $resD = $conn->query("SELECT id, full_name FROM employees WHERE position LIKE '%driver%' OR position LIKE '%pengemudi%' ORDER BY full_name ASC");
-            if ($resD) {
-                $dCount = 1;
-                while($row = $resD->fetch_assoc()) {
-                    $waMsg .= $dCount . ". " . $row['full_name'] . "\n";
-                    $tgMsg .= $dCount . ". " . $row['full_name'] . "\n";
-                    $dCount++;
-                }
-            }
-            $waMsg .= $promptWa . " A1\n_(Ganti A & 1 sesuai pilihan)_";
-            $tgMsg .= $promptTg . " A1\n<i>(Ganti A & 1 sesuai pilihan)</i>";
-        } else if ($newStatus === 'pending' && $type === 'Room') {
-            $waMsg .= "\n\n---\n*PILIHAN RUANGAN:*\n";
-            $tgMsg .= "\n\n---\n<b>PILIHAN RUANGAN:</b>\n";
-            $resR = $conn->query("SELECT id, name FROM master_rooms ORDER BY id ASC");
-            if ($resR) {
-                $rCount = 0;
-                while($row = $resR->fetch_assoc()) {
-                    $waMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
-                    $tgMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
-                    $rCount++;
-                }
-            }
-            $waMsg .= $promptWa . " A\n_(Ganti A sesuai pilihan)_";
-            $tgMsg .= $promptTg . " A\n<i>(Ganti A sesuai pilihan)</i>";
-        } else if ($newStatus === 'pending' && $type === 'Dormitory') {
-            $waMsg .= "\n\n---\n*PILIHAN DORMITORY:*\n";
-            $tgMsg .= "\n\n---\n<b>PILIHAN DORMITORY:</b>\n";
-            $resR = $conn->query("SELECT id, name FROM master_dormitories ORDER BY id ASC");
-            if ($resR) {
-                $rCount = 0;
-                while($row = $resR->fetch_assoc()) {
-                    $waMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
-                    $tgMsg .= chr(65 + $rCount) . ". " . $row['name'] . "\n";
-                    $rCount++;
-                }
-            }
-            $waMsg .= $promptWa . " A\n_(Ganti A sesuai pilihan)_";
-            $tgMsg .= $promptTg . " A\n<i>(Ganti A sesuai pilihan)</i>";
-        } else {
-            $waMsg .= "\n\n---" . $promptWa;
-            $tgMsg .= "\n\n---" . $promptTg;
-        }
-    }
-    
-    $targetNumbers = [];
-    $targetTelegramIds = [];
-    $picMap = [
-        'Vehicle' => ['198605082025211053'], // Alfi
-        'Item'    => ['198902222025211044'], // Indra
-        'Item2'   => ['198902222025211044'], // Indra
-        'Zoom'    => ['198902222025211044'], // Indra
-        'Room'    => ['199008092025212052', '16268300055'], // Lastiah, Dani
-        'Dormitory'=> ['199008092025212052', '16268300055'], // Lastiah, Dani
-        'Repair'  => ['16268000027', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
-    ];
-
-    if ($newStatus === 'pending' || $newStatus === 'approved') {
-        if (isset($picMap[$type])) {
-            $usernames = $picMap[$type];
-            $placeholders = implode(',', array_fill(0, count($usernames), '?'));
-            $stmt = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders)");
-            if ($stmt) {
-                $types = str_repeat('s', count($usernames));
-                $stmt->bind_param($types, ...$usernames);
-                $stmt->execute();
-                $res = $stmt->get_result();
-                while ($row = $res->fetch_assoc()) {
-                    if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
-                    if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
-                }
-                $stmt->close();
-            }
-        }
-    }
-
-    $roleMap = [
-        'waiting_manager_fmd'   => 'managerFMD',
-        'waiting_manager_fad'   => 'managerFAD',
-        'waiting_ppk'           => 'ppk',
-        'waiting_bod'           => 'bod',
-        'approved_waiting_fund' => 'bendahara'
-    ];
-    $targetRole = $roleMap[$newStatus] ?? null;
-    
-    if ($targetRole) {
-        $sql = "SELECT u.whatsapp_number, u.telegram_chat_id FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.role = ?";
-        if ($newStatus === 'waiting_manager_fmd') {
-            $sql = "SELECT u.whatsapp_number, u.telegram_chat_id FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE (u.role = ? OR e.nip_nik = '197707072025211067')";
-        }
-        
-        $stmt = $conn->prepare($sql);
-        if ($stmt) {
-            $stmt->bind_param("s", $targetRole);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            while ($row = $res->fetch_assoc()) {
-                if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
-                if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
-            }
-            $stmt->close();
-        }
-    }
-
-    $targetNumbers = array_unique($targetNumbers);
-    if (!empty($targetNumbers) && function_exists('sendWhatsAppFonnte')) {
-        $targets = implode(',', $targetNumbers);
-        sendWhatsAppFonnte($waMsg, $targets);
-    }
-
-    $targetTelegramIds = array_unique($targetTelegramIds);
-    if (!empty($targetTelegramIds) && function_exists('sendTelegramPHP')) {
-        foreach ($targetTelegramIds as $tgId) {
-            sendTelegramPHP($tgMsg, $tgId);
-        }
-    }
-}
-
-/**
- * Kirim notifikasi ke Admin Group saat ada pengajuan baru
- */
-function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
-    global $conn;
-    if (!function_exists('sendTelegramPHP')) return;
-
-    $emoji = [
-        'Vehicle' => '🚗',
-        'Room'    => '🏢',
-        'Zoom'    => '📹',
-        'Repair'  => '🛠️',
-        'Item'    => '📦',
-        'Item2'   => '📦'
-    ][$type] ?? '🔔';
-    
-    $typeLabel = [
-        'Vehicle' => 'KENDARAAN DINAS',
-        'Room'    => 'RUANGAN',
-        'Zoom'    => 'ZOOM MEETING',
-        'Repair'  => 'PERBAIKAN',
-        'Item'    => 'PEMINJAMAN BARANG',
-        'Item2'   => 'PERMINTAAN BARANG'
-    ][$type] ?? strtoupper($type);
-
-    // Fetch details for better formatting
-    $detailTxt = "";
-    $table = [
-        'Vehicle' => 'vehicle_requests',
-        'Room'    => 'room_requests',
-        'Dormitory'=> 'dormitory_requests',
-    'Dormitory'=> 'dormitory_requests',
-        'Zoom'    => 'zoom_requests',
-        'Repair'  => 'repair_requests',
-        'Item'    => 'item_loan_requests',
-        'Item2'   => 'item_requests'
-    ][$type] ?? '';
-
-    if ($table) {
-        $res = $conn->query("SELECT * FROM `$table` WHERE id = $id");
-        if ($res && $row = $res->fetch_assoc()) {
-            if ($type === 'Vehicle') {
-                $detailTxt .= "<b>Nama Penumpang:</b> " . htmlspecialchars($row['passenger_name'] ?? '-') . "\n";
-                $detailTxt .= "<b>Keberangkatan:</b> " . htmlspecialchars($row['departure'] ?? '-') . "\n";
-                $detailTxt .= "<b>Tujuan:</b> " . htmlspecialchars($row['destination'] ?? '-') . "\n";
-                $detailTxt .= "<b>Waktu:</b> " . ($row['date_start'] ?? '-') . " s/d " . ($row['date_end'] ?? '-') . " (Jam: " . substr($row['time_start'] ?? '', 0, 5) . ")\n";
-                $detailTxt .= "<b>Biaya Ditanggung:</b> " . htmlspecialchars($row['cost_bearer'] ?? '-') . "\n";
-            } elseif ($type === 'Room') {
-                $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($row['room_id'] ?? '') . "\n";
-                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
-            } elseif ($type === 'Dormitory') {
-                $detailTxt .= "<b>Dormitory:</b> " . htmlspecialchars($row['dormitory_id'] ?? '') . "\n";
-                $detailTxt .= "<b>Penghuni:</b> " . htmlspecialchars($row['occupant_name'] ?? '-') . "\n";
-                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
-            } elseif ($type === 'Zoom') {
-                $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($row['zoom_account_id'] ?? '') . "\n";
-                $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type'] ?? '-') . "\n";
-                $detailTxt .= "<b>Kebutuhan Khusus:</b> " . htmlspecialchars($row['special_needs'] ?? '-') . "\n";
-                $detailTxt .= "<b>Waktu:</b> " . $row['date_start'] . " " . substr($row['time_start'], 0, 5) . " s/d " . $row['date_end'] . " " . substr($row['time_end'], 0, 5) . "\n";
-            } elseif ($type === 'Repair') {
-                $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '') . "\n";
-                $detailTxt .= "<b>Prioritas:</b> " . strtoupper($row['priority'] ?? 'MEDIUM') . "\n";
-            } elseif ($type === 'Item') {
-                $detailTxt .= "<b>Barang:</b> " . htmlspecialchars($row['item_name'] ?? '') . "\n";
-                $detailTxt .= "<b>Waktu:</b> " . $row['loan_date'] . " " . substr($row['loan_time'], 0, 5) . " s/d " . $row['return_date'] . " " . substr($row['return_time'], 0, 5) . "\n";
-            } elseif ($type === 'Item2') {
-                $items = json_decode($row['items_json'] ?? '[]', true);
-                if (is_array($items) && count($items) > 0) {
-                    $detailTxt .= "<b>Daftar Barang:</b>\n";
-                    foreach ($items as $idx => $itm) {
-                        $name = trim($itm['name'] ?? 'Unknown');
-                        $qty = $itm['quantity'] ?? 1;
-                        $detailTxt .= ($idx + 1) . ". " . htmlspecialchars($name) . " (" . $qty . "x)\n";
-                    }
-                }
-            }
-        }
-    }
-
-    $msg = "<b>$emoji PENGAJUAN BARU: " . $typeLabel . "</b>\n\n";
-    $msg .= "<b>Pemohon:</b> " . htmlspecialchars($applicant) . "\n";
-    $msg .= "<b>Unit:</b> " . htmlspecialchars($unit) . "\n";
-    if ($type === 'Repair') {
-        $msg .= "<b>Masalah:</b> " . htmlspecialchars($purpose) . "\n";
-    } else {
-        $msg .= "<b>Keperluan:</b> " . htmlspecialchars($purpose) . "\n";
-    }
-    
-    if ($detailTxt) {
-        $msg .= $detailTxt;
-    }
-
-    $msg .= "\n<i>ID Pengajuan: #$id</i>\n";
-    $msg .= "<i>Silakan cek dashboard FMD untuk tindak lanjut.</i>";
-
-    // Kirim ke Group Admin (Telegram)
-    sendTelegramPHP($msg);
-    
-    // Kirim ke Approver PIC (WhatsApp)
-    notifyApprovers($conn, 'pending', $type, $id, $msg);
-}
-
-/**
- * Kirim notifikasi ke Telegram user jika status berubah
- */
-function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorName) {
-    if (!function_exists('sendTelegramPHP')) return;
-
-    // 1. Ambil info request & user_id
-    $stmt = $conn->prepare("SELECT user_id, applicant_name FROM `$table` WHERE id = ?");
-    if (!$stmt) return;
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $request = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    if ($request) {
-        // 2. Ambil kontak user
-        $uId = $request['user_id'];
-        $stmtU = $conn->prepare("SELECT telegram_chat_id, whatsapp_number, callmebot_apikey FROM users WHERE id = ?");
-        $stmtU->bind_param("i", $uId);
-        $stmtU->execute();
-        $user = $stmtU->get_result()->fetch_assoc();
-        $stmtU->close();
-
-        $statusLabelMap = [
-            'pending'             => '⌛ MENUNGGU VERIFIKASI',
-            'approved'            => '✅ DISETUJUI',
-            'rejected'            => '❌ DITOLAK',
-            'verified'            => '🔍 DIVERIFIKASI',
-            'completed'           => '🏁 SELESAI',
-            'returned'            => '📦 DIKEMBALIKAN',
-            'in-progress'         => '🛠️ SEDANG DIKERJAKAN',
-            'waiting_manager_fmd' => '⌛ MENUNGGU APPROVAL MGR FMD',
-            'waiting_manager_fad' => '⌛ MENUNGGU APPROVAL MGR FAD',
-            'waiting_ppk'         => '⌛ MENUNGGU APPROVAL PPK',
-            'waiting_bod'         => '⌛ MENUNGGU APPROVAL BOD',
-        ];
-        
-        $statusLabel = $statusLabelMap[strtolower($newStatus)] ?? strtoupper(str_replace('_', ' ', $newStatus));
-
-        $msg = "<b>📢 UPDATE PENGAJUAN</b>\n\n";
-        $msg .= "Halo " . htmlspecialchars($request['applicant_name']) . ",\n";
-        $msg .= "Status pengajuan Anda <b>#$id</b> telah diperbarui.\n\n";
-        $msg .= "<b>Status Baru:</b> $statusLabel\n";
-        if ($noteInput) {
-            $msg .= "<b>Catatan Admin:</b> " . htmlspecialchars($noteInput) . "\n";
-        }
-        $msg .= "<b>Diproses Oleh:</b> " . htmlspecialchars($actorName) . "\n\n";
-        $msg .= "<i>Silakan cek Dashboard Bioform untuk detail.</i>";
-
-        // Kirim ke Telegram User (jika ada chat_id)
-        if (!empty($user['telegram_chat_id'])) {
-            sendTelegramPHP($msg, $user['telegram_chat_id']);
-        }
-        
-        // Kirim ke WhatsApp User via Fonnte (jika ada)
-        if (!empty($user['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-            // Sesuaikan format HTML ke WA Markdown (*bold*, _italic_)
-            $waMsg = str_replace(['<b>','</b>','<i>','</i>'], ['*','*','_','_'], $msg);
-            // Hapus sisa tag HTML jika ada
-            $waMsg = strip_tags($waMsg);
-            sendWhatsAppFonnte($waMsg, $user['whatsapp_number']);
-        }
-        
-        // Kirim notifikasi WA ke Approver
-        $tableToType = [
-            'vehicle_requests' => 'Vehicle',
-            'room_requests'    => 'Room',
-            'dormitory_requests' => 'Dormitory',
-            'zoom_requests'    => 'Zoom',
-            'repair_requests'  => 'Repair',
-            'item_loan_requests' => 'Item',
-            'item_requests' => 'Item2'
-        ];
-        $type = $tableToType[$table] ?? 'Unknown';
-        
-        $msgApprover = "<b>📢 UPDATE PENGAJUAN (" . strtoupper($type) . ")</b>\n\n";
-        $msgApprover .= "<b>ID:</b> #$id\n";
-        $msgApprover .= "<b>Pemohon:</b> " . htmlspecialchars($request['applicant_name']) . "\n";
-        $msgApprover .= "<b>Status Baru:</b> $statusLabel\n";
-        $msgApprover .= "<i>Mohon cek Dashboard Admin untuk review/tindakan.</i>";
-        
-        notifyApprovers($conn, $newStatus, $type, $id, $msgApprover);
-    }
-}
+require_once __DIR__ . '/notifications.php';
 
 switch ($action) {
+
+    // ============================================================
+    // 0. SEARCH INVENTORY ITEMS (Untuk form repair/gudang)
+    // ============================================================
+    case 'search_inventory_items':
+        $q = $_GET['q'] ?? '';
+        $like = "%$q%";
+        $stmt = $conn->prepare("
+            SELECT i.id, i.item_code, i.name, i.stock, i.unit,
+                   COALESCE((SELECT unit_price FROM inv_transactions WHERE item_id = i.id AND type='in' ORDER BY id DESC LIMIT 1), 0) as last_price
+            FROM inv_items i 
+            WHERE i.item_code LIKE ? OR i.name LIKE ?
+            LIMIT 10
+        ");
+        $stmt->bind_param("ss", $like, $like);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
+        break;
 
     // ============================================================
     // 1. GET ALL REQUESTS (Admin melihat semua)
@@ -775,6 +444,11 @@ switch ($action) {
                 : "PIC mengkonfirmasi: seluruh kebutuhan $label telah terpenuhi. Permintaan selesai dilaksanakan.";
         }
 
+        // Otomatisasi teks ketika PIC membatalkan pengajuan (canceled)
+        if ($newStatus === 'canceled' && empty($noteInput)) {
+            $noteInput = "Pengajuan dibatalkan/ditolak (Canceled/Declined) oleh pihak pengelola (PIC/Admin).";
+        }
+
         // Cek jika ada lampiran foto (khusus checklist ruangan dsb)
         $uploadedFiles = [];
         if (!empty($_FILES['foto_ruangan']['name'][0])) {
@@ -810,6 +484,39 @@ switch ($action) {
         $stmt = $conn->prepare("UPDATE `$table` SET status = ?, note = ? WHERE id = ?");
         $stmt->bind_param("ssi", $newStatus, $finalNote, $id);
         if ($stmt->execute()) {
+            // ============================================================
+            // AUTOMATIC INVENTORY DEDUCTION FOR REPAIR
+            // ============================================================
+            if ($type === 'Repair' && isset($_POST['gudang_items'])) {
+                $gudangItemsStr = $_POST['gudang_items'];
+                $gItems = json_decode($gudangItemsStr, true);
+                if (is_array($gItems) && count($gItems) > 0) {
+                    $docNum = "REP-" . $id . "-" . time();
+                    $updStmt = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
+                    $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Perbaikan Internal', ?, CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
+                    
+                    foreach ($gItems as $gi) {
+                        if (!empty($gi['itemId'])) {
+                            $itemId = (int)$gi['itemId'];
+                            $qty = (int)$gi['quantity'];
+                            if ($itemId > 0 && $qty > 0) {
+                                // Deduct stock
+                                $updStmt->bind_param("ii", $qty, $itemId);
+                                $updStmt->execute();
+                                
+                                // Insert transaction
+                                $refDoc = "REP-" . $id;
+                                $tNote = "Otomatis: Penggunaan barang untuk laporan kerusakan (Request ID: $id)";
+                                $transStmt->bind_param("isssii", $itemId, $docNum, $refDoc, $tNote, $qty, $userId);
+                                $transStmt->execute();
+                            }
+                        }
+                    }
+                    if ($updStmt) $updStmt->close();
+                    if ($transStmt) $transStmt->close();
+                }
+            }
+            
             // KIRIM NOTIFIKASI KE TELEGRAM USER
             notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorName);
             
@@ -823,11 +530,15 @@ switch ($action) {
 
                 if ($reqRow && $reqRow['driver_name'] && trim($reqRow['driver_name']) !== '') {
                     $vName = $reqRow['vehicle_id'];
-                    $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
-                    $stmtV->bind_param("s", $reqRow['vehicle_id']);
-                    $stmtV->execute();
-                    if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
-                    $stmtV->close();
+                    if ($vName === 'TANPA_KENDARAAN') {
+                        $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+                    } else {
+                        $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
+                        $stmtV->bind_param("s", $reqRow['vehicle_id']);
+                        $stmtV->execute();
+                        if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
+                        $stmtV->close();
+                    }
 
                     $drvName  = $reqRow['driver_name'];
                     $appName  = $reqRow['applicant_name'];
@@ -848,6 +559,86 @@ switch ($action) {
                     if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
                         $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
                         sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
+                    }
+                }
+            }
+
+            // JIKA ITEM2 (Permintaan Barang) DAN COMPLETED, OTOMATIS POTONG STOK GUDANG
+            if ($type === 'Item2' && $newStatus === 'completed') {
+                $resItem = $conn->query("SELECT items_json, applicant_name, applicant_unit FROM item_requests WHERE id = $id");
+                if ($resItem && $rowItem = $resItem->fetch_assoc()) {
+                    $items = json_decode($rowItem['items_json'], true);
+                    if (is_array($items)) {
+                        $docDate = date('Y-m-d');
+                        $bookDate = date('Y-m-d H:i:s');
+                        $notes = "Otomatis dari Permintaan Barang #" . $id . " (" . $rowItem['applicant_name'] . " - " . $rowItem['applicant_unit'] . ")";
+                        $refDoc = "REQ-ITM-" . str_pad($id, 4, '0', STR_PAD_LEFT);
+                        
+                        $stmtInsert = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                        $stmtUpdate = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
+                        
+                        // Group items by location_id (UAKPB)
+                        $groupedItems = [];
+                        foreach ($items as $itm) {
+                            $itemId = (int)($itm['id'] ?? 0);
+                            $qty = (int)($itm['quantity'] ?? 0);
+                            if ($itemId > 0 && $qty > 0) {
+                                $locId = 0;
+                                $resLoc = $conn->query("SELECT location_id FROM inv_items WHERE id = $itemId");
+                                if ($resLoc && $rowLoc = $resLoc->fetch_assoc()) {
+                                    $locId = (int)$rowLoc['location_id'];
+                                }
+                                if (!isset($groupedItems[$locId])) $groupedItems[$locId] = [];
+                                $groupedItems[$locId][] = ['id' => $itemId, 'qty' => $qty];
+                            }
+                        }
+
+                        $year = date('Y');
+                        $suffix = 'K';
+
+                        foreach ($groupedItems as $locId => $grpItems) {
+                            // Generate doc_number for this UAKPB
+                            $prefix = 'INV-';
+                            if ($locId > 0) {
+                                $resLocCode = $conn->query("SELECT code FROM inv_locations WHERE id = $locId");
+                                if ($resLocCode && $rowLocCode = $resLocCode->fetch_assoc()) {
+                                    $prefix = $rowLocCode['code'];
+                                }
+                            }
+                            
+                            $likePattern = $prefix . $year . '%' . $suffix;
+                            $stmtDoc = $conn->prepare("SELECT doc_number FROM inv_transactions WHERE doc_number LIKE ? ORDER BY id DESC LIMIT 1");
+                            $stmtDoc->bind_param("s", $likePattern);
+                            $stmtDoc->execute();
+                            $resDocNum = $stmtDoc->get_result()->fetch_assoc();
+                            $stmtDoc->close();
+                            
+                            $nextNum = 1;
+                            if ($resDocNum && preg_match('/' . $year . '(\d{5})' . $suffix . '$/', $resDocNum['doc_number'], $matches)) {
+                                $nextNum = (int)$matches[1] + 1;
+                            }
+                            $docNum = $prefix . $year . str_pad($nextNum, 5, '0', STR_PAD_LEFT) . $suffix;
+
+                            foreach ($grpItems as $gItm) {
+                                $itemId = $gItm['id'];
+                                $qty = $gItm['qty'];
+
+                                // Get last unit_price
+                                $unitPrice = 0.0;
+                                $resPrice = $conn->query("SELECT unit_price FROM inv_transactions WHERE item_id = $itemId AND type='in' ORDER BY id DESC LIMIT 1");
+                                if ($resPrice && $rowPrice = $resPrice->fetch_assoc()) {
+                                    $unitPrice = (float)$rowPrice['unit_price'];
+                                }
+                                $totalPrice = $unitPrice * $qty;
+
+                                // insert transaction
+                                $stmtInsert->bind_param("isssssidd", $itemId, $docNum, $docDate, $bookDate, $refDoc, $notes, $qty, $unitPrice, $totalPrice);
+                                $stmtInsert->execute();
+                                // update stock
+                                $stmtUpdate->bind_param("ii", $qty, $itemId);
+                                $stmtUpdate->execute();
+                            }
+                        }
                     }
                 }
             }
@@ -908,6 +699,54 @@ switch ($action) {
         $stmt = $conn->prepare("UPDATE vehicle_requests SET vehicle_id = ?, driver_name = ? WHERE id = ?");
         $stmt->bind_param("ssi", $vehicleId, $driverName, $id);
         if ($stmt->execute()) {
+            
+            // JIKA STATUS SUDAH APPROVED/IN-PROGRESS, KIRIM NOTIF KE DRIVER KARENA BARU DITETAPKAN
+            $stmtStatus = $conn->prepare("SELECT status, applicant_name, passenger_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, DATE_FORMAT(date_end,'%d %b %Y') as de, time_start, time_end, purpose, destination FROM vehicle_requests WHERE id = ?");
+            $stmtStatus->bind_param("i", $id);
+            $stmtStatus->execute();
+            $reqRow = $stmtStatus->get_result()->fetch_assoc();
+            $stmtStatus->close();
+
+            if ($reqRow && in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user']) && $driverName && $driverName !== 'TANPA_SUPIR') {
+                $stmtDrv = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
+                $stmtDrv->bind_param("s", $driverName);
+                $stmtDrv->execute();
+                $drvRow = $stmtDrv->get_result()->fetch_assoc();
+                $stmtDrv->close();
+
+                if ($drvRow) {
+                    $vName = $vehicleId;
+                    if ($vName === 'TANPA_KENDARAAN') {
+                        $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+                    } else {
+                        $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
+                        $stmtV->bind_param("s", $vehicleId);
+                        $stmtV->execute();
+                        if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
+                        $stmtV->close();
+                    }
+
+                    $appName  = $reqRow['applicant_name'];
+                    $passName = $reqRow['passenger_name'] ?: '-';
+                    $dest     = $reqRow['destination'] ?: '-';
+                    $waktuTanggal = $reqRow['ds'];
+                    if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
+                        $waktuTanggal .= " - " . $reqRow['de'];
+                    }
+                    $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
+                    $purp     = $reqRow['purpose'] ?: '-';
+
+                    if (!empty($drvRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$driverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        sendWhatsAppFonnte($msgDriver, $drvRow['whatsapp_number']);
+                    }
+                    if (!empty($drvRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$driverName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                        sendTelegramPHP($msgDriverTg, $drvRow['telegram_chat_id']);
+                    }
+                }
+            }
+
             jsonResponse(true, 'Kendaraan dan Driver berhasil ditetapkan.');
         } else {
             jsonResponse(false, 'Gagal update kendaraan/driver.');

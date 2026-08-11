@@ -18,161 +18,381 @@ $employeeId = $_SESSION['employee_id'];
   <title>Sistem Inventaris Aset</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../assets/css/globals.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
     :root {
-      --sidebar-width: 250px;
-      --primary: #3b82f6;
-      --primary-dark: #2563eb;
+      --primary: #16a34a;
+      --primary-dark: #15803d;
+      --accent: #f59e0b;
       --bg-color: #f1f5f9;
       --surface: #ffffff;
       --text: #1e293b;
       --text-light: #64748b;
+      --text-white: #ffffff;
       --border: #e2e8f0;
       --danger: #ef4444;
       --success: #10b981;
       --warning: #f59e0b;
+      --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      --shadow-sm: 0 4px 15px rgba(0, 0, 0, 0.05);
     }
     
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: 'Outfit', sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background-color: var(--bg-color);
       color: var(--text);
       margin: 0;
-      display: flex;
       min-height: 100vh;
       overflow-x: hidden;
-    }
-
-    /* Sidebar */
-    .sidebar {
-      width: var(--sidebar-width);
-      background: var(--surface);
-      border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      position: fixed;
-      height: 100vh;
-      z-index: 100;
     }
-    .sidebar-header {
-      padding: 1.5rem;
+
+    /* ================= ICTBConference-style Header ================= */
+    .header {
+      position: sticky;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 0;
+      transition: var(--transition);
       border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .nav-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      height: 64px;
+    }
+
+    /* Logo */
+    .navbar-left, .navbar-right {
       display: flex;
       align-items: center;
+      height: 100%;
+    }
+    .custom-logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
       gap: 0.75rem;
+      margin-right: 2rem;
     }
-    .sidebar-logo {
-      width: 32px;
-      height: 32px;
+    .custom-logo-icon {
+      width: 36px; height: 36px;
       background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      transition: var(--transition);
     }
-    .sidebar-title {
-      font-size: 1.25rem;
+    .custom-logo-text {
+      font-size: 1.15rem;
       font-weight: 700;
       color: var(--text);
-    }
-    .sidebar-nav {
-      padding: 1.5rem 1rem;
-      flex-grow: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      border-radius: 0.5rem;
-      color: var(--text-light);
-      text-decoration: none;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .nav-item:hover, .nav-item.active {
-      background: #eff6ff;
-      color: var(--primary);
-    }
-    .nav-item svg {
-      width: 20px;
-      height: 20px;
-    }
-    .nav-item .chevron {
-      margin-left: auto;
-      transition: transform 0.2s;
-    }
-    .nav-item.expanded .chevron {
-      transform: rotate(90deg);
-    }
-    .nav-submenu {
-      display: none;
-      flex-direction: column;
-      padding-left: 2.5rem;
-      margin-top: 0.25rem;
-      margin-bottom: 0.5rem;
-      gap: 0.25rem;
-    }
-    .nav-submenu.open {
-      display: flex;
-    }
-    .nav-subitem {
-      padding: 0.5rem 0.75rem;
-      border-radius: 0.5rem;
-      color: var(--text-light);
-      text-decoration: none;
-      font-size: 0.875rem;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .nav-subitem:hover, .nav-subitem.active {
-      color: var(--primary);
-      background: #eff6ff;
+      letter-spacing: -0.01em;
+      transition: var(--transition);
     }
 
-    /* Main Content */
-    .main-content {
-      flex-grow: 1;
-      margin-left: var(--sidebar-width);
+    /* ================= Nav Links (ICTBConference-style) ================= */
+    .nav-links {
       display: flex;
-      flex-direction: column;
+      gap: 0;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      height: 100%;
     }
-    .topbar {
-      height: 70px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+    .nav-links > li {
+      position: relative;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 0 2rem;
+      height: 100%;
+    }
+    .nav-link {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      transition: var(--transition);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      position: relative;
+      cursor: pointer;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 100%;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .nav-link svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.7;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 14px;
+      right: 14px;
+      height: 2px;
+      background: var(--primary);
+      transition: var(--transition);
+      transform: scaleX(0);
+      transform-origin: center;
+    }
+    .nav-link:hover::after,
+    .nav-link.active::after {
+      transform: scaleX(1);
+    }
+    .nav-link:hover,
+    .nav-link.active {
+      color: var(--primary);
+    }
+
+    /* ================= Dropdown Menu (ICTBConference-style) ================= */
+    .dropdown-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background-color: var(--surface);
+      min-width: 240px;
+      box-shadow: var(--shadow-sm);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px);
+      transition: var(--transition);
+      padding: 8px 0;
+      z-index: 100;
+      border-top: 3px solid var(--primary);
+      border-radius: 0 0 8px 8px;
+      list-style: none;
+    }
+    .dropdown-menu::before {
+      content: '';
+      position: absolute;
+      top: -15px;
+      left: 0;
+      width: 100%;
+      height: 15px;
+      background: transparent;
+    }
+    .has-dropdown:hover > .dropdown-menu {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .dropdown-menu li {
+      display: block;
+      width: 100%;
+      position: relative;
+    }
+    .dropdown-menu li a,
+    .dropdown-menu li .dropdown-item {
+      display: block;
+      padding: 10px 20px;
+      color: var(--text-light);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      transition: var(--transition);
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .dropdown-menu li a:hover,
+    .dropdown-menu li .dropdown-item:hover {
+      background-color: var(--bg-color);
+      color: var(--primary);
+      padding-left: 25px;
+    }
+    .dropdown-menu li .dropdown-item.active {
+      color: var(--primary);
+      background-color: #eff6ff;
+    }
+
+    /* Nested Sub-Dropdown (level 2+) */
+    .dropdown-menu .has-sub-dropdown {
+      position: relative;
+    }
+    .sub-dropdown-menu {
+      position: absolute;
+      top: -3px;
+      left: 100%;
+      background-color: var(--surface);
+      min-width: 220px;
+      box-shadow: var(--shadow-sm);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(8px);
+      transition: var(--transition);
+      padding: 8px 0;
+      z-index: 101;
+      border-top: 3px solid var(--primary);
+      border-radius: 0 0 8px 8px;
+      list-style: none;
+    }
+    .dropdown-menu .has-sub-dropdown:hover > .sub-dropdown-menu {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(0);
+    }
+    .sub-dropdown-menu li a,
+    .sub-dropdown-menu li .dropdown-item {
+      padding: 10px 20px;
+    }
+
+    /* Last dropdown align right */
+    .nav-links > li:nth-last-child(-n+2) > .dropdown-menu {
+      left: auto;
+      right: 0;
+    }
+
+    /* ================= Nav Right (User Area + UAKPB) ================= */
+    .nav-right-area {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .uakpb-filter {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .uakpb-filter label {
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--text-light);
+      white-space: nowrap;
+    }
+    .uakpb-filter select {
+      width: 180px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      background: var(--surface);
+    }
+    .user-profile-container {
+      position: relative;
+      cursor: pointer;
     }
     .user-profile {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.6rem;
+      padding: 0.25rem;
+      border-radius: 2rem;
+      transition: var(--transition);
+    }
+    .user-profile:hover {
+      background: #f1f5f9;
     }
     .user-avatar {
-      width: 40px;
-      height: 40px;
-      background: var(--primary);
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
       color: white;
       border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .user-info {
+      text-align: right;
+    }
+    .user-info .user-name {
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .user-info .user-role {
+      font-size: 0.65rem;
+      color: var(--text-light);
+      white-space: nowrap;
+    }
+    .user-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      min-width: 150px;
+      padding: 0.5rem;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: var(--transition);
+      z-index: 1000;
+    }
+    .user-profile-container:hover .user-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .btn-logout {
       display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--danger);
+      text-decoration: none;
       font-weight: 600;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      transition: var(--transition);
     }
-    
-    .content-area {
+    .btn-logout:hover {
+      background: #fef2f2;
+    }
+
+    /* ================= Mobile Menu ================= */
+    .mobile-menu-btn {
+      display: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text);
+      transition: var(--transition);
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+
+    /* ================= Main Content ================= */
+    .main-content {
       padding: 2rem;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    .content-area {
       display: none;
     }
     .content-area.active {
@@ -224,6 +444,7 @@ $employeeId = $_SESSION['employee_id'];
       border: 1px solid var(--border);
       padding: 1.5rem;
       margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .card-header {
       display: flex;
@@ -282,6 +503,11 @@ $employeeId = $_SESSION['employee_id'];
       font-family: inherit;
       box-sizing: border-box;
     }
+    .form-input:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
     .btn {
       padding: 0.75rem 1.5rem;
       border-radius: 0.5rem;
@@ -290,11 +516,17 @@ $employeeId = $_SESSION['employee_id'];
       cursor: pointer;
       font-family: inherit;
       transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: center;
     }
     .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #dc2626; }
     
-    /* Search Select (Select2 alternative) */
+    /* Search Select */
     .search-select-wrapper {
       position: relative;
     }
@@ -366,6 +598,7 @@ $employeeId = $_SESSION['employee_id'];
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
+      backdrop-filter: blur(4px);
     }
     .modal-overlay.active {
       opacity: 1;
@@ -382,6 +615,7 @@ $employeeId = $_SESSION['employee_id'];
       position: relative;
       transform: translateY(-20px);
       transition: transform 0.2s;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
     }
     .modal-overlay.active .modal-content {
       transform: translateY(0);
@@ -395,6 +629,10 @@ $employeeId = $_SESSION['employee_id'];
       font-size: 1.5rem;
       cursor: pointer;
       color: var(--text-light);
+      transition: color 0.2s;
+    }
+    .modal-close:hover {
+      color: var(--danger);
     }
     
     .page-title {
@@ -402,107 +640,211 @@ $employeeId = $_SESSION['employee_id'];
       font-weight: 700;
       margin-bottom: 1.5rem;
       color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    /* ================= Responsive ================= */
+    @media (max-width: 1100px) {
+      .uakpb-filter { display: none; }
+    }
+    @media (max-width: 960px) {
+      .mobile-menu-btn {
+        display: block;
+        margin-left: 10px;
+      }
+      .nav-links {
+        display: none;
+        position: fixed;
+        top: 64px;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        flex-direction: column;
+        padding: 20px 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        gap: 0;
+        border-top: 1px solid var(--border);
+        max-height: calc(100vh - 64px);
+        overflow-y: auto;
+        z-index: 999;
+      }
+      .nav-links.active {
+        display: flex;
+      }
+      .nav-links > li {
+        width: 100%;
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .nav-link {
+        padding: 12px 0;
+        font-size: 13px;
+        height: auto;
+      }
+      .nav-link::after {
+        display: none;
+      }
+      .nav-links.active .dropdown-menu,
+      .nav-links.active .sub-dropdown-menu {
+        position: static;
+        box-shadow: none;
+        border-top: none;
+        border-radius: 0;
+        padding-left: 15px;
+        display: none;
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        margin-top: 0;
+        background: transparent;
+        min-width: unset;
+      }
+      .nav-links.active .has-dropdown:hover > .dropdown-menu,
+      .nav-links.active .has-sub-dropdown:hover > .sub-dropdown-menu {
+        display: block;
+      }
+      .nav-links.active .dropdown-menu::before {
+        display: none;
+      }
+      .nav-links.active .dropdown-menu li a,
+      .nav-links.active .dropdown-menu li .dropdown-item,
+      .nav-links.active .sub-dropdown-menu li a,
+      .nav-links.active .sub-dropdown-menu li .dropdown-item {
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .nav-right-area {
+        gap: 0.5rem;
+      }
+      .user-info { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .custom-logo-text { display: none; }
+      .nav-container { padding: 0 1rem; }
+      .user-avatar { width: 30px; height: 30px; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-          <line x1="12" y1="22.08" x2="12" y2="12"></line>
-        </svg>
-      </div>
-      <div class="sidebar-title">Gudang Aset</div>
-    </div>
-    <nav class="sidebar-nav">
-      <div class="nav-item active" onclick="switchTab('dashboard', this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
-        Dashboard
-      </div>
-      <div class="nav-item" onclick="toggleAccordion(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-        Referensi
-        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </div>
-      <div class="nav-submenu">
-        <div class="nav-subitem" onclick="switchTab('master', this, 'Tabel Barang')">Tabel Barang</div>
-        <div class="nav-subitem" onclick="switchTab('uakpb', this, 'Tabel UAKPB')">Tabel UAKPB</div>
+  <!-- Header (ICTBConference Style) -->
+  <header class="header" id="header">
+    <div class="nav-container">
+      <!-- Logo -->
+      <div class="navbar-left">
+        <a href="#" class="custom-logo" onclick="switchTab('dashboard', document.querySelector('.nav-link')); return false;">
+          <div class="custom-logo-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <span class="custom-logo-text">Inventaris</span>
+        </a>
+
+        <!-- Desktop Navigation -->
+        <ul class="nav-links" id="nav-links">
+          <li>
+            <a class="nav-link active" onclick="switchTab('dashboard', this)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+              DASHBOARD
+            </a>
+          </li>
+          <li class="has-dropdown">
+            <a class="nav-link">REFERENSI ▾</a>
+            <ul class="dropdown-menu">
+              <li><div class="dropdown-item" onclick="switchTab('master', this, 'Tabel Barang')">Tabel Barang</div></li>
+              <li><div class="dropdown-item" onclick="switchTab('uakpb', this, 'Tabel UAKPB')">Tabel UAKPB</div></li>
+            </ul>
+          </li>
+          <li class="has-dropdown">
+            <a class="nav-link">TRANSAKSI ▾</a>
+            <ul class="dropdown-menu">
+              <li class="has-sub-dropdown">
+                <div class="dropdown-item">Persediaan Masuk ▸</div>
+                <ul class="sub-dropdown-menu">
+                  <li><div class="dropdown-item" onclick="switchTab('inbound', this, 'Saldo Awal')">Saldo Awal</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('inbound', this, 'Pembelian')">Pembelian</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('inbound', this, 'Transfer Masuk')">Transfer Masuk</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('inbound', this, 'Hibah Masuk')">Hibah Masuk</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('inbound', this, 'Perolehan Lainnya')">Perolehan Lainnya</div></li>
+                </ul>
+              </li>
+              <li class="has-sub-dropdown">
+                <div class="dropdown-item">Persediaan Keluar ▸</div>
+                <ul class="sub-dropdown-menu">
+                  <li><div class="dropdown-item" onclick="switchTab('outbound', this, 'Pemakaian')">Pemakaian</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('outbound', this, 'Transfer Keluar')">Transfer Keluar</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('outbound', this, 'Hibah Keluar')">Hibah Keluar</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('outbound', this, 'Usang')">Usang</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('outbound', this, 'Rusak')">Rusak</div></li>
+                </ul>
+              </li>
+              <li class="has-sub-dropdown">
+                <div class="dropdown-item">Lainnya ▸</div>
+                <ul class="sub-dropdown-menu">
+                  <li><div class="dropdown-item" onclick="switchTab('koreksi', this, 'Koreksi')">Koreksi</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('development', this, 'Hasil Opname Fisik')">Hasil Opname Fisik</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('development', this, 'Penghapusan Usang/Rusak')">Penghapusan</div></li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li class="has-dropdown">
+            <a class="nav-link">LAPORAN ▾</a>
+            <ul class="dropdown-menu">
+              <li><div class="dropdown-item" onclick="switchTab('development', this, 'Buku Persediaan')">Buku Persediaan</div></li>
+              <li><div class="dropdown-item" onclick="switchTab('development', this, 'Laporan Persediaan')">Laporan Persediaan</div></li>
+              <li><div class="dropdown-item" onclick="switchTab('laporan-rincian', this, 'Laporan Rincian Persediaan')">Lap. Rincian Persediaan</div></li>
+              <li><div class="dropdown-item" onclick="switchTab('development', this, 'Laporan Posisi Persediaan di Neraca')">Posisi Neraca</div></li>
+              <li><div class="dropdown-item" onclick="switchTab('history', this, 'Riwayat Transaksi')">Riwayat Transaksi</div></li>
+            </ul>
+          </li>
+          <li>
+            <a class="nav-link" onclick="switchTab('development', this, 'Utility')">UTILITY</a>
+          </li>
+        </ul>
       </div>
       
-      <div class="nav-item" onclick="toggleAccordion(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        Transaksi
-        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </div>
-      <div class="nav-submenu">
-        <div class="nav-subitem" onclick="toggleAccordion(this)">Persediaan Masuk ▾</div>
-        <div class="nav-submenu" style="padding-left:1rem; margin-bottom:0;">
-          <div class="nav-subitem" onclick="switchTab('inbound', this, 'Saldo Awal')">Saldo Awal</div>
-          <div class="nav-subitem" onclick="switchTab('inbound', this, 'Pembelian')">Pembelian</div>
-          <div class="nav-subitem" onclick="switchTab('inbound', this, 'Transfer Masuk')">Transfer Masuk</div>
-          <div class="nav-subitem" onclick="switchTab('inbound', this, 'Hibah Masuk')">Hibah Masuk</div>
-          <div class="nav-subitem" onclick="switchTab('inbound', this, 'Perolehan Lainnya')">Perolehan Lainnya</div>
+      <!-- Right Side -->
+      <div class="navbar-right">
+        <div class="nav-right-area">
+          <div class="uakpb-filter">
+            <label for="global-uakpb-filter">UAKPB:</label>
+            <select id="global-uakpb-filter" onchange="onGlobalUakpbChange()">
+              <option value="all">-- Semua --</option>
+            </select>
+          </div>
+          <div class="user-profile-container">
+            <div class="user-profile">
+              <div class="user-info">
+                <div class="user-name"><?= htmlspecialchars($userName) ?></div>
+                <div class="user-role">Admin Gudang</div>
+              </div>
+              <div class="user-avatar"><?= strtoupper(substr($userName, 0, 1)) ?></div>
+            </div>
+            <div class="user-dropdown">
+              <a href="logout.php" class="btn-logout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                Logout
+              </a>
+            </div>
+          </div>
         </div>
 
-        <div class="nav-subitem" onclick="toggleAccordion(this)">Persediaan Keluar ▾</div>
-        <div class="nav-submenu" style="padding-left:1rem; margin-bottom:0;">
-          <div class="nav-subitem" onclick="switchTab('outbound', this, 'Pemakaian')">Pemakaian</div>
-          <div class="nav-subitem" onclick="switchTab('outbound', this, 'Transfer Keluar')">Transfer Keluar</div>
-          <div class="nav-subitem" onclick="switchTab('outbound', this, 'Hibah Keluar')">Hibah Keluar</div>
-          <div class="nav-subitem" onclick="switchTab('outbound', this, 'Usang')">Usang</div>
-          <div class="nav-subitem" onclick="switchTab('outbound', this, 'Rusak')">Rusak</div>
-        </div>
-
-        <div class="nav-subitem" onclick="switchTab('koreksi', this, 'Koreksi')">Koreksi</div>
-        <div class="nav-subitem" onclick="switchTab('development', this, 'Hasil Opname Fisik')">Hasil Opname Fisik</div>
-        <div class="nav-subitem" onclick="switchTab('development', this, 'Penghapusan Usang/Rusak')">Penghapusan Usang/Rusak</div>
+        <!-- Mobile Menu Button -->
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="document.getElementById('nav-links').classList.toggle('active')">
+          ☰
+        </button>
       </div>
-
-      <!-- LAPORAN -->
-      <div class="nav-item" onclick="toggleAccordion(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-        Laporan
-        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </div>
-      <div class="nav-submenu">
-        <div class="nav-subitem" onclick="switchTab('development', this, 'Buku Persediaan')">Buku Persediaan</div>
-        <div class="nav-subitem" onclick="switchTab('development', this, 'Laporan Persediaan')">Laporan Persediaan</div>
-        <div class="nav-subitem" onclick="switchTab('laporan-rincian', this, 'Laporan Rincian Persediaan')">Laporan Rincian Persediaan</div>
-        <div class="nav-subitem" onclick="switchTab('development', this, 'Laporan Posisi Persediaan di Neraca')">Laporan Posisi Persediaan di Neraca</div>
-        <div class="nav-subitem" onclick="switchTab('history', this, 'Riwayat Transaksi')">Riwayat Transaksi</div>
-      </div>
-
-      <div class="nav-item" onclick="switchTab('development', this, 'Utility')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
-        Utility
-      </div>
-    </nav>
-  </aside>
+    </div>
+  </header>
 
   <!-- Main Content -->
   <main class="main-content">
-    <header class="topbar">
-      <div style="display: flex; align-items: center; gap: 1rem;">
-        <label for="global-uakpb-filter" style="font-weight: 500;">Pilih UAKPB:</label>
-        <select id="global-uakpb-filter" class="form-input" style="width: 300px;" onchange="onGlobalUakpbChange()">
-          <option value="all">-- Semua UAKPB --</option>
-          <!-- Options will be populated via JS -->
-        </select>
-      </div>
-      <div class="user-profile">
-        <div style="text-align: right;">
-          <div style="font-weight: 600; font-size: 0.9rem;"><?= htmlspecialchars($userName) ?></div>
-          <div style="font-size: 0.75rem; color: var(--text-light);">Admin Gudang</div>
-        </div>
-        <div class="user-avatar"><?= strtoupper(substr($userName, 0, 1)) ?></div>
-        <a href="logout.php" style="margin-left: 1rem; color: var(--danger); text-decoration: none; font-size: 0.9rem; font-weight: 500;">Logout</a>
-      </div>
-    </header>
 
     <!-- DASHBOARD VIEW -->
     <div id="view-dashboard" class="content-area active">
@@ -541,7 +883,7 @@ $employeeId = $_SESSION['employee_id'];
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Transaksi Terbaru</h3>
-          <button class="btn btn-primary" onclick="switchTab('history', document.querySelectorAll('.nav-item')[4])" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Lihat Semua</button>
+          <button class="btn btn-primary" onclick="switchTab('history', null, 'Riwayat Transaksi')" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Lihat Semua</button>
         </div>
         <div class="table-responsive">
           <table id="table-dashboard-tx">
@@ -706,6 +1048,7 @@ $employeeId = $_SESSION['employee_id'];
             <input type="hidden" id="tx-item-name">
             <input type="hidden" id="tx-item-code">
             <input type="hidden" id="tx-item-stock">
+            <input type="hidden" id="tx-item-location-id">
             <div id="tx-item-dropdown" class="search-select-dropdown"></div>
           </div>
           <div class="form-group" style="flex: 1; min-width: 150px;">
@@ -989,8 +1332,10 @@ $employeeId = $_SESSION['employee_id'];
     let txItems = [];
 
     function switchTab(tabId, el, subtype = '') {
-      document.querySelectorAll('.nav-item, .nav-subitem').forEach(n => n.classList.remove('active'));
-      el.classList.add('active');
+      document.querySelectorAll('.nav-link, .dropdown-item').forEach(n => n.classList.remove('active'));
+      if (el) el.classList.add('active');
+      // Close mobile menu if open
+      document.getElementById('nav-links').classList.remove('active');
       document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
         // TRANSAKSI
       if (tabId === 'inbound' || tabId === 'outbound' || tabId === 'koreksi') {
@@ -1158,8 +1503,9 @@ $employeeId = $_SESSION['employee_id'];
       if (paginatedItems.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 2rem;">Tidak ada data ditemukan</td></tr>`;
       } else {
+        let htmlStr = '';
         paginatedItems.forEach(i => {
-          tbody.innerHTML += `
+          htmlStr += `
             <tr>
               <td>${i.item_code}</td>
               <td>${i.category_name || '-'}</td>
@@ -1170,6 +1516,7 @@ $employeeId = $_SESSION['employee_id'];
             </tr>
           `;
         });
+        tbody.innerHTML = htmlStr;
       }
 
       // 4. Update Pagination UI
@@ -1190,12 +1537,12 @@ $employeeId = $_SESSION['employee_id'];
         historyTx = await res.json();
         
         const tbody = document.querySelector('#table-history tbody');
-        tbody.innerHTML = '';
+        let htmlStr = '';
         historyTx.forEach(tx => {
           const typeBadge = tx.type === 'in' 
             ? `<span class="badge in">Masuk</span>` 
             : `<span class="badge out">Keluar</span>`;
-          tbody.innerHTML += `
+          htmlStr += `
             <tr>
               <td>${new Date(tx.created_at).toLocaleString('id-ID')}</td>
               <td>${typeBadge}</td>
@@ -1209,6 +1556,7 @@ $employeeId = $_SESSION['employee_id'];
             </tr>
           `;
         });
+        tbody.innerHTML = htmlStr;
       } catch (err) {
         console.error(err);
       }
@@ -1268,12 +1616,13 @@ $employeeId = $_SESSION['employee_id'];
         generateDocNumber();
     }
 
-    async function generateDocNumber() {
+    async function generateDocNumber(overrideLocationId = null) {
         try {
+          const locId = overrideLocationId || document.getElementById('global-uakpb-filter').value;
           const formData = new FormData();
           formData.append('action', 'generate_doc_number');
           formData.append('type', currentFormTxType);
-          formData.append('location_id', document.getElementById('global-uakpb-filter').value);
+          formData.append('location_id', locId);
           const res = await fetch('api.php', { method: 'POST', body: formData });
           const json = await res.json();
           if (json.success) {
@@ -1303,7 +1652,11 @@ $employeeId = $_SESSION['employee_id'];
         }
         
         timeout = setTimeout(async () => {
-          const res = await fetch(`api.php?action=search_items&q=${encodeURIComponent(q)}&location_id=${document.getElementById('global-uakpb-filter').value}`);
+          let searchLocId = document.getElementById('global-uakpb-filter').value;
+          if (typeof txItems !== 'undefined' && txItems.length > 0) {
+              searchLocId = txItems[0].locationId;
+          }
+          const res = await fetch(`api.php?action=search_items&q=${encodeURIComponent(q)}&location_id=${searchLocId}`);
           const items = await res.json();
           
           dropdown.innerHTML = '';
@@ -1320,6 +1673,7 @@ $employeeId = $_SESSION['employee_id'];
                 document.getElementById('tx-item-name').value = item.name;
                 document.getElementById('tx-item-code').value = item.item_code;
                 document.getElementById('tx-item-stock').value = item.stock;
+                document.getElementById('tx-item-location-id').value = item.location_id;
                 
                 document.getElementById('tx-stock-label').textContent = `(Stok: ${item.stock})`;
                 if(currentFormTxType === 'out') {
@@ -1331,8 +1685,17 @@ $employeeId = $_SESSION['employee_id'];
                   priceInput.style.background = '#f1f5f9';
                   priceInput.style.color = 'var(--danger)';
                   priceInput.style.fontWeight = 'bold';
+                } else {
+                  resetPriceInputStyle();
                 }
+                
                 dropdown.style.display = 'none';
+
+                // Regenerate doc number if it starts with DEFAULT
+                const currentDoc = document.getElementById('tx-form-nodok').value;
+                if (currentDoc.startsWith('DEFAULT')) {
+                    generateDocNumber(item.location_id);
+                }
               };
               dropdown.appendChild(div);
             });
@@ -1357,9 +1720,15 @@ $employeeId = $_SESSION['employee_id'];
       const stock = parseInt(document.getElementById('tx-item-stock').value || 0);
       const qty = parseInt(document.getElementById('tx-item-qty').value || 0);
       const price = parseFloat(document.getElementById('tx-item-price').value || 0);
+      const locId = document.getElementById('tx-item-location-id').value;
       
       if(!id || qty <= 0) {
         Swal.fire('Peringatan', 'Silakan pilih barang dan masukkan jumlah minimal 1.', 'warning');
+        return;
+      }
+      
+      if(txItems.length > 0 && txItems[0].locationId !== locId) {
+        Swal.fire('Peringatan', 'Satu dokumen hanya boleh berisi barang dari UAKPB yang sama.', 'warning');
         return;
       }
       
@@ -1378,12 +1747,13 @@ $employeeId = $_SESSION['employee_id'];
         existing.qty += qty;
         existing.price = price; // update price to latest typed
       } else {
-        txItems.push({ id, code, name, qty, price });
+        txItems.push({ id, code, name, qty, price, locationId: locId });
       }
       
       // Reset input
       document.getElementById('tx-item-search').value = '';
       document.getElementById('tx-item-id').value = '';
+      document.getElementById('tx-item-location-id').value = '';
       document.getElementById('tx-item-qty').value = '';
       document.getElementById('tx-item-price').value = '0';
       document.getElementById('tx-stock-label').textContent = '';
@@ -1491,10 +1861,11 @@ $employeeId = $_SESSION['employee_id'];
           return;
         }
         
+        let htmlStr = '';
         docs.forEach(doc => {
           const tgl = new Date(doc.doc_date).toLocaleDateString('id-ID');
           const totalRp = parseFloat(doc.total_price).toLocaleString('id-ID');
-          tbody.innerHTML += `
+          htmlStr += `
             <tr style="border-bottom: 1px solid var(--border);">
               <td style="padding: 1rem; color: var(--primary); font-weight: 500;">${doc.doc_number || '-'}</td>
               <td style="padding: 1rem;">${tgl}</td>
@@ -1504,6 +1875,7 @@ $employeeId = $_SESSION['employee_id'];
             </tr>
           `;
         });
+        tbody.innerHTML = htmlStr;
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color:var(--danger);">Gagal memuat daftar dokumen.</td></tr>';
       }
