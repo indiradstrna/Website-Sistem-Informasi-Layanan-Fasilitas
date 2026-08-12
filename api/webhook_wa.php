@@ -27,13 +27,14 @@ if (!$sender || !$message) {
     exit;
 }
 
-// Hanya proses jika pesan dimulai dengan SETUJU atau TOLAK
-if (!preg_match('/^(SETUJU|TOLAK)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+// Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, atau COMPLETED
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
     http_response_code(200); // Ignore non-command messages
     exit;
 }
 
-$actionType = strtoupper($matches[1]); // SETUJU / TOLAK
+$actionTypeRaw = strtoupper($matches[1]);
+$actionType = ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED') ? 'SETUJU' : $actionTypeRaw; // SETUJU / TOLAK / (SELESAI -> SETUJU)
 $typeCode   = strtoupper($matches[2]); // VEH
 $reqId      = (int)$matches[3]; // 15
 $optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
@@ -180,6 +181,23 @@ if ($currentStatus === 'pending') {
     if ($isPIC) {
         $canProcess = true;
         $nextStatusApprove = 'ready_for_user'; // PIC marks as ready
+    }
+} else if ($currentStatus === 'ready_for_user') {
+    // Only applicant can mark as completed via SELESAI/SETUJU
+    if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
+        $canProcess = true;
+        $nextStatusApprove = 'completed';
+    } else {
+        // Fetch user_id if not present in requestData
+        $stmtA = $conn->prepare("SELECT user_id FROM `$table` WHERE id = ?");
+        $stmtA->bind_param("i", $reqId);
+        $stmtA->execute();
+        $resA = $stmtA->get_result()->fetch_assoc();
+        $stmtA->close();
+        if ($resA && $resA['user_id'] == $user['id']) {
+            $canProcess = true;
+            $nextStatusApprove = 'completed';
+        }
     }
 }
 

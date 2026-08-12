@@ -315,4 +315,23 @@ function renderPageHead(string $title, string $basePath = '../'): void {
 <body>
 <div class="top-bar"></div>
 <?php
+$waCheck = preg_replace('/[^0-9]/', '', $_SESSION['whatsapp_number'] ?? '');
+if (strlen($waCheck) < 9) {
+?>
+  <!-- Modal Pop-up Isi WhatsApp -->
+  <div id="waModalOverlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);">
+    <div style="background:#fff;padding:2rem;border-radius:12px;width:90%;max-width:400px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.2);animation: popIn 0.3s ease-out;">
+      <h3 style="margin-top:0;font-size:1.5rem;color:var(--color-slate-800);display:flex;align-items:center;justify-content:center;gap:0.5rem;">Lengkapi Profil Anda 📱</h3>
+      <p style="color:var(--color-slate-500);font-size:0.95rem;margin:1rem 0 1.5rem;">Sistem SILATAS membutuhkan <b>Nomor WhatsApp</b> Anda untuk mengirimkan notifikasi <b>real-time</b> terkait pengajuan.</p>
+      <button onclick="document.getElementById('waModalOverlay').style.display='none'; if(typeof switchView === 'function') { switchView('profile'); }" class="btn btn-primary" style="width:100%;">Isi Nomor HP Sekarang</button>
+      <button onclick="document.getElementById('waModalOverlay').style.display='none';" class="btn btn-outline" style="width:100%;margin-top:0.5rem;border:none;">Nanti Saja</button>
+    </div>
+  </div>
+  <style>
+    @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  </style>
+<?php
+}
+?>
+<?php
 } // end renderPageHead()

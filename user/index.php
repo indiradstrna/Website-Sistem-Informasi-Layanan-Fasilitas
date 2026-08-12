@@ -411,8 +411,8 @@ const DORMITORIES = [
   { id: 'DORMITORY_L', name: 'Dormitory L' }
 ];
 const ZOOM_ACCOUNTS = [
-  { id: 'zoom_01', name: 'Zoom Premium 1 (Kap. 300)' },
-  { id: 'zoom_02', name: 'Zoom Webinar (Kap. 300)' },
+  { id: 'zoom_01', name: 'Zoom 1 (Kap. 300)' },
+  { id: 'zoom_02', name: 'Zoom 2 (Kap. 300)' },
 ];
 
 async function loadMyData(silent = false) {
@@ -1855,7 +1855,7 @@ async function doSubmitForm() {
       if (badge) badge.textContent = '0';
     }
     
-    closeModal('modal-form');
+    Modal.close('modal-form');
 
     // Notification is now handled entirely by the backend (api/requests.php)
     // ----------------------------

@@ -43,6 +43,9 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         } else if ($newStatus === 'waiting_bod') {
             $promptWa = "\n*Untuk menyetujui pengajuan ini (BOD), balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk menyetujui pengajuan ini (BOD), balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'approved') {
+            $promptWa = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
+            $promptTg = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
         } else {
             $promptWa = "\n*Untuk memproses pengajuan ini, balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk memproses pengajuan ini, balas:</b>\nSETUJU {$code}-{$id}";
@@ -297,8 +300,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
                 $zName = $row['zoom_account_id'] ?? '-';
                 if (!empty($row['zoom_account_id'])) {
                     $zoomMap = [
-                        'zoom_01' => 'Zoom Premium 1 (Kap. 300)',
-                        'zoom_02' => 'Zoom Webinar (Kap. 300)'
+                        'zoom_01' => 'Zoom 1 (Kap. 300)',
+                        'zoom_02' => 'Zoom 2 (Kap. 300)'
                     ];
                     $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
                 }
@@ -394,7 +397,18 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         
         $statusLabel = $statusLabelMap[strtolower($newStatus)] ?? strtoupper(str_replace('_', ' ', $newStatus));
 
-        $msg = "<b>📢 UPDATE PENGAJUAN</b>\n\n";
+        $typeToLabel = [
+            'vehicle_requests' => 'KENDARAAN',
+            'room_requests'    => 'RUANGAN',
+            'dormitory_requests' => 'DORMITORY',
+            'zoom_requests'    => 'ZOOM',
+            'repair_requests'  => 'PERBAIKAN',
+            'item_loan_requests' => 'PEMINJAMAN BARANG',
+            'item_requests' => 'PERMINTAAN BARANG'
+        ];
+        $typeLabelUser = $typeToLabel[$table] ?? 'UMUM';
+
+        $msg = "<b>📢 UPDATE PENGAJUAN (" . $typeLabelUser . ")</b>\n\n";
         $msg .= "Halo " . htmlspecialchars($request['applicant_name']) . ",\n";
         $msg .= "Status pengajuan Anda <b>#$id</b> telah diperbarui.\n\n";
         $msg .= "<b>Status Baru:</b> $statusLabel\n";
@@ -402,7 +416,25 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             $msg .= "<b>Catatan Admin:</b> " . htmlspecialchars($noteInput) . "\n";
         }
         $msg .= "<b>Diproses Oleh:</b> " . htmlspecialchars($actorName) . "\n\n";
-        $msg .= "<i>Silakan cek Dashboard Bioform untuk detail.</i>";
+        
+        if ($newStatus === 'ready_for_user') {
+            $typeCodes = [
+                'vehicle_requests' => 'VEH',
+                'room_requests'    => 'ROM',
+                'dormitory_requests'=> 'DRM',
+                'zoom_requests'    => 'ZOM',
+                'repair_requests'  => 'REP',
+                'item_loan_requests' => 'ITM',
+                'item_requests' => 'ITM'
+            ];
+            $code = $typeCodes[$table] ?? 'REQ';
+            
+            $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
+            $msg .= "<i>Untuk konfirmasi pengajuan selesai, balas pesan ini dengan format:</i>\n";
+            $msg .= "<b>SELESAI $code-$id</b>\n\n";
+        }
+        
+        $msg .= "<i>Silakan cek Dashboard SILATAS untuk detail:</i>\nhttps://silatas.biotrop.org/";
 
         // Kirim ke Telegram User (jika ada chat_id)
         if (!empty($user['telegram_chat_id'])) {
@@ -495,8 +527,8 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             $zName = $row['zoom_account_id'] ?? '-';
             if (!empty($row['zoom_account_id'])) {
                 $zoomMap = [
-                    'zoom_01' => 'Zoom Premium 1 (Kap. 300)',
-                    'zoom_02' => 'Zoom Webinar (Kap. 300)'
+                    'zoom_01' => 'Zoom 1 (Kap. 300)',
+                    'zoom_02' => 'Zoom 2 (Kap. 300)'
                 ];
                 $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
             }
@@ -538,8 +570,13 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             $msgApprover .= $detailTxt;
         }
 
-        $msgApprover .= "\n<b>Status Baru:</b> $statusLabel\n";
-        $msgApprover .= "<i>Mohon cek Dashboard Admin untuk review/tindakan.</i>";
+        $msgApprover .= "\n<b>Status Baru:</b> $statusLabel oleh " . htmlspecialchars($actorName) . ".\n";
+        
+        if ($newStatus === 'approved') {
+            $msgApprover .= "<b>Mohon cek Dashboard Admin:</b>";
+        } else {
+            $msgApprover .= "<i>Mohon cek Dashboard Admin untuk review/tindakan.</i>";
+        }
         
         notifyApprovers($conn, $newStatus, $type, $id, $msgApprover);
     }

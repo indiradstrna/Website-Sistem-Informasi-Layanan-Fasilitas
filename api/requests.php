@@ -227,6 +227,20 @@ switch ($action) {
         $participants   = (int)($_POST['participants'] ?? 0);
         $special_needs  = $_POST['special_needs']  ?? '';
 
+        if ($room_id && $date_start && $time_start && $date_end && $time_end) {
+            $startDT = $date_start . ' ' . substr($time_start, 0, 5);
+            $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
+            
+            $stmt = $conn->prepare("SELECT id FROM room_requests WHERE room_id = ? AND status IN ('approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+            $stmt->bind_param("sss", $room_id, $endDT, $startDT);
+            $stmt->execute();
+            $resConf = $stmt->get_result();
+            if ($resConf->num_rows > 0) {
+                jsonResponse(false, 'Ruangan sudah dipesan pada jam tersebut.');
+            }
+            $stmt->close();
+        }
+
         $stmt = $conn->prepare("INSERT INTO room_requests (user_id, room_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, participants, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param("issssssssis", $userId, $room_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $special_needs);
         if ($stmt->execute()) {
@@ -276,6 +290,20 @@ switch ($action) {
         $participants    = (int)($_POST['participants'] ?? 0);
         $request_type    = $_POST['request_type']    ?? '';
         $special_needs   = $_POST['special_needs']   ?? '';
+
+        if ($zoom_account_id && $date_start && $time_start && $date_end && $time_end) {
+            $startDT = $date_start . ' ' . substr($time_start, 0, 5);
+            $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
+            
+            $stmt = $conn->prepare("SELECT id FROM zoom_requests WHERE zoom_account_id = ? AND status IN ('approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+            $stmt->bind_param("sss", $zoom_account_id, $endDT, $startDT);
+            $stmt->execute();
+            $resConf = $stmt->get_result();
+            if ($resConf->num_rows > 0) {
+                jsonResponse(false, 'Akun Zoom sudah dipesan pada jam tersebut.');
+            }
+            $stmt->close();
+        }
 
         $stmt = $conn->prepare("INSERT INTO zoom_requests (user_id, zoom_account_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, participants, request_type, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param("isssssssisss", $userId, $zoom_account_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $request_type, $special_needs);
