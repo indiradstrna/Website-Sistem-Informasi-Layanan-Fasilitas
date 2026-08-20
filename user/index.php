@@ -2097,7 +2097,7 @@ setTimeout(() => {
 
 function buildDetailFooter(req) {
   const type = (req._type || req.type || '').toLowerCase();
-  const isReadyForUser = req.status === 'ready_for_user';
+  const isReadyForUser = (req.status === 'ready_for_user' || req.status === 'approved');
   const isNotRepair = type !== 'repair';
   
   let html = `<button class="btn btn-outline" onclick="switchView(previousView || 'dashboard')">Tutup</button>`;

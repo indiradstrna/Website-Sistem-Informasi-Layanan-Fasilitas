@@ -210,7 +210,24 @@ if ($currentStatus === 'pending') {
         $nextStatusApprove = 'approved';
     }
 } else if ($currentStatus === 'approved') {
-    if ($isPIC) {
+    // Cek apakah pengirim adalah pemohon (applicant)
+    $isApplicant = false;
+    if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
+        $isApplicant = true;
+    } else {
+        $stmtA = $conn->prepare("SELECT user_id FROM `$table` WHERE id = ?");
+        $stmtA->bind_param("i", $reqId);
+        $stmtA->execute();
+        $resA = $stmtA->get_result()->fetch_assoc();
+        $stmtA->close();
+        if ($resA && $resA['user_id'] == $user['id']) $isApplicant = true;
+    }
+
+    // Jika pemohon explicitly membalas SELESAI/COMPLETED saat status masih approved
+    if ($isApplicant && ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED')) {
+        $canProcess = true;
+        $nextStatusApprove = 'completed';
+    } else if ($isPIC) {
         $canProcess = true;
         $nextStatusApprove = 'ready_for_user'; // PIC marks as ready
     }

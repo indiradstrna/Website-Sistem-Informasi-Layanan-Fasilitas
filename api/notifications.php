@@ -29,8 +29,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     
     if (in_array($newStatus, $approvableStatuses)) {
         if ($newStatus === 'pending') {
-            $promptWa = "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
-            $promptTg = "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
+            if ($type === 'Repair') {
+                $promptWa = "\n_Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya._";
+                $promptTg = "\n<i>Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via Telegram karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.</i>";
+            } else {
+                $promptWa = "\n*Untuk meneruskan ke Manager FMD, balas:*\nSETUJU {$code}-{$id}";
+                $promptTg = "\n<b>Untuk meneruskan ke Manager FMD, balas:</b>\nSETUJU {$code}-{$id}";
+            }
         } else if ($newStatus === 'waiting_manager_fmd') {
             $promptWa = "\n*Untuk menyetujui pengajuan ini (Manager FMD), balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manager FMD), balas:</b>\nSETUJU {$code}-{$id}";
@@ -417,7 +422,7 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         }
         $msg .= "<b>Diproses Oleh:</b> " . htmlspecialchars($actorName) . "\n\n";
         
-        if ($newStatus === 'ready_for_user') {
+        if ($newStatus === 'ready_for_user' || $newStatus === 'approved') {
             $typeCodes = [
                 'vehicle_requests' => 'VEH',
                 'room_requests'    => 'ROM',
@@ -429,8 +434,10 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             ];
             $code = $typeCodes[$table] ?? 'REQ';
             
-            $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
-            $msg .= "<i>Untuk konfirmasi pengajuan selesai, balas pesan ini dengan format:</i>\n";
+            if ($newStatus === 'ready_for_user') {
+                $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
+            }
+            $msg .= "<i>Jika permintaan telah selesai digunakan/dilaksanakan, Anda dapat mengkonfirmasi penyelesaian dengan membalas pesan ini (format):</i>\n";
             $msg .= "<b>SELESAI $code-$id</b>\n\n";
         }
         
