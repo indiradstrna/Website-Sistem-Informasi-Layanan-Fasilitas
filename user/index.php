@@ -1233,20 +1233,10 @@ function renderProfile() {
           </div>
           <div style="height: 1px; background: var(--color-slate-100);"></div>
           <div>
-            <label style="display:block; font-size: 0.7rem; font-weight: 800; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 0.25rem;">Telegram Chat ID</label>
-            <div style="display:flex; gap:0.5rem;">
-                <input type="text" id="p-telegram-chat-id" class="form-input" style="font-size:0.9rem; font-weight:700;" value="${USER_TELE_CHAT_ID || ''}" placeholder="Contoh: 123456789" />
-            </div>
-            <div style="font-size:0.7rem; color:var(--muted-foreground); margin-top:0.4rem;">
-                Masukkan ID Telegram Anda untuk menerima notifikasi pribadi. (Opsional)
-            </div>
-          </div>
-          <div style="height: 1px; background: var(--color-slate-100);"></div>
-          <div>
             <label style="display:block; font-size: 0.7rem; font-weight: 800; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 0.25rem;">Nomor WhatsApp</label>
             <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                 <input type="text" id="p-whatsapp-number" class="form-input" style="font-size:0.9rem; font-weight:700;" value="${USER_WA_NUMBER || ''}" placeholder="Contoh: 08123456789" />
-                <button class="btn btn-primary btn-sm" onclick="saveProfile()">Simpan Kontak (WA & Telegram)</button>
+                <button class="btn btn-primary btn-sm" onclick="saveProfile()">Simpan Kontak WA</button>
             </div>
             <div style="font-size:0.7rem; color:var(--muted-foreground); margin-top:0.4rem;">
                 Masukkan nomor WhatsApp Anda untuk menerima notifikasi otomatis. Anda tidak perlu setup API lagi.
@@ -1296,6 +1286,10 @@ function renderProfile() {
                    </div>
                 </div>
                 <button type="button" class="btn btn-primary" style="margin-top:0.5rem;" onclick="changePassword()">Perbarui Password</button>
+                <div style="margin-top: 0.75rem; padding: 0.75rem; background: #fffbeb; border: 1px solid #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 0.75rem; color: #92400e; display: flex; gap: 0.5rem; align-items: start;">
+                  <svg style="flex-shrink:0; margin-top:0.1rem;" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div><b>Informasi Penting:</b> Password akun SILATAS Anda terintegrasi dengan web Kinerja Daring (KDR). Jika Anda mengubah password di sini, password untuk <i>login</i> ke web KDR Anda juga akan ikut berubah!</div>
+                </div>
             </div>
         </div>
 

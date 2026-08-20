@@ -27,18 +27,43 @@ if (!$sender || !$message) {
     exit;
 }
 
-// Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, atau COMPLETED
-if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
-    http_response_code(200); // Ignore non-command messages
+// Parsing pesan
+$parts = explode(' ', trim(preg_replace('/\s+/', ' ', $message)), 3);
+if (count($parts) < 2) {
+    http_response_code(200);
     exit;
 }
 
-$actionTypeRaw = strtoupper($matches[1]);
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)$/i', $parts[0], $matchAction)) {
+    http_response_code(200);
+    exit;
+}
+if (!preg_match('/^([A-Z]+)-(\d+)$/i', $parts[1], $matchId)) {
+    http_response_code(200);
+    exit;
+}
+
+$actionTypeRaw = strtoupper($matchAction[1]);
 $actionType = ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED') ? 'SETUJU' : $actionTypeRaw; // SETUJU / TOLAK / (SELESAI -> SETUJU)
-$typeCode   = strtoupper($matches[2]); // VEH
-$reqId      = (int)$matches[3]; // 15
-$optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
-$optNumber  = isset($matches[5]) && $matches[5] !== '' ? (int)$matches[5] : -1; // -1 means not provided
+$typeCode   = strtoupper($matchId[1]);
+$reqId      = (int)$matchId[2];
+$rest       = isset($parts[2]) ? trim($parts[2]) : '';
+
+$optLetter  = '';
+$optNumber  = -1;
+$customWaNote = '';
+
+if ($typeCode === 'VEH' || $typeCode === 'ROM') {
+    if (preg_match('/^([a-zA-Z])(?:\s+(\d+))?(?:\s+(.*))?$/', $rest, $m)) {
+        $optLetter = strtoupper($m[1]);
+        $optNumber = isset($m[2]) && $m[2] !== '' ? (int)$m[2] : -1;
+        $customWaNote = isset($m[3]) ? trim($m[3]) : '';
+    } else {
+        $customWaNote = $rest;
+    }
+} else {
+    $customWaNote = $rest;
+}
 
 // Normalisasi nomor WA (Hapus 62 atau 0 di depan untuk pencarian yang fleksibel)
 $cleanSender = preg_replace('/^(62|0)/', '', $sender);
@@ -98,8 +123,11 @@ if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
     if ($typeCode === 'VEH') {
         if ($optLetter) {
             $idx = ord($optLetter) - 65;
-            $resV = $conn->query("SELECT id FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
-            if ($resV && $v = $resV->fetch_assoc()) $selectedVehicleId = $v['id'];
+            $resV = $conn->query("SELECT id, name, license_plate FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
+            if ($resV && $v = $resV->fetch_assoc()) {
+                $selectedVehicleId = $v['id'];
+                $vehicleNameStr = $v['name'] . ' - ' . $v['license_plate'];
+            }
         }
         if ($optNumber === 0) {
             $selectedDriverName = 'TANPA_SUPIR';
@@ -111,8 +139,11 @@ if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
     } else if ($typeCode === 'ROM') {
         if ($optLetter) {
             $idx = ord($optLetter) - 65;
-            $resR = $conn->query("SELECT id FROM master_rooms ORDER BY id ASC LIMIT $idx, 1");
-            if ($resR && $r = $resR->fetch_assoc()) $selectedRoomId = $r['id'];
+            $resR = $conn->query("SELECT id, name, capacity FROM master_rooms ORDER BY id ASC LIMIT $idx, 1");
+            if ($resR && $r = $resR->fetch_assoc()) {
+                $selectedRoomId = $r['id'];
+                $roomNameStr = $r['name'] . ' (' . $r['capacity'] . ' org)';
+            }
         }
     }
 }
@@ -131,7 +162,8 @@ $picMap = [
     'VEH' => ['198605082025211053'], 
     'ITM' => ['198902222025211044'], 
     'ZOM' => ['198902222025211044'], 
-    'ROM' => ['199008092025212052', '198902222025211044'], 
+    'ROM' => ['199008092025212052', '198902222025211044', '16268300055'], 
+    'DRM' => ['199008092025212052', '198902222025211044', '16268300055'], 
     'REP' => ['198605082025211053', '197212162014091003']
 ];
 $isPIC = in_array($username, $picMap[$typeCode] ?? []);
@@ -209,8 +241,44 @@ if (!$canProcess) {
 
 // 5. Eksekusi Perubahan
 $finalStatus = ($actionType === 'SETUJU') ? $nextStatusApprove : $nextStatusReject;
-$actionNote = "Direspon otomatis via WhatsApp oleh " . $user['full_name'];
 
+// Generate dynamic note similar to web
+$actionNote = "Direspon otomatis via WhatsApp oleh " . $user['full_name'];
+if ($actionType === 'SETUJU') {
+    if ($currentStatus === 'pending' && $nextStatusApprove === 'waiting_manager_fmd') {
+        if ($typeCode === 'VEH' && !empty($vehicleNameStr) && !empty($selectedDriverName)) {
+            $actionNote = "{$vehicleNameStr} tersedia, diteruskan kepada Manager FMD untuk approval permohonan. Driver: {$selectedDriverName}";
+        } else if ($typeCode === 'ROM' && !empty($roomNameStr)) {
+            $actionNote = "{$roomNameStr} tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
+        } else if ($typeCode === 'ZOM') {
+            $actionNote = "Akun Zoom/Link tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
+            if (!empty($customWaNote)) {
+                $actionNote = "Zoom Info: " . $customWaNote . ". " . $actionNote;
+                $customWaNote = ''; // Consume so it doesn't get appended twice
+            }
+        } else if ($typeCode === 'ITM') {
+            $actionNote = "Barang Pinjaman tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
+        }
+    } else if ($currentStatus === 'waiting_manager_fmd' && $nextStatusApprove === 'approved') {
+        if ($typeCode === 'VEH') {
+            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Kendaraan (Unit & Driver) menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+        } else if ($typeCode === 'ROM') {
+            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Ruangan & Fasilitas menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+        } else if ($typeCode === 'ZOM') {
+            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Akun Zoom/Link menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+        } else if ($typeCode === 'ITM') {
+            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Peminjaman Barang menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+        } else if ($typeCode === 'REP') {
+             $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Perbaikan menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+        }
+    }
+} else if ($actionType === 'TOLAK') {
+    $actionNote = "Pengajuan ditolak melalui WhatsApp oleh " . $user['full_name'];
+}
+
+if (!empty($customWaNote)) {
+    $actionNote .= "\nCatatan Tambahan: " . $customWaNote;
+}
 // Logging ke Note
 $ts = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');
 $newLog = "[$ts] [" . $user['full_name'] . " (WA)] - " . strtoupper($finalStatus) . ": $actionNote";
