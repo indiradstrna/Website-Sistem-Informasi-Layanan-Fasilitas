@@ -54,9 +54,9 @@ $optNumber  = -1;
 $customWaNote = '';
 
 if ($typeCode === 'VEH' || $typeCode === 'ROM') {
-    if (preg_match('/^([a-zA-Z])(?:\s+(\d+))?(?:\s+(.*))?$/', $rest, $m)) {
+    if (preg_match('/^([a-zA-Z])\s*(\d+)?\s*(.*)$/', $rest, $m)) {
         $optLetter = strtoupper($m[1]);
-        $optNumber = isset($m[2]) && $m[2] !== '' ? (int)$m[2] : -1;
+        $optNumber = (isset($m[2]) && $m[2] !== '') ? (int)$m[2] : -1;
         $customWaNote = isset($m[3]) ? trim($m[3]) : '';
     } else {
         $customWaNote = $rest;
