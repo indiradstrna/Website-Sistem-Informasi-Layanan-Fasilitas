@@ -27,43 +27,18 @@ if (!$sender || !$message) {
     exit;
 }
 
-// Parsing pesan
-$parts = explode(' ', trim(preg_replace('/\s+/', ' ', $message)), 3);
-if (count($parts) < 2) {
-    http_response_code(200);
+// Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, atau COMPLETED
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+    http_response_code(200); // Ignore non-command messages
     exit;
 }
 
-if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)$/i', $parts[0], $matchAction)) {
-    http_response_code(200);
-    exit;
-}
-if (!preg_match('/^([A-Z]+)-(\d+)$/i', $parts[1], $matchId)) {
-    http_response_code(200);
-    exit;
-}
-
-$actionTypeRaw = strtoupper($matchAction[1]);
+$actionTypeRaw = strtoupper($matches[1]);
 $actionType = ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED') ? 'SETUJU' : $actionTypeRaw; // SETUJU / TOLAK / (SELESAI -> SETUJU)
-$typeCode   = strtoupper($matchId[1]);
-$reqId      = (int)$matchId[2];
-$rest       = isset($parts[2]) ? trim($parts[2]) : '';
-
-$optLetter  = '';
-$optNumber  = -1;
-$customWaNote = '';
-
-if ($typeCode === 'VEH' || $typeCode === 'ROM') {
-    if (preg_match('/^([a-zA-Z])(?:[\s\-]*(\d+))?(?:\s+(.*))?$/', $rest, $m)) {
-        $optLetter = strtoupper($m[1]);
-        $optNumber = (isset($m[2]) && $m[2] !== '') ? (int)$m[2] : -1;
-        $customWaNote = isset($m[3]) ? trim($m[3]) : '';
-    } else {
-        $customWaNote = $rest;
-    }
-} else {
-    $customWaNote = $rest;
-}
+$typeCode   = strtoupper($matches[2]); // VEH
+$reqId      = (int)$matches[3]; // 15
+$optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
+$optNumber  = isset($matches[5]) && $matches[5] !== '' ? (int)$matches[5] : -1; // -1 means not provided
 
 // Normalisasi nomor WA (Hapus 62 atau 0 di depan untuk pencarian yang fleksibel)
 $cleanSender = preg_replace('/^(62|0)/', '', $sender);
@@ -209,8 +184,7 @@ if ($currentStatus === 'pending') {
         $canProcess = true;
         $nextStatusApprove = 'approved';
     }
-} else if ($currentStatus === 'approved') {
-    // Cek apakah pengirim adalah pemohon (applicant)
+} else if ($currentStatus === 'approved' || $currentStatus === 'ready_for_user') {
     $isApplicant = false;
     if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
         $isApplicant = true;
@@ -220,33 +194,17 @@ if ($currentStatus === 'pending') {
         $stmtA->execute();
         $resA = $stmtA->get_result()->fetch_assoc();
         $stmtA->close();
-        if ($resA && $resA['user_id'] == $user['id']) $isApplicant = true;
+        if ($resA && $resA['user_id'] == $user['id']) {
+            $isApplicant = true;
+        }
     }
 
-    // Jika pemohon explicitly membalas SELESAI/COMPLETED saat status masih approved
-    if ($isApplicant && ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED')) {
+    if ($isApplicant) {
         $canProcess = true;
         $nextStatusApprove = 'completed';
-    } else if ($isPIC) {
+    } else if ($currentStatus === 'approved' && $isPIC) {
         $canProcess = true;
         $nextStatusApprove = 'ready_for_user'; // PIC marks as ready
-    }
-} else if ($currentStatus === 'ready_for_user') {
-    // Only applicant can mark as completed via SELESAI/SETUJU
-    if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
-        $canProcess = true;
-        $nextStatusApprove = 'completed';
-    } else {
-        // Fetch user_id if not present in requestData
-        $stmtA = $conn->prepare("SELECT user_id FROM `$table` WHERE id = ?");
-        $stmtA->bind_param("i", $reqId);
-        $stmtA->execute();
-        $resA = $stmtA->get_result()->fetch_assoc();
-        $stmtA->close();
-        if ($resA && $resA['user_id'] == $user['id']) {
-            $canProcess = true;
-            $nextStatusApprove = 'completed';
-        }
     }
 }
 
@@ -260,7 +218,7 @@ if (!$canProcess) {
 $finalStatus = ($actionType === 'SETUJU') ? $nextStatusApprove : $nextStatusReject;
 
 // Generate dynamic note similar to web
-$actionNote = "Direspon otomatis via WhatsApp oleh " . $user['full_name'];
+$actionNote = "Pengajuan diproses melalui WhatsApp";
 if ($actionType === 'SETUJU') {
     if ($currentStatus === 'pending' && $nextStatusApprove === 'waiting_manager_fmd') {
         if ($typeCode === 'VEH' && !empty($vehicleNameStr) && !empty($selectedDriverName)) {
@@ -269,10 +227,6 @@ if ($actionType === 'SETUJU') {
             $actionNote = "{$roomNameStr} tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
         } else if ($typeCode === 'ZOM') {
             $actionNote = "Akun Zoom/Link tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
-            if (!empty($customWaNote)) {
-                $actionNote = "Zoom Info: " . $customWaNote . ". " . $actionNote;
-                $customWaNote = ''; // Consume so it doesn't get appended twice
-            }
         } else if ($typeCode === 'ITM') {
             $actionNote = "Barang Pinjaman tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
         }
@@ -288,13 +242,26 @@ if ($actionType === 'SETUJU') {
         } else if ($typeCode === 'REP') {
              $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Perbaikan menyiapkan permintaan dan memberikan laporan Check & Recheck.";
         }
+    } else if ($currentStatus === 'approved' && $nextStatusApprove === 'ready_for_user') {
+        if ($typeCode === 'VEH') {
+            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Kendaraan telah siap untuk diserahkan/dilaksanakan.";
+        } else if ($typeCode === 'ROM') {
+            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Ruangan telah siap untuk diserahkan/dilaksanakan.";
+        } else if ($typeCode === 'ZOM') {
+            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Zoom/Virtual telah siap untuk diserahkan/dilaksanakan.";
+        } else if ($typeCode === 'ITM') {
+            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Barang Pinjaman telah siap untuk diserahkan/dilaksanakan.";
+        } else if ($typeCode === 'REP') {
+             $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Perbaikan telah siap untuk diserahkan/dilaksanakan.";
+        }
+    } else if ($currentStatus === 'ready_for_user' && $nextStatusApprove === 'completed') {
+        $actionNote = "PIC mengkonfirmasi: seluruh kebutuhan telah terpenuhi. Permintaan selesai dilaksanakan.";
+        if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
+            $actionNote = "Pengajuan diselesaikan oleh Pemohon.";
+        }
     }
 } else if ($actionType === 'TOLAK') {
-    $actionNote = "Pengajuan ditolak melalui WhatsApp oleh " . $user['full_name'];
-}
-
-if (!empty($customWaNote)) {
-    $actionNote .= "\nCatatan Tambahan: " . $customWaNote;
+    $actionNote = "Pengajuan ditolak melalui WhatsApp";
 }
 // Logging ke Note
 $ts = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');

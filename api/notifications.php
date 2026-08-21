@@ -434,10 +434,8 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             ];
             $code = $typeCodes[$table] ?? 'REQ';
             
-            if ($newStatus === 'ready_for_user') {
-                $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
-            }
-            $msg .= "<i>Jika permintaan telah selesai digunakan/dilaksanakan, Anda dapat mengkonfirmasi penyelesaian dengan membalas pesan ini (format):</i>\n";
+            $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
+            $msg .= "<i>Untuk konfirmasi pengajuan selesai, balas pesan ini dengan format:</i>\n";
             $msg .= "<b>SELESAI $code-$id</b>\n\n";
         }
         
