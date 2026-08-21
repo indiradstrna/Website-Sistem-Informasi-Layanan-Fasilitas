@@ -98,10 +98,10 @@ if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
     if ($typeCode === 'VEH') {
         if ($optLetter) {
             $idx = ord($optLetter) - 65;
-            $resV = $conn->query("SELECT id, name, license_plate FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
+            $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
             if ($resV && $v = $resV->fetch_assoc()) {
                 $selectedVehicleId = $v['id'];
-                $vehicleNameStr = $v['name'] . ' - ' . $v['license_plate'];
+                $vehicleNameStr = $v['name'];
             }
         }
         if ($optNumber === 0) {
@@ -114,10 +114,10 @@ if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
     } else if ($typeCode === 'ROM') {
         if ($optLetter) {
             $idx = ord($optLetter) - 65;
-            $resR = $conn->query("SELECT id, name, capacity FROM master_rooms ORDER BY id ASC LIMIT $idx, 1");
+            $resR = $conn->query("SELECT id, name FROM master_rooms ORDER BY id ASC LIMIT $idx, 1");
             if ($resR && $r = $resR->fetch_assoc()) {
                 $selectedRoomId = $r['id'];
-                $roomNameStr = $r['name'] . ' (' . $r['capacity'] . ' org)';
+                $roomNameStr = $r['name'];
             }
         }
     }
