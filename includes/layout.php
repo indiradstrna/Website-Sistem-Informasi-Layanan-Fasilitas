@@ -17,7 +17,7 @@ if (!defined('BASE_URL')) {
     define('BASE_URL', '');
 }
 
-function renderSidebar(string $role, string $activeView, string $userName, string $basePath = '../'): void {
+function renderSidebar(string $role, string $activeView, string $userName, string $basePath = '../', bool $isDriver = false): void {
     // ===== MENU CONFIG PER ROLE =====
     // Setara dengan: conditional rendering di dashboard-layout.tsx
     $adminMenus = [
@@ -41,6 +41,11 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         ['id' => 'my_reports',    'label' => 'Riwayat Pengajuan',   'icon' => 'activity'],
         ['id' => 'profile',       'label' => 'Profil',         'icon' => 'user'],
     ];
+
+    if ($isDriver) {
+        // Sisipkan Jadwal Tugas sebelum Riwayat Pengajuan
+        array_splice($userMenus, 8, 0, [['id' => 'driver_tasks', 'label' => 'Jadwal Tugas', 'icon' => 'calendar']]);
+    }
 
     if ($_SESSION['role'] === 'admin') {
         if ($role === 'admin') {

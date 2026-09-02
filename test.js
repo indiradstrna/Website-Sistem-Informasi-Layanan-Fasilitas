@@ -1,307 +1,17 @@
-<?php
-// ============================================================
-// user/index.php — Dashboard User (Staff)
-// Setara dengan: app/user/page.tsx
-// ============================================================
 
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/layout.php';
-
-$session   = getSession();
-$userName  = $session['fullName'];
-$userLogin = $session['username'];
-$userRole  = $session['role'];
-$dept      = $session['department'];
-$teleChatId = $session['telegram_chat_id'];
-$waNumber   = $session['whatsapp_number'];
-$waApikey   = $session['callmebot_apikey'];
-
-$isDriver = false;
-global $conn;
-if (isset($_SESSION['employee_id'])) {
-    $stmtD = $conn->prepare("SELECT position FROM employees WHERE id = ?");
-    $stmtD->bind_param("i", $_SESSION['employee_id']);
-    $stmtD->execute();
-    $resD = $stmtD->get_result();
-    if ($rowD = $resD->fetch_assoc()) {
-        $pos = strtolower($rowD['position']);
-        if (strpos($pos, 'driver') !== false || strpos($pos, 'pengemudi') !== false) {
-            $isDriver = true;
-        }
-    }
-    $stmtD->close();
-}
-
-renderPageHead('Dashboard User');
-?>
-
-<style>
-/* Notif Dropdown */
-.notif-dropdown {
-  position: absolute;
-  top: 100%;
-  right: -50px;
-  width: 340px;
-  background: #fff;
-  border: 1px solid #e3e6f0;
-  border-radius: 0.35rem;
-  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
-  margin-top: 1.15rem;
-  display: none;
-  z-index: 1060;
-  overflow: hidden;
-}
-.notif-dropdown::after {
-  content: '';
-  position: absolute;
-  top: -10px;
-  right: 58px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 10px solid #fff;
-}
-.notif-dropdown.open {
-  display: block;
-  animation: slideDown .2s ease-out;
-}
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.notif-header {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-}
-.notif-header h3 {
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin: 0;
-  color: #1e293b;
-}
-.notif-header .count {
-  font-size: 0.8rem;
-  color: #64748b;
-}
-.notif-list {
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.notif-list::-webkit-scrollbar {
-  width: 5px;
-}
-.notif-list::-webkit-scrollbar-thumb {
-  background: #e3e6f0;
-  border-radius: 10px;
-}
-.notif-item {
-  padding: 0.85rem 1.25rem;
-  border-bottom: 1px solid #f1f5f9;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: block;
-  width: 100%;
-  text-decoration: none !important;
-}
-.notif-item:hover {
-  background: #f8fafc;
-}
-.notif-item:last-child {
-  border-bottom: none;
-}
-.notif-item-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.4rem;
-}
-.notif-type-badge {
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  background: #eff6ff;
-  color: #2563eb;
-}
-.notif-date {
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-.notif-title {
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: #334155;
-  margin-bottom: 0.25rem;
-  line-height: 1.3;
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.notif-subtitle {
-  font-size: 0.72rem;
-  color: #858796;
-}
-#notif-badge {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  font-size: 0.6rem;
-  padding: 2px 4px;
-  min-width: 16px;
-  height: 16px;
-  border: 1px solid #fff;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 800;
-  line-height: 1;
-}
-.notif-empty {
-  padding: 2rem 1rem;
-  text-align: center;
-  color: #94a3b8;
-  font-size: 0.85rem;
-}
-</style>
-
-  <div class="topbar">
-    <div class="topbar-content">
-      <div class="topbar-left">
-        <div class="topbar-logo">
-          <img src="../assets/img/logo.png" alt="SEAMEO BIOTROP" />
-        </div>
-        <button class="btn btn-ghost btn-sm" id="sidebar-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')" aria-label="Toggle Sidebar">☰</button>
-        <span class="topbar-title" id="page-title">Dashboard</span>
-      </div>
-      <div class="topbar-user">
-        <div style="display:flex; align-items:center;">
-          <!-- Notifications -->
-          <div id="notification-area" style="cursor:pointer; position:relative; display:flex; align-items:center; padding: 0.5rem; color: #d1d3e2;" onclick="toggleNotifDropdown(event)">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-            <span id="notif-badge" class="nav-badge-count" style="display:none; background-color: #e74a3b;">0</span>
-            
-            <div id="notif-dropdown" class="notif-dropdown">
-              <div class="notif-header">
-                <h3>Notifikasi Proses</h3>
-                <span class="count" id="notif-header-count">0 Baru</span>
-              </div>
-              <div id="notif-list" class="notif-list">
-                <!-- Items rendered by JS -->
-              </div>
-            </div>
-          </div>
-
-          <div class="topbar-divider"></div>
-
-          <!-- User Link -->
-          <div class="topbar-user-link" onclick="switchView('profile')">
-            <span class="topbar-user-name"><?= htmlspecialchars($userName) ?></span>
-            <div class="user-avatar-sm">
-              <?= strtoupper(mb_substr($userName, 0, 1)) ?>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-<div class="app-layout">
-  <?php renderSidebar('user', 'dashboard', $userName, '../', $isDriver); ?>
-
-
-
-  <div class="main-content">
-    <div class="page-content">
-      <div class="page-content-inner" id="view-container">
-        <div style="text-align:center;padding:3rem;">
-          <div class="spinner" style="border-color:rgba(16,185,129,.2);border-top-color:var(--color-primary-600);width:2.5rem;height:2.5rem;"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: FORM PENGAJUAN -->
-<div class="modal-overlay" id="modal-form">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title" id="modal-form-title">Form Pengajuan</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body" id="modal-form-body"></div>
-    <div class="modal-footer">
-      <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" id="modal-submit-btn" onclick="doSubmitForm()">
-        <span id="submit-btn-text">Kirim Pengajuan</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: DETAIL REPORT -->
-<div class="modal-overlay" id="modal-report-detail">
-  <div class="modal modal-lg">
-    <div class="modal-header">
-      <h3 class="modal-title" id="modal-report-title">Detail Laporan</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body" id="modal-report-body"></div>
-    <div class="modal-footer"><button class="btn btn-outline modal-close-btn">Tutup</button></div>
-  </div>
-</div>
-
-<!-- MODAL: SELESAIKAN PENGAJUAN -->
-<div class="modal-overlay" id="modal-complete">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title">Konfirmasi Penyelesaian</h3>
-      <button class="modal-close modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Feedback / Komentar (Opsional)</label>
-        <textarea id="complete-feedback" class="form-textarea" placeholder="Bagikan pengalaman atau saran Anda..."></textarea>
-      </div>
-      <p style="font-size: 0.82rem; color: var(--color-slate-500); line-height: 1.5;"> Status pengajuan ini akan diubah menjadi <span class="badge badge-completed">Selesai</span>. </p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline modal-close-btn">Batal</button>
-      <button class="btn btn-primary" id="btn-submit-complete">Selesaikan & Simpan</button>
-    </div>
-  </div>
-</div>
-
-<div id="toast-container"></div>
-<script src="../assets/js/main.js"></script>
-<script src="../assets/js/tele.js"></script>
-<script>
 window.BASE_URL = '<?= BASE_URL ?>';
-const USER_NAME = <?= json_encode($userName) ?>;
-const USER_DEPT = <?= json_encode($dept) ?>;
-let USER_TELE_CHAT_ID = <?= json_encode($teleChatId) ?>;
-let USER_WA_NUMBER = <?= json_encode($waNumber) ?>;
-let USER_WA_APIKEY = <?= json_encode($waApikey) ?>;
+const USER_NAME = null;
+const USER_DEPT = null;
+const USER_POSITION = null;
+let USER_TELE_CHAT_ID = null;
+let USER_WA_NUMBER = null;
+let USER_WA_APIKEY = null;
 const API_BASE  = '<?= BASE_URL ?>/api/';
-const IS_DRIVER = <?= $isDriver ? 'true' : 'false' ?>;
 
 let myVehicle=[], myRoom=[], myDormitory=[], myZoom=[], myRepair=[], myItem=[], myItem2=[];
 let allVehicle= [], allRoom  = [], allDormitory = [], allZoom  = [], allRepair = [];
-let myDriverTasks = [];
 let currentRequests = [];
+let driverTasks = []; // Untuk menyimpan tugas driver
 let currentPage = 1;
 let itemsPerPage = 10;
 let currentDetailReq = null;
@@ -434,27 +144,33 @@ const ZOOM_ACCOUNTS = [
 ];
 
 async function loadMyData(silent = false) {
-  try {
-    let fetchPromises = [
-      api(API_BASE + 'requests.php?action=get_vehicle_by_user'),
-      api(API_BASE + 'requests.php?action=get_room_by_user'),
-      api(API_BASE + 'requests.php?action=get_dormitory_by_user'),
-      api(API_BASE + 'requests.php?action=get_zoom_by_user'),
-      api(API_BASE + 'requests.php?action=get_repair_by_user'),
-      api(API_BASE + 'requests.php?action=get_item_by_user'),
-      api(API_BASE + 'requests.php?action=get_item2_by_user'),
-      api(API_BASE + 'requests.php?action=get_vehicle'),
-      api(API_BASE + 'requests.php?action=get_room'),
-      api(API_BASE + 'requests.php?action=get_dormitory'),
-      api(API_BASE + 'requests.php?action=get_zoom'),
-      api(API_BASE + 'requests.php?action=get_repair'),
-    ];
-    if (typeof IS_DRIVER !== 'undefined' && IS_DRIVER) {
-      fetchPromises.push(api(API_BASE + 'requests.php?action=get_driver_tasks'));
-    }
-    const resArray = await Promise.all(fetchPromises);
-    const [v,r,d,z,rep,itm,itm2, av, ar, ad, az, arep] = resArray;
-    myVehicle = Array.isArray(v)   ? v   : [];
+    try {
+      const isDriver = (USER_POSITION && (USER_POSITION.toLowerCase().includes('driver') || USER_POSITION.toLowerCase().includes('pengemudi')));
+      const promises = [
+        api(API_BASE + 'requests.php?action=get_vehicle_by_user'),
+        api(API_BASE + 'requests.php?action=get_room_by_user'),
+        api(API_BASE + 'requests.php?action=get_dormitory_by_user'),
+        api(API_BASE + 'requests.php?action=get_zoom_by_user'),
+        api(API_BASE + 'requests.php?action=get_repair_by_user'),
+        api(API_BASE + 'requests.php?action=get_item_by_user'),
+        api(API_BASE + 'requests.php?action=get_item2_by_user'),
+        api(API_BASE + 'requests.php?action=get_vehicle'),
+        api(API_BASE + 'requests.php?action=get_room'),
+        api(API_BASE + 'requests.php?action=get_dormitory'),
+        api(API_BASE + 'requests.php?action=get_zoom'),
+        api(API_BASE + 'requests.php?action=get_repair')
+      ];
+      if (isDriver) {
+          promises.push(api(API_BASE + 'requests.php?action=get_driver_tasks'));
+      }
+      const results = await Promise.all(promises);
+      const [v,r,d,z,rep,itm,itm2, av, ar, ad, az, arep] = results;
+      
+      if (isDriver && results.length > 12) {
+          driverTasks = Array.isArray(results[12]) ? results[12].map(dt => ({...dt, _type: 'Vehicle'})) : [];
+      }
+      
+      myVehicle = Array.isArray(v)   ? v   : [];
     myRoom    = Array.isArray(r)   ? r   : [];
     myDormitory = Array.isArray(d) ? d : [];
     myZoom    = Array.isArray(z)   ? z   : [];
@@ -466,44 +182,6 @@ async function loadMyData(silent = false) {
     allDormitory = Array.isArray(ad) ? ad : [];
     allZoom   = Array.isArray(az)  ? az  : [];
     allRepair = Array.isArray(arep)? arep: [];
-    if (typeof IS_DRIVER !== 'undefined' && IS_DRIVER && resArray.length >= 13) {
-      myDriverTasks = Array.isArray(resArray[12]) ? resArray[12] : [];
-      
-      // --- DUMMY DATA SEMENTARA ---
-      const dNow = new Date();
-      const todayStr = `${dNow.getFullYear()}-${String(dNow.getMonth()+1).padStart(2,'0')}-${String(dNow.getDate()).padStart(2,'0')}`;
-      myDriverTasks.push({
-          id: 9998,
-          applicant_name: "Dummy Pemohon 1",
-          applicant_unit: "Divisi FMD",
-          passenger_name: "2 Orang",
-          vehicle_id: "TANPA_KENDARAAN",
-          destination: "Stasiun Bogor",
-          date_start: todayStr,
-          date_end: todayStr,
-          time_start: "09:00:00",
-          time_end: "11:00:00",
-          purpose: "Jemput Tamu",
-          status: "approved",
-          driver_name: "Didit Trisnadi"
-      });
-      myDriverTasks.push({
-          id: 9999,
-          applicant_name: "Dummy Pemohon 2",
-          applicant_unit: "Divisi HRD",
-          passenger_name: "1 Orang",
-          vehicle_id: "VEH-99", 
-          destination: "Bandara Soetta",
-          date_start: todayStr,
-          date_end: todayStr,
-          time_start: "14:00:00",
-          time_end: "17:00:00",
-          purpose: "Antar Dokumen Penting",
-          status: "approved",
-          driver_name: "Didit Trisnadi"
-      });
-      // ----------------------------
-    }
 
     currentRequests = [
       ...myVehicle.map(r=>({...r,_type:'Vehicle'})),
@@ -547,7 +225,7 @@ async function loadMyData(silent = false) {
 
 function switchView(viewId) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === viewId));
-  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', item2:'Permintaan Barang', driver_tasks:'Jadwal Tugas', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
+  const titles = { dashboard:'Dashboard', vehicle:'Permohonan Kendaraan Dinas', room:'Ruangan', dormitory:'Dormitory', zoom:'Zoom Meeting', repair:'Perbaikan Fasilitas', item:'Peminjaman Barang', item2:'Permintaan Barang', my_reports:'Riwayat Pengajuan', profile:'Profil', detail_pengajuan: 'Detail Pengajuan' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = titles[viewId] || viewId;
   previousView = window._currentView || 'dashboard';
@@ -582,14 +260,108 @@ function renderCurrentView() {
     case 'repair':      ct.innerHTML = renderServicePage('repair'); break;
     case 'item':        ct.innerHTML = renderServicePage('item');   break; 
     case 'item2':       ct.innerHTML = renderServicePage('item2');   break; 
-    case 'driver_tasks': ct.innerHTML = renderDriverTasks(); break;
     case 'my_reports':  ct.innerHTML = renderMyReports();          break;
     case 'profile':     ct.innerHTML = renderProfile();            break;
     case 'detail_pengajuan': ct.innerHTML = renderDetailPengajuan(); break;
   }
 }
 
+window.selesaikanTugas = async function(id) {
+    const result = await Swal.fire({
+        title: 'Konfirmasi Penyelesaian',
+        text: 'Apakah Anda yakin tugas (pengantaran/penjemputan) ini telah selesai?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Selesaikan',
+        cancelButtonText: 'Batal'
+    });
+    if (result.isConfirmed) {
+        try {
+            const res = await apiPost(API_BASE + 'requests.php', {
+                action: 'update_status',
+                id: id,
+                type: 'Vehicle',
+                status: 'completed',
+                note: 'Tugas diselesaikan oleh driver.'
+            });
+            if (res.success) {
+                Toast.success('Tugas berhasil diselesaikan.');
+                await loadMyData(false);
+            } else {
+                Toast.error(res.message || 'Gagal menyelesaikan tugas.');
+            }
+        } catch(e) {
+            Toast.error('Terjadi kesalahan pada sistem.');
+        }
+    }
+};
+
 function renderDashboard() {
+  const isDriver = (USER_POSITION && (USER_POSITION.toLowerCase().includes('driver') || USER_POSITION.toLowerCase().includes('pengemudi')));
+  if (isDriver) {
+      const total = driverTasks.length;
+      const active = driverTasks.filter(r => !['completed', 'returned'].includes(r.status)).length;
+      
+      let taskHtml = '';
+      if (driverTasks.length === 0) {
+          taskHtml = `<div style="padding:2rem;text-align:center;color:#64748b;">Tidak ada jadwal tugas saat ini.</div>`;
+      } else {
+          taskHtml = `
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Tujuan / Keperluan</th>
+                  <th>Waktu Berangkat</th>
+                  <th>Penumpang</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${driverTasks.map(r => `
+                  <tr>
+                    <td>
+                      <strong>${r.destination}</strong><br>
+                      <span style="font-size:0.75rem;color:#64748b;">${r.purpose}</span>
+                    </td>
+                    <td>${r.date_start} ${r.time_start}</td>
+                    <td>${r.passenger_name}</td>
+                    <td>${statusBadge(r.status)}</td>
+                    <td>
+                      ${['approved', 'ready_for_user', 'waiting_manager_fmd'].includes(r.status) ? 
+                        `<button class="btn btn-sm btn-primary" onclick="selesaikanTugas(${r.id})" style="background-color:var(--color-primary-600); color:#fff; border:none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Selesaikan Tugas</button>` 
+                        : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+
+      return `
+      <div class="page-header">
+        <h1>Selamat Datang, ${USER_NAME.split(' ')[0]}!</h1>
+        <p>Dashboard Jadwal Tugas Pengemudi</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card border-left-blue">
+          <div class="stat-label">Total Penugasan</div>
+          <div class="stat-value" style="color:var(--color-blue-600);">${total}</div>
+        </div>
+        <div class="stat-card border-left-amber">
+          <div class="stat-label">Tugas Aktif</div>
+          <div class="stat-value" style="color:var(--color-amber-600);">${active}</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1.5rem;">
+        <div class="card-header"><div class="card-title">Daftar Jadwal Penugasan Saya</div></div>
+        ${taskHtml}
+      </div>
+      `;
+  }
+
   const all = [...myVehicle,...myRoom,...myDormitory,...myZoom,...myRepair,...myItem];
   const total    = all.length;
   const pending  = all.filter(r=>['pending','waiting_manager_fmd'].includes(r.status)).length;
@@ -3305,205 +3077,7 @@ window.showRepairDayDetail = function(key, updateGrid = true) {
     </div>`;
 };
 
-let _driverCalMonth = new Date().getMonth();
-let _driverCalYear  = new Date().getFullYear();
 
-window.driverCalPrevMonth = function() {
-  _driverCalMonth--;
-  if (_driverCalMonth < 0) { _driverCalMonth = 11; _driverCalYear--; }
-  renderDriverCalGrid();
-};
-
-window.driverCalNextMonth = function() {
-  _driverCalMonth++;
-  if (_driverCalMonth > 11) { _driverCalMonth = 0; _driverCalYear++; }
-  renderDriverCalGrid();
-};
-
-window.renderDriverCalGrid = function() {
-  const yr = _driverCalYear;
-  const mo = _driverCalMonth;
-  const grid = document.getElementById('driver-cal-grid');
-  const title = document.getElementById('driver-cal-title');
-  if (!grid || !title) return;
-
-  const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  title.textContent = `${BULAN[mo]} ${yr}`;
-
-  const dayMap = {};
-  if (myDriverTasks) {
-    myDriverTasks.forEach(r => {
-      if (!r.date_start) return;
-      const start = new Date(r.date_start);
-      const end   = r.date_end ? new Date(r.date_end) : new Date(r.date_start);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        if (d.getMonth() !== mo || d.getFullYear() !== yr) continue;
-        const key = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        if (!dayMap[key]) dayMap[key] = [];
-        dayMap[key].push(r);
-      }
-    });
-  }
-
-  const firstDay    = new Date(yr, mo, 1).getDay();
-  const daysInMonth = new Date(yr, mo + 1, 0).getDate();
-  const today       = new Date();
-  const todayStr    = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-
-  let html = '';
-  for (let i = 0; i < firstDay; i++) html += `<div style="background:#f8fafc; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;"></div>`;
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const ev = dayMap[dateStr] || [];
-    const isToday = dateStr === todayStr;
-
-    let evHtml = '';
-    ev.forEach(r => {
-        const pCols = { completed:'#16a34a', pending:'#f59e0b', approved:'#3b82f6', returned:'#8b5cf6', 'in-progress':'#0ea5e9', canceled: '#e11d48' };
-        const statusColor = pCols[r.status] || '#64748b';
-        const stTime = r.time_start ? r.time_start.substring(0,5) : '';
-        evHtml += `
-            <div onclick="showDriverTaskInfo(${r.id})" style="background:${statusColor}15; border-left:3px solid ${statusColor}; margin-bottom:4px; padding:4px 6px; border-radius:3px; cursor:pointer; font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);" onmouseover="this.style.filter='brightness(0.95)'" onmouseout="this.style.filter='brightness(1)'">
-                <strong>${stTime}</strong> - ${r.applicant_name}
-            </div>
-        `;
-    });
-
-    const bgColor   = isToday ? '#f5f3ff' : '#ffffff';
-    const textColor = isToday ? '#6d28d9' : 'var(--color-slate-700)';
-
-    html += `
-      <div style="min-height:100px; padding:0.4rem; background:${bgColor}; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="font-size:0.8rem; font-weight:${isToday?'700':'600'}; color:${textColor}; text-align:right; margin-bottom:0.4rem;">${d}</div>
-        <div style="flex:1; display:flex; flex-direction:column; gap:2px;">${evHtml}</div>
-      </div>`;
-  }
-  
-  // Fill remaining days
-  const totalCells = firstDay + daysInMonth;
-  const remaining = (7 - (totalCells % 7)) % 7;
-  for (let i = 0; i < remaining; i++) {
-    html += `<div style="background:#f8fafc; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;"></div>`;
-  }
-
-  grid.innerHTML = html;
-};
-
-window.showDriverTaskInfo = function(id) {
-  const t = myDriverTasks.find(x => String(x.id) === String(id));
-  if (!t) return;
-  
-  const m = document.getElementById('driver-task-info-modal');
-  const c = document.getElementById('driver-task-info-content');
-  if (!m || !c) return;
-
-  const [y, mm, d] = t.date_start.split('-');
-  const BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const dateStr = `${parseInt(d)} ${BULAN[parseInt(mm)-1]} ${y}`;
-  
-  let kend = 'Tanpa Kendaraan (Hanya Jasa Driver)';
-  if (t.vehicle_id && t.vehicle_id !== 'PENDING_ASSIGNMENT' && t.vehicle_id !== 'TANPA_KENDARAAN') {
-    const vinfo = (typeof ALL_VEHICLES !== 'undefined') ? ALL_VEHICLES.find(v => String(v.id) === String(t.vehicle_id)) : null;
-    if (vinfo) kend = `${vinfo.name} - ${vinfo.license_plate}`;
-    else kend = t.vehicle_id;
-  }
-  
-  const dest = (t.destination && t.destination !== 'null') ? t.destination : '-';
-
-  c.innerHTML = `
-    <div style="font-size:0.95rem; line-height:1.6; color:var(--color-slate-800); white-space:pre-wrap;">
-🚗 <strong>TUGAS BARU (DRIVER)</strong>
-
-Halo <strong>${t.driver_name}</strong>,
-Anda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <strong>VEH-${t.id}</strong>.
-
-<strong>Pemohon:</strong> ${t.applicant_name} (${t.applicant_unit})
-<strong>Penumpang:</strong> ${t.passenger_name || '-'}
-<strong>Kendaraan:</strong> ${kend}
-<strong>Lokasi Tujuan:</strong> ${dest}
-<strong>Tanggal:</strong> ${dateStr}
-<strong>Jam Berangkat:</strong> ${t.time_start}
-<strong>Keperluan:</strong> ${t.purpose}
-    </div>
-  `;
-  
-  const act = document.getElementById('driver-task-info-action');
-  if (t.status === 'completed' || t.status === 'canceled') {
-    act.innerHTML = `<button class="btn btn-outline modal-close-btn" onclick="Modal.close('driver-task-info-modal')">Tutup</button>`;
-  } else {
-    act.innerHTML = `
-      <button class="btn btn-outline modal-close-btn" onclick="Modal.close('driver-task-info-modal')">Tutup</button>
-      <button class="btn btn-primary" onclick="Modal.close('driver-task-info-modal'); completeDriverTask(${t.id})">Selesaikan Tugas</button>
-    `;
-  }
-  
-  if (typeof Modal !== 'undefined') {
-      Modal.open('driver-task-info-modal');
-  }
-};
-
-function renderDriverTasks() {
-  setTimeout(() => { renderDriverCalGrid(); }, 50);
-  return `
-    <div class="card" style="padding:1.5rem; border-radius:0.75rem; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-        <h3 style="margin:0; font-size:1.2rem; color:var(--color-slate-800);">Kalender Jadwal Tugas Driver</h3>
-        <div style="display:flex; align-items:center; gap:0.5rem; background:var(--color-slate-50); padding:0.2rem; border-radius:0.5rem; border:1px solid #e2e8f0;">
-          <button onclick="driverCalPrevMonth()" class="btn btn-ghost" style="padding:0.4rem 1rem; border-radius:0.4rem;">&#8249; Sebelumnya</button>
-          <div id="driver-cal-title" style="font-weight:700; font-size:1rem; color:var(--color-slate-800); min-width:140px; text-align:center;"></div>
-          <button onclick="driverCalNextMonth()" class="btn btn-ghost" style="padding:0.4rem 1rem; border-radius:0.4rem;">Berikutnya &#8250;</button>
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:0.85rem; font-weight:700; color:var(--color-slate-500); padding-bottom:0.5rem;">
-        <div>Minggu</div><div>Senin</div><div>Selasa</div><div>Rabu</div><div>Kamis</div><div>Jumat</div><div>Sabtu</div>
-      </div>
-      <div id="driver-cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); background:#ffffff; border-top:1px solid #e2e8f0; border-left:1px solid #e2e8f0;"></div>
-    </div>
-    
-    <!-- Modal Detail Info Tugas -->
-    <div id="driver-task-info-modal" class="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 class="modal-title">Informasi Tugas</h3>
-          <button class="modal-close modal-close-btn" onclick="Modal.close('driver-task-info-modal')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div id="driver-task-info-content" class="modal-body"></div>
-        <div id="driver-task-info-action" class="modal-footer"></div>
-      </div>
-    </div>
-  `;
-}
-
-async function completeDriverTask(id) {
-  if (!confirm('Apakah Anda yakin telah menyelesaikan tugas ini? Status akan diubah menjadi Selesai.')) return;
-  try {
-    const formData = new FormData();
-    formData.append('action', 'update_status');
-    formData.append('type', 'Vehicle');
-    formData.append('id', id);
-    formData.append('status', 'completed');
-    formData.append('note', 'Tugas diselesaikan oleh driver (melalui dasbor driver).');
-    const res = await fetch(API_BASE + 'requests.php', { method: 'POST', body: formData });
-    const text = await res.text();
-    const data = JSON.parse(text);
-    if (data.success) {
-      Toast.success('Tugas berhasil diselesaikan.');
-      await loadMyData(true);
-      renderCurrentView();
-    } else {
-      Toast.error(data.message || 'Gagal menyelesaikan tugas.');
-    }
-  } catch(e) {
-    Toast.error('Terjadi kesalahan saat memproses data.');
-  }
-}
-</script>
-
-<?php if (empty($session['whatsapp_number'])): ?>
-<script>
 document.addEventListener("DOMContentLoaded", function() {
     Swal.fire({
         title: 'Nomor WhatsApp Belum Diisi!',
@@ -3521,8 +3095,3 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
-</script>
-<?php endif; ?>
-
-</body>
-</html>

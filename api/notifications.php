@@ -57,8 +57,8 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         }
 
         if ($newStatus === 'pending' && $type === 'Vehicle') {
-            $waMsg .= "\n\n---\n*PILIHAN KENDARAAN:*\n";
-            $tgMsg .= "\n\n---\n<b>PILIHAN KENDARAAN:</b>\n";
+            $waMsg .= "\n\n---\n*PILIHAN KENDARAAN:*\n0. Tanpa Kendaraan\n";
+            $tgMsg .= "\n\n---\n<b>PILIHAN KENDARAAN:</b>\n0. Tanpa Kendaraan\n";
             $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC");
             if ($resV) {
                 $vCount = 0;

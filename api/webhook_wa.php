@@ -28,7 +28,7 @@ if (!$sender || !$message) {
 }
 
 // Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, atau COMPLETED
-if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z0])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
     http_response_code(200); // Ignore non-command messages
     exit;
 }
@@ -96,12 +96,17 @@ $selectedRoomId = null;
 
 if ($currentStatus === 'pending' && $actionType === 'SETUJU') {
     if ($typeCode === 'VEH') {
-        if ($optLetter) {
-            $idx = ord($optLetter) - 65;
-            $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
-            if ($resV && $v = $resV->fetch_assoc()) {
-                $selectedVehicleId = $v['id'];
-                $vehicleNameStr = $v['name'];
+        if ($optLetter !== '') {
+            if ($optLetter === '0') {
+                $selectedVehicleId = 'TANPA_KENDARAAN';
+                $vehicleNameStr = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+            } else {
+                $idx = ord($optLetter) - 65;
+                $resV = $conn->query("SELECT id, name FROM master_vehicles ORDER BY id ASC LIMIT $idx, 1");
+                if ($resV && $v = $resV->fetch_assoc()) {
+                    $selectedVehicleId = $v['id'];
+                    $vehicleNameStr = $v['name'];
+                }
             }
         }
         if ($optNumber === 0) {
@@ -312,19 +317,28 @@ if ($stmt->execute()) {
 
         if ($drv && !empty($drv['whatsapp_number'])) {
             // Ambil detail jadwal dari requestData (kita perlu query ulang untuk date_start)
-            $resDetails = $conn->query("SELECT applicant_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, time_start FROM vehicle_requests WHERE id = $reqId");
+            $resDetails = $conn->query("SELECT applicant_name, passenger_name, destination, purpose, DATE_FORMAT(date_start,'%d %b %Y') as ds, time_start FROM vehicle_requests WHERE id = $reqId");
             $dtl = $resDetails ? $resDetails->fetch_assoc() : null;
             
             // Ambil nama kendaraan
             $vName = $selectedVehicleId;
-            $resV = $conn->query("SELECT name FROM master_vehicles WHERE id = '$selectedVehicleId'");
-            if ($resV && $v = $resV->fetch_assoc()) $vName = $v['name'];
+            if ($vName === 'TANPA_KENDARAAN') {
+                $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+            } else if ($vName === 'PENDING_ASSIGNMENT') {
+                $vName = '(Menunggu Plotting Kendaraan)';
+            } else {
+                $resV = $conn->query("SELECT name FROM master_vehicles WHERE id = '$selectedVehicleId'");
+                if ($resV && $v = $resV->fetch_assoc()) $vName = $v['name'];
+            }
 
             $app_name = $dtl ? $dtl['applicant_name'] : '-';
+            $pass_name = $dtl ? ($dtl['passenger_name'] ?: '-') : '-';
+            $dest = $dtl ? ($dtl['destination'] ?: '-') : '-';
+            $purp = $dtl ? ($dtl['purpose'] ?: '-') : '-';
             $tgl = $dtl ? $dtl['ds'] : '-';
             $jam = $dtl ? substr($dtl['time_start'], 0, 5) : '-';
 
-            $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$selectedDriverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$reqId*.\n\n*Pemohon:* $app_name\n*Kendaraan:* $vName\n*Jadwal:* $tgl jam $jam\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+            $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$selectedDriverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$reqId*.\n\n*Pemohon:* $app_name\n*Penumpang:* $pass_name\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $tgl\n*Jam Berangkat:* $jam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
             sendWhatsAppFonnte($msgDriver, $drv['whatsapp_number']);
         }
     }

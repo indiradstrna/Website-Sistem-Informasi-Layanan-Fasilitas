@@ -178,12 +178,20 @@ switch ($action) {
         break;
 
     case 'get_item2_by_user':
-        $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, purpose, items_json, status, note, created_at FROM item_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt = $conn->prepare("SELECT * FROM item_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         $res = $stmt->get_result();
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
-        $stmt->close();
+        break;
+
+    case 'get_driver_tasks':
+        $driverName = $_SESSION['full_name'] ?? '';
+        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE driver_name LIKE CONCAT('%', ?, '%') ORDER BY created_at DESC LIMIT 100");
+        $stmt->bind_param("s", $driverName);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
     // ============================================================
@@ -548,45 +556,60 @@ switch ($action) {
             // KIRIM NOTIFIKASI KE TELEGRAM USER
             notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorName);
             
-            // JIKA VEHICLE DAN APPROVED, KIRIM NOTIF KE DRIVER
+            // JIKA VEHICLE DAN APPROVED, KIRIM NOTIF KE DRIVER HANYA SAAT ASSIGNMENT BARU/BERUBAH
             if ($type === 'Vehicle' && $newStatus === 'approved') {
-                $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, v.passenger_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
-                $stmtDrv->bind_param("i", $id);
-                $stmtDrv->execute();
-                $reqRow = $stmtDrv->get_result()->fetch_assoc();
-                $stmtDrv->close();
+                $previousReqStmt = $conn->prepare("SELECT driver_name, vehicle_id, status FROM vehicle_requests WHERE id = ?");
+                $previousReqStmt->bind_param("i", $id);
+                $previousReqStmt->execute();
+                $previousReq = $previousReqStmt->get_result()->fetch_assoc();
+                $previousReqStmt->close();
 
-                if ($reqRow && $reqRow['driver_name'] && trim($reqRow['driver_name']) !== '') {
-                    $vName = $reqRow['vehicle_id'];
-                    if ($vName === 'TANPA_KENDARAAN') {
-                        $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
-                    } else {
-                        $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
-                        $stmtV->bind_param("s", $reqRow['vehicle_id']);
-                        $stmtV->execute();
-                        if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
-                        $stmtV->close();
-                    }
+                $shouldNotifyDriver = false;
+                if (!$previousReq || $previousReq['status'] !== 'approved') {
+                    $shouldNotifyDriver = true;
+                } elseif (trim((string)($previousReq['driver_name'] ?? '')) === '' || trim((string)($previousReq['driver_name'] ?? '')) !== trim((string)($previousReq['driver_name'] ?? ''))) {
+                    $shouldNotifyDriver = true;
+                }
 
-                    $drvName  = $reqRow['driver_name'];
-                    $appName  = $reqRow['applicant_name'];
-                    $passName = $reqRow['passenger_name'] ?: '-';
-                    $dest     = $reqRow['destination'] ?: '-';
-                    
-                    $waktuTanggal = $reqRow['ds'];
-                    if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
-                        $waktuTanggal .= " - " . $reqRow['de'];
-                    }
-                    $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
-                    $purp     = $reqRow['purpose'] ?: '-';
+                if ($shouldNotifyDriver) {
+                    $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, v.passenger_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
+                    $stmtDrv->bind_param("i", $id);
+                    $stmtDrv->execute();
+                    $reqRow = $stmtDrv->get_result()->fetch_assoc();
+                    $stmtDrv->close();
 
-                    if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                        sendWhatsAppFonnte($msgDriver, $reqRow['whatsapp_number']);
-                    }
-                    if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
-                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                        sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
+                    if ($reqRow && $reqRow['driver_name'] && trim($reqRow['driver_name']) !== '') {
+                        $vName = $reqRow['vehicle_id'];
+                        if ($vName === 'TANPA_KENDARAAN') {
+                            $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+                        } else {
+                            $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
+                            $stmtV->bind_param("s", $reqRow['vehicle_id']);
+                            $stmtV->execute();
+                            if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
+                            $stmtV->close();
+                        }
+
+                        $drvName  = $reqRow['driver_name'];
+                        $appName  = $reqRow['applicant_name'];
+                        $passName = $reqRow['passenger_name'] ?: '-';
+                        $dest     = $reqRow['destination'] ?: '-';
+                        
+                        $waktuTanggal = $reqRow['ds'];
+                        if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
+                            $waktuTanggal .= " - " . $reqRow['de'];
+                        }
+                        $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
+                        $purp     = $reqRow['purpose'] ?: '-';
+
+                        if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                            $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                            sendWhatsAppFonnte($msgDriver, $reqRow['whatsapp_number']);
+                        }
+                        if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                            $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
+                            sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
+                        }
                     }
                 }
             }
@@ -686,6 +709,12 @@ switch ($action) {
         $vehicleId   = $_POST['vehicle_id']        ?? '';
         $driverName  = $_POST['driver_name']       ?? '';
 
+        $prevAssignmentStmt = $conn->prepare("SELECT driver_name, vehicle_id, status FROM vehicle_requests WHERE id = ?");
+        $prevAssignmentStmt->bind_param("i", $id);
+        $prevAssignmentStmt->execute();
+        $prevAssignment = $prevAssignmentStmt->get_result()->fetch_assoc();
+        $prevAssignmentStmt->close();
+
         // Ambil detail waktu request & pemohon
         $stmt = $conn->prepare("SELECT applicant_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, DATE_FORMAT(date_end,'%d %b %Y') as de, time_start, time_end, purpose, destination FROM vehicle_requests WHERE id = ?");
         $stmt->bind_param("i", $id);
@@ -727,7 +756,8 @@ switch ($action) {
         $stmt = $conn->prepare("UPDATE vehicle_requests SET vehicle_id = ?, driver_name = ? WHERE id = ?");
         $stmt->bind_param("ssi", $vehicleId, $driverName, $id);
         if ($stmt->execute()) {
-            
+            $assignmentChanged = !$prevAssignment || trim((string)($prevAssignment['driver_name'] ?? '')) !== trim((string)($driverName ?? '')) || trim((string)($prevAssignment['vehicle_id'] ?? '')) !== trim((string)($vehicleId ?? ''));
+
             // JIKA STATUS SUDAH APPROVED/IN-PROGRESS, KIRIM NOTIF KE DRIVER KARENA BARU DITETAPKAN
             $stmtStatus = $conn->prepare("SELECT status, applicant_name, passenger_name, DATE_FORMAT(date_start,'%d %b %Y') as ds, DATE_FORMAT(date_end,'%d %b %Y') as de, time_start, time_end, purpose, destination FROM vehicle_requests WHERE id = ?");
             $stmtStatus->bind_param("i", $id);
@@ -735,7 +765,7 @@ switch ($action) {
             $reqRow = $stmtStatus->get_result()->fetch_assoc();
             $stmtStatus->close();
 
-            if ($reqRow && in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user']) && $driverName && $driverName !== 'TANPA_SUPIR') {
+            if ($reqRow && in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user']) && $driverName && $driverName !== 'TANPA_SUPIR' && $assignmentChanged) {
                 $stmtDrv = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
                 $stmtDrv->bind_param("s", $driverName);
                 $stmtDrv->execute();

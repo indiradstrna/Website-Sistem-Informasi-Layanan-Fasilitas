@@ -2603,7 +2603,7 @@ function renderDetailPengajuanTinjau() {
         </select>
       </div>
       <div style="font-size:0.75rem; color:#ea580c; font-style:italic; margin-top:1rem;">* Kendaraan dan Driver wajib dipilih sebelum melakukan verifikasi ke Manager.</div>
-      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+      ${req.status !== 'pending' ? `
         <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doVehicleAssign(${req.id}, '${req.status}')">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           Update Penempatan Kendaraan / Driver
@@ -2646,7 +2646,7 @@ function renderDetailPengajuanTinjau() {
         </select>
         <div style="font-size:0.75rem; color:#15803d; font-style:italic; margin-top:0.5rem;">* Anda dapat mengubah ruangan yang dipilih user jika diperlukan.</div>
       </div>
-      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+      ${req.status !== 'pending' ? `
         <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doRoomApprove(${req.id}, '${req.status}')">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           Update Penempatan Ruangan
@@ -2671,7 +2671,7 @@ function renderDetailPengajuanTinjau() {
         </select>
         <div style="font-size:0.75rem; color:#be185d; font-style:italic; margin-top:0.5rem;">* Anda wajib memploting dormitory untuk user.</div>
       </div>
-      ${!['pending', 'waiting_manager_fmd'].includes(req.status) ? `
+      ${req.status !== 'pending' ? `
         <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#f59e0b; color:#fff;" onclick="doDormitoryApprove(${req.id}, '${req.status}')">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           Update Penempatan Dormitory
@@ -2845,6 +2845,13 @@ function renderDetailPengajuanTinjau() {
         'Pengajuan telah disiapkan oleh PIC dan berstatus Ready for User. PIC akan menyelesaikan permintaan ini setelah penggunaan selesai.');
     }
 
+  }
+
+  // ── ALLOW PIC TO CANCEL AT ANY NON-FINAL STATUS ──
+  if ((isPIC || isSuperAdmin) && !isFinal) {
+      if (!actionBtns.includes("'canceled'")) {
+          actionBtns += `<button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')" style="margin-top:0.5rem;">✕ Tolak / Batalkan Pengajuan (Cancel)</button>`;
+      }
   }
 
   return `
@@ -3234,6 +3241,12 @@ async function loadRABView(requestId) {
 // ===== UPDATE STATUS =====
 async function updateStatus(id, type, newStatus) {
   const note     = (document.getElementById('admin-note') || {}).value || '';
+  
+  if ((newStatus === 'canceled' || newStatus === 'rejected') && note.trim() === '') {
+    Toast.error('Catatan proses (alasan pembatalan/penolakan) harus diisi!');
+    return;
+  }
+
   const prevNote = currentRequestNote;
   const res = await apiPost(API_BASE + 'requests.php', {
     action: 'update_status', id, type, status: newStatus, note, prev_note: prevNote
