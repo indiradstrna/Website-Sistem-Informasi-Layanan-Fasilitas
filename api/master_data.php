@@ -8,8 +8,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Hanya mengizinkan superadmin atau admin untuk kelola Master Data
-$userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
-if (!isset($_SESSION['user_id']) || (!in_array('superadmin', $userRoles) && !in_array('super admin', $userRoles) && !in_array('admin', $userRoles))) {
+if (!in_array(strtolower($_SESSION['role']), ['superadmin', 'super admin', 'admin'])) {
     jsonResponse(false, 'Akses ditolak. Anda tidak memiliki izin.');
 }
 

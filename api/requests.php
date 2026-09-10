@@ -1015,8 +1015,7 @@ switch ($action) {
         break;
 
     case 'superadmin_update_request':
-        $userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
-        if (!in_array('superadmin', $userRoles) && !in_array('super admin', $userRoles)) {
+        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
             jsonResponse(false, 'Akses ditolak.');
         }
         $id = (int)($_POST['id'] ?? 0);
@@ -1089,8 +1088,7 @@ switch ($action) {
         break;
 
     case 'superadmin_delete_request':
-        $userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
-        if (!in_array('superadmin', $userRoles) && !in_array('super admin', $userRoles)) {
+        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
             jsonResponse(false, 'Akses ditolak.');
         }
         $id = (int)($_POST['id'] ?? 0);

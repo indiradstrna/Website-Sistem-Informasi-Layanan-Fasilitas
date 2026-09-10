@@ -15,7 +15,7 @@ if ($action === 'login') {
         SELECT u.id, u.full_name, u.password, u.role, u.employee_id 
         FROM users u 
         INNER JOIN employees e ON u.employee_id = e.id 
-        WHERE e.nip_nik = ? AND u.role LIKE '%warehouse_admin%'
+        WHERE e.nip_nik = ? AND u.role = 'warehouse_admin'
     ");
     $stmt->bind_param("s", $empId);
     $stmt->execute();
@@ -38,8 +38,7 @@ if ($action === 'login') {
 }
 
 // Cek autentikasi untuk aksi selain login
-$userRoles = array_map('trim', explode(',', $_SESSION['role'] ?? ''));
-if (!isset($_SESSION['user_id']) || !in_array('warehouse_admin', $userRoles)) {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'warehouse_admin') {
     jsonResponse(false, 'Unauthorized. Silakan login sebagai Admin Gudang.', null, 401);
 }
 $userId = $_SESSION['user_id'];
