@@ -598,7 +598,7 @@ async function loadAllData(silent = false) {
     allUsers = Array.isArray(users) ? users : [];
     allEmployees = Array.isArray(employees) ? employees : [];
 
-    const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === '197707072025211067');
+    const isManagerFMD = (hasRole('managerfmd') || ADMIN_USERNAME === '197707072025211067');
     
     const picPending = allRequests.filter(r => {
       if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
@@ -607,10 +607,10 @@ async function loadAllData(silent = false) {
       }
       if (r.status === 'waiting_manager_fmd') return isManagerFMD;
       if (r.status === 'verified' && r.type === 'Repair') return isManagerFMD;
-      if (r.status === 'waiting_manager_fad' && CURRENT_ROLE === 'managerFAD') return true;
-      if (r.status === 'waiting_ppk' && CURRENT_ROLE === 'ppk') return true;
-      if (r.status === 'waiting_bod' && CURRENT_ROLE === 'bod') return true;
-      if (r.status === 'approved_waiting_fund' && CURRENT_ROLE === 'bendahara') return true;
+      if (r.status === 'waiting_manager_fad' && hasRole('managerfad')) return true;
+      if (r.status === 'waiting_ppk' && hasRole('ppk')) return true;
+      if (r.status === 'waiting_bod' && hasRole('bod')) return true;
+      if (r.status === 'approved_waiting_fund' && hasRole('bendahara')) return true;
       return false;
     });
 
@@ -2567,7 +2567,7 @@ function renderDetailPengajuanTinjau() {
   const allowedPICs  = PIC_MAP_LOCAL[req.type] || [];
   const isPIC        = allowedPICs.includes(ADMIN_USERNAME);
   const MANAGER_FMD_NIK = '197707072025211067';
-  const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === MANAGER_FMD_NIK);
+  const isManagerFMD = (hasRole('managerfmd') || ADMIN_USERNAME === MANAGER_FMD_NIK);
   const isSuperAdmin = SUPER_ADMIN_NIKS_LOCAL.includes(ADMIN_USERNAME);
 
   // ── Bagian assign kendaraan ──
@@ -2718,13 +2718,13 @@ function renderDetailPengajuanTinjau() {
         <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB / Internal</button>
         <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
       </div>`;
-    } else if (req.status === 'waiting_bod' && (CURRENT_ROLE === 'bod' || isSuperAdmin)) {
+    } else if (req.status === 'waiting_bod' && (hasRole('bod') || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_ppk')">✓ Approve (ke PPK)</button>`;
-    } else if (req.status === 'waiting_ppk' && (CURRENT_ROLE === 'ppk' || isSuperAdmin)) {
+    } else if (req.status === 'waiting_ppk' && (hasRole('ppk') || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_manager_fad')">✓ Approve (ke Manager FAD)</button>`;
-    } else if (req.status === 'waiting_manager_fad' && (CURRENT_ROLE === 'managerFAD' || isSuperAdmin)) {
+    } else if (req.status === 'waiting_manager_fad' && (hasRole('managerfad') || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','approved_waiting_fund')">✓ Approve (Cairkan Dana)</button>`;
-    } else if (req.status === 'approved_waiting_fund' && (CURRENT_ROLE === 'bendahara' || isSuperAdmin)) {
+    } else if (req.status === 'approved_waiting_fund' && (hasRole('bendahara') || isSuperAdmin)) {
       actionBtns = `<div style="background:#fffbeb;border:1px solid #fef3c7;padding:1rem;border-radius:.5rem;">
         <label class="form-label" style="font-weight:700;color:#92400e;">Pilih Pekerja / Staff:</label>
         <select id="assign-worker" class="form-select" style="margin-bottom:1rem;">

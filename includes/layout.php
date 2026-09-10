@@ -47,7 +47,7 @@ function renderSidebar(string $role, string $activeView, string $userName, strin
         array_splice($userMenus, 8, 0, [['id' => 'driver_tasks', 'label' => 'Jadwal Tugas', 'icon' => 'calendar']]);
     }
 
-    if ($_SESSION['role'] === 'admin') {
+    if (hasRole('admin')) {
         if ($role === 'admin') {
             // Kita di Admin Dashboard, tambahkan menu ke User View
             $adminMenus[] = ['id' => 'switch_to_user', 'label' => 'Beralih ke User', 'icon' => 'eye', 'url' => $basePath . 'user/index.php'];

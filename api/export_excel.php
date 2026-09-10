@@ -2,7 +2,8 @@
 session_start();
 require_once __DIR__ . '/../config.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'super admin'])) {
+$userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
+if (!isset($_SESSION['user_id']) || (!in_array('admin', $userRoles) && !in_array('super admin', $userRoles) && !in_array('superadmin', $userRoles))) {
     die("Akses ditolak.");
 }
 

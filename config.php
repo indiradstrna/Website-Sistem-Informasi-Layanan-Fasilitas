@@ -186,8 +186,8 @@ if (MAINTENANCE_MODE) {
     $current_uri = $_SERVER['REQUEST_URI'] ?? '';
     // Izinkan login, logout, dan file statis
     if (strpos($current_uri, 'login.php') === false && strpos($current_uri, 'logout.php') === false) {
-        $role = strtolower($_SESSION['role'] ?? '');
-        $is_superadmin = ($role === 'superadmin' || $role === 'super admin');
+        $userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
+        $is_superadmin = (in_array('superadmin', $userRoles) || in_array('super admin', $userRoles));
         
         if (!$is_superadmin) {
             // Jika request API, balas dengan JSON
