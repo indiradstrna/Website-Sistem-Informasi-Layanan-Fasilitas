@@ -529,7 +529,7 @@ switch ($action) {
                 if (is_array($gItems) && count($gItems) > 0) {
                     $docNum = "REP-" . $id . "-" . time();
                     $updStmt = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
-                    $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Perbaikan Internal', ?, CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
+                    $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
                     
                     foreach ($gItems as $gi) {
                         if (!empty($gi['itemId'])) {
@@ -1015,7 +1015,8 @@ switch ($action) {
         break;
 
     case 'superadmin_update_request':
-        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
+        $userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
+        if (!in_array('superadmin', $userRoles) && !in_array('super admin', $userRoles)) {
             jsonResponse(false, 'Akses ditolak.');
         }
         $id = (int)($_POST['id'] ?? 0);
@@ -1088,7 +1089,8 @@ switch ($action) {
         break;
 
     case 'superadmin_delete_request':
-        if ($_SESSION['role'] !== 'superadmin' && $_SESSION['role'] !== 'super admin') {
+        $userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
+        if (!in_array('superadmin', $userRoles) && !in_array('super admin', $userRoles)) {
             jsonResponse(false, 'Akses ditolak.');
         }
         $id = (int)($_POST['id'] ?? 0);

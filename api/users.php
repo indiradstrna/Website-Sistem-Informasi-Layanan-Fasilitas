@@ -16,8 +16,8 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 // Check admin role for admin-only actions
 $adminOnly = ['get_all', 'get_employees', 'add', 'update', 'delete'];
-$allowedAdminRoles = ['admin', 'super admin', 'superadmin'];
-if (in_array($action, $adminOnly) && !in_array($_SESSION['role'], $allowedAdminRoles)) {
+$userRoles = array_map('trim', explode(',', strtolower($_SESSION['role'] ?? '')));
+if (in_array($action, $adminOnly) && !in_array('admin', $userRoles) && !in_array('super admin', $userRoles) && !in_array('superadmin', $userRoles)) {
     jsonResponse(false, 'Forbidden: Admin access required.');
 }
 
