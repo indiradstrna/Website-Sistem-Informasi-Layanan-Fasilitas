@@ -403,12 +403,16 @@ renderPageHead('Dashboard Admin');
       </div>
       <div id="gudang-item-inputs">
         <div class="grid-3" style="margin-bottom:1rem;">
-          <div class="form-group" style="grid-column:1/3; position:relative;">
-            <label class="form-label">Nama Barang</label>
+          <div class="form-group" style="grid-column:1/4; position:relative;">
+            <label class="form-label">Nama Barang (Dari Gudang)</label>
             <input type="text" id="gudang-item-name" class="form-input" placeholder="Cari nama atau kode barang..." autocomplete="off" />
             <input type="hidden" id="gudang-item-id" />
             <input type="hidden" id="gudang-item-stock" />
             <div id="gudang-item-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border); border-radius:4px; max-height:200px; overflow-y:auto; z-index:1000; box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
+          </div>
+          <div class="form-group" style="grid-column:1/3;">
+            <label class="form-label">Atau Barang Custom (Jika tidak ada di daftar gudang)</label>
+            <input type="text" id="gudang-item-custom" class="form-input" placeholder="Ketik nama barang custom..." autocomplete="off" />
           </div>
           <div class="form-group">
             <label class="form-label">Jumlah</label>
@@ -3311,12 +3315,16 @@ function setupGudangSearchDropdown() {
 setupGudangSearchDropdown();
 
 function addGudangItem() {
-  const name = document.getElementById('gudang-item-name')?.value?.trim();
-  const idInput = document.getElementById('gudang-item-id'); const itemId = idInput ? idInput.value : '';
+  const nameInput = document.getElementById('gudang-item-name')?.value?.trim();
+  const customInput = document.getElementById('gudang-item-custom')?.value?.trim();
+  const name = nameInput || customInput;
+  const idInput = document.getElementById('gudang-item-id'); 
+  const itemId = (name === nameInput && idInput) ? idInput.value : '';
   const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
-  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
-  gudangItems.push({ id: Date.now(), itemId: itemId, itemName: name, quantity: qty });
+  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang atau custom'); return; }
+  gudangItems.push({ id: Date.now(), itemId: itemId, itemName: name + (customInput && !nameInput ? ' (Custom)' : ''), quantity: qty });
   document.getElementById('gudang-item-name').value = '';
+  if (document.getElementById('gudang-item-custom')) document.getElementById('gudang-item-custom').value = '';
   if (idInput) idInput.value = '';
   document.getElementById('gudang-item-qty').value  = '1';
   renderGudangTable();
