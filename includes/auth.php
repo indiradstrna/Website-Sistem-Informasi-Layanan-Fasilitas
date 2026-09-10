@@ -27,16 +27,10 @@ function getSession(): array {
     ];
 }
 
-// Fungsi helper: cek apakah user punya minimal satu dari role yang disebutkan
-function hasRole(string ...$roles): bool {
-    $sess = getSession();
-    $userRoles = array_map('trim', explode(',', $sess['role']));
-    return count(array_intersect($userRoles, $roles)) > 0;
-}
-
-// Fungsi helper: proteksi halaman berdasarkan role
+// Fungsi helper: cek role
 function requireRole(string ...$roles): void {
-    if (!hasRole(...$roles)) {
+    $sess = getSession();
+    if (!in_array($sess['role'], $roles, true)) {
         header('Location: ' . BASE_URL . '/index.php?error=unauthorized');
         exit;
     }

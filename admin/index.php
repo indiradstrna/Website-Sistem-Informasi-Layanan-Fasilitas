@@ -403,16 +403,12 @@ renderPageHead('Dashboard Admin');
       </div>
       <div id="gudang-item-inputs">
         <div class="grid-3" style="margin-bottom:1rem;">
-          <div class="form-group" style="grid-column:1/4; position:relative;">
-            <label class="form-label">Nama Barang (Dari Gudang)</label>
+          <div class="form-group" style="grid-column:1/3; position:relative;">
+            <label class="form-label">Nama Barang</label>
             <input type="text" id="gudang-item-name" class="form-input" placeholder="Cari nama atau kode barang..." autocomplete="off" />
             <input type="hidden" id="gudang-item-id" />
             <input type="hidden" id="gudang-item-stock" />
             <div id="gudang-item-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border); border-radius:4px; max-height:200px; overflow-y:auto; z-index:1000; box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
-          </div>
-          <div class="form-group" style="grid-column:1/3;">
-            <label class="form-label">Atau Barang Custom (Jika tidak ada di daftar gudang)</label>
-            <input type="text" id="gudang-item-custom" class="form-input" placeholder="Ketik nama barang custom..." autocomplete="off" />
           </div>
           <div class="form-group">
             <label class="form-label">Jumlah</label>
@@ -598,7 +594,7 @@ async function loadAllData(silent = false) {
     allUsers = Array.isArray(users) ? users : [];
     allEmployees = Array.isArray(employees) ? employees : [];
 
-    const isManagerFMD = (hasRole('managerfmd') || ADMIN_USERNAME === '197707072025211067');
+    const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === '197707072025211067');
     
     const picPending = allRequests.filter(r => {
       if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
@@ -607,10 +603,10 @@ async function loadAllData(silent = false) {
       }
       if (r.status === 'waiting_manager_fmd') return isManagerFMD;
       if (r.status === 'verified' && r.type === 'Repair') return isManagerFMD;
-      if (r.status === 'waiting_manager_fad' && hasRole('managerfad')) return true;
-      if (r.status === 'waiting_ppk' && hasRole('ppk')) return true;
-      if (r.status === 'waiting_bod' && hasRole('bod')) return true;
-      if (r.status === 'approved_waiting_fund' && hasRole('bendahara')) return true;
+      if (r.status === 'waiting_manager_fad' && CURRENT_ROLE === 'managerFAD') return true;
+      if (r.status === 'waiting_ppk' && CURRENT_ROLE === 'ppk') return true;
+      if (r.status === 'waiting_bod' && CURRENT_ROLE === 'bod') return true;
+      if (r.status === 'approved_waiting_fund' && CURRENT_ROLE === 'bendahara') return true;
       return false;
     });
 
@@ -2286,7 +2282,7 @@ function renderDetailPengajuanTinjau() {
   const allowedPICs  = PIC_MAP_LOCAL[req.type] || [];
   const isPIC        = allowedPICs.includes(ADMIN_USERNAME);
   const MANAGER_FMD_NIK = '197707072025211067';
-  const isManagerFMD = (hasRole('managerfmd') || ADMIN_USERNAME === MANAGER_FMD_NIK);
+  const isManagerFMD = (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === MANAGER_FMD_NIK);
   const isSuperAdmin = SUPER_ADMIN_NIKS_LOCAL.includes(ADMIN_USERNAME);
 
   // ── Bagian assign kendaraan ──
@@ -2437,13 +2433,13 @@ function renderDetailPengajuanTinjau() {
         <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB / Internal</button>
         <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
       </div>`;
-    } else if (req.status === 'waiting_bod' && (hasRole('bod') || isSuperAdmin)) {
+    } else if (req.status === 'waiting_bod' && (CURRENT_ROLE === 'bod' || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_ppk')">✓ Approve (ke PPK)</button>`;
-    } else if (req.status === 'waiting_ppk' && (hasRole('ppk') || isSuperAdmin)) {
+    } else if (req.status === 'waiting_ppk' && (CURRENT_ROLE === 'ppk' || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','waiting_manager_fad')">✓ Approve (ke Manager FAD)</button>`;
-    } else if (req.status === 'waiting_manager_fad' && (hasRole('managerfad') || isSuperAdmin)) {
+    } else if (req.status === 'waiting_manager_fad' && (CURRENT_ROLE === 'managerFAD' || isSuperAdmin)) {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','approved_waiting_fund')">✓ Approve (Cairkan Dana)</button>`;
-    } else if (req.status === 'approved_waiting_fund' && (hasRole('bendahara') || isSuperAdmin)) {
+    } else if (req.status === 'approved_waiting_fund' && (CURRENT_ROLE === 'bendahara' || isSuperAdmin)) {
       actionBtns = `<div style="background:#fffbeb;border:1px solid #fef3c7;padding:1rem;border-radius:.5rem;">
         <label class="form-label" style="font-weight:700;color:#92400e;">Pilih Pekerja / Staff:</label>
         <select id="assign-worker" class="form-select" style="margin-bottom:1rem;">
@@ -3315,16 +3311,12 @@ function setupGudangSearchDropdown() {
 setupGudangSearchDropdown();
 
 function addGudangItem() {
-  const nameInput = document.getElementById('gudang-item-name')?.value?.trim();
-  const customInput = document.getElementById('gudang-item-custom')?.value?.trim();
-  const name = nameInput || customInput;
-  const idInput = document.getElementById('gudang-item-id'); 
-  const itemId = (name === nameInput && idInput) ? idInput.value : '';
+  const name = document.getElementById('gudang-item-name')?.value?.trim();
+  const idInput = document.getElementById('gudang-item-id'); const itemId = idInput ? idInput.value : '';
   const qty  = parseInt(document.getElementById('gudang-item-qty')?.value || '1');
-  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang atau custom'); return; }
-  gudangItems.push({ id: Date.now(), itemId: itemId, itemName: name + (customInput && !nameInput ? ' (Custom)' : ''), quantity: qty });
+  if (!name || qty <= 0) { Toast.error('Mohon lengkapi data barang gudang'); return; }
+  gudangItems.push({ id: Date.now(), itemId: itemId, itemName: name, quantity: qty });
   document.getElementById('gudang-item-name').value = '';
-  if (document.getElementById('gudang-item-custom')) document.getElementById('gudang-item-custom').value = '';
   if (idInput) idInput.value = '';
   document.getElementById('gudang-item-qty').value  = '1';
   renderGudangTable();
