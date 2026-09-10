@@ -787,7 +787,7 @@ $employeeId = $_SESSION['employee_id'];
                 <div class="dropdown-item">Lainnya ▸</div>
                 <ul class="sub-dropdown-menu">
                   <li><div class="dropdown-item" onclick="switchTab('koreksi', this, 'Koreksi')">Koreksi</div></li>
-                  <li><div class="dropdown-item" onclick="switchTab('development', this, 'Hasil Opname Fisik')">Hasil Opname Fisik</div></li>
+                  <li><div class="dropdown-item" onclick="switchTab('opname', this, 'Hasil Opname Fisik')">Hasil Opname Fisik</div></li>
                   <li><div class="dropdown-item" onclick="switchTab('development', this, 'Penghapusan Usang/Rusak')">Penghapusan</div></li>
                 </ul>
               </li>
@@ -1052,7 +1052,7 @@ $employeeId = $_SESSION['employee_id'];
             <div id="tx-item-dropdown" class="search-select-dropdown"></div>
           </div>
           <div class="form-group" style="flex: 1; min-width: 150px;">
-            <label class="form-label">Jumlah <span id="tx-stock-label" style="font-size:0.8rem; color:var(--danger);"></span></label>
+            <label class="form-label"><span id="tx-qty-label">Jumlah</span> <span id="tx-stock-label" style="font-size:0.8rem; color:var(--danger);"></span></label>
             <input type="number" id="tx-item-qty" class="form-input" min="1">
           </div>
           <div class="form-group" style="flex: 1; min-width: 150px;">
@@ -1338,16 +1338,17 @@ $employeeId = $_SESSION['employee_id'];
       document.getElementById('nav-links').classList.remove('active');
       document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
         // TRANSAKSI
-      if (tabId === 'inbound' || tabId === 'outbound' || tabId === 'koreksi') {
+      if (tabId === 'inbound' || tabId === 'outbound' || tabId === 'koreksi' || tabId === 'opname') {
         document.getElementById('view-transaction-list').classList.add('active');
         document.getElementById('tx-list-title').textContent = 
           tabId === 'inbound' ? 'Persediaan Masuk' : 
-          tabId === 'outbound' ? 'Persediaan Keluar' : 'Persediaan Koreksi';
+          tabId === 'outbound' ? 'Persediaan Keluar' :
+          tabId === 'opname' ? 'Hasil Opname Fisik' : 'Persediaan Koreksi';
         document.getElementById('tx-list-subtitle').textContent = subtype ? `- ${subtype}` : '';
         
-        txType = tabId === 'inbound' ? 'in' : tabId === 'outbound' ? 'out' : 'koreksi';
-        txSubtype = subtype || (tabId === 'koreksi' ? 'Koreksi' : '');
-        currentFormTxType = txType === 'out' ? 'out' : 'in';
+        txType = tabId === 'inbound' ? 'in' : tabId === 'outbound' ? 'out' : tabId;
+        txSubtype = subtype || (tabId === 'koreksi' ? 'Koreksi' : tabId === 'opname' ? 'Hasil Opname Fisik' : '');
+        currentFormTxType = txType;
         
         loadDocumentList();
         return;
@@ -1583,6 +1584,10 @@ $employeeId = $_SESSION['employee_id'];
           document.getElementById('koreksi-radio-group').style.display = 'none';
           currentFormTxType = txType;
         }
+
+        const isOpname = txType === 'opname';
+        document.getElementById('tx-qty-label').textContent = isOpname ? 'Stok Fisik' : 'Jumlah';
+        document.getElementById('tx-item-qty').min = isOpname ? '0' : '1';
         
         // Reset items
         txItems = [];
@@ -1678,7 +1683,8 @@ $employeeId = $_SESSION['employee_id'];
                 document.getElementById('tx-stock-label').textContent = `(Stok: ${item.stock})`;
                 if(currentFormTxType === 'out') {
                   document.getElementById('tx-item-qty').max = item.stock;
-                  
+                }
+                if(currentFormTxType === 'out' || txType === 'opname') {
                   const priceInput = document.getElementById('tx-item-price');
                   priceInput.value = item.last_price || 0;
                   priceInput.setAttribute('readonly', 'readonly');
@@ -1722,8 +1728,8 @@ $employeeId = $_SESSION['employee_id'];
       const price = parseFloat(document.getElementById('tx-item-price').value || 0);
       const locId = document.getElementById('tx-item-location-id').value;
       
-      if(!id || qty <= 0) {
-        Swal.fire('Peringatan', 'Silakan pilih barang dan masukkan jumlah minimal 1.', 'warning');
+      if(!id || (txType !== 'opname' && qty <= 0) || (txType === 'opname' && qty < 0)) {
+        Swal.fire('Peringatan', txType === 'opname' ? 'Silakan pilih barang dan masukkan stok fisik minimal 0.' : 'Silakan pilih barang dan masukkan jumlah minimal 1.', 'warning');
         return;
       }
       
@@ -1740,12 +1746,16 @@ $employeeId = $_SESSION['employee_id'];
       // Check if already in list
       const existing = txItems.find(i => i.id === id);
       if (existing) {
-        if(txType === 'out' && (existing.qty + qty) > stock) {
+        if (txType === 'opname') {
+          existing.qty = qty;
+          existing.price = price;
+        } else if(txType === 'out' && (existing.qty + qty) > stock) {
            Swal.fire('Peringatan', `Total jumlah keluar melebihi stok saat ini (${stock}).`, 'warning');
            return;
+        } else {
+          existing.qty += qty;
+          existing.price = price; // update price to latest typed
         }
-        existing.qty += qty;
-        existing.price = price; // update price to latest typed
       } else {
         txItems.push({ id, code, name, qty, price, locationId: locId });
       }

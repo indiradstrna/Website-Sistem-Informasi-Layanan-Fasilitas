@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^mysql -u root biotrop -e \"SHOW CREATE TABLE inv_transactions; SHOW CREATE TABLE inv_items;\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^php -r 'require \"config\\.php\"; foreach \\(\\[\"inv_items\", \"inv_transactions\"\\] as \\$table\\) \\{ echo \"--- \\$table ---\\\\n\"; \\$result = \\$conn->query\\(\"SHOW CREATE TABLE \\$table\"\\); if \\(!\\$result\\) \\{ echo \\$conn->error \\. \"\\\\n\"; \\} else \\{ \\$row = \\$result->fetch_assoc\\(\\); echo \\$row\\[\"Create Table\"\\] \\. \"\\\\n\"; \\} \\}'$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

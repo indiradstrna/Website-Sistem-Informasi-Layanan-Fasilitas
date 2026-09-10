@@ -282,7 +282,6 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
                 }
                 
                 $detailTxt .= "<b>Ruangan:</b> " . htmlspecialchars($rName) . "\n";
-                $detailTxt .= "<b>Nama Kegiatan:</b> " . htmlspecialchars($row['purpose'] ?? '-') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $formatWaktu($row['date_start'] ?? '', $row['time_start'] ?? '', $row['date_end'] ?? '', $row['time_end'] ?? '') . "\n";
                 if (!empty($row['participants'])) $detailTxt .= "<b>Peserta:</b> " . htmlspecialchars($row['participants']) . " org\n";
                 if (!empty($row['special_needs'])) $detailTxt .= "<b>Kebut. Khusus:</b> " . htmlspecialchars($row['special_needs']) . "\n";
@@ -311,10 +310,12 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
                     $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
                 }
                 if (!empty($row['zoom_account_id'])) $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($zName) . "\n";
-                $detailTxt .= "<b>Nama Kegiatan:</b> " . htmlspecialchars($row['purpose'] ?? '-') . "\n";
                 $detailTxt .= "<b>Waktu:</b> " . $formatWaktu($row['date_start'] ?? '', $row['time_start'] ?? '', $row['date_end'] ?? '', $row['time_end'] ?? '') . "\n";
                 if (!empty($row['participants'])) $detailTxt .= "<b>Peserta:</b> " . htmlspecialchars($row['participants']) . " org\n";
-                if (!empty($row['request_type'])) $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type']) . "\n";
+                $kegVal = (!empty($row['purpose']) && $row['purpose'] !== '0') ? $row['purpose'] : ($row['request_type'] ?? '');
+                if (!empty($row['request_type']) && $row['request_type'] !== $kegVal && $row['request_type'] !== '0') {
+                    $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type']) . "\n";
+                }
                 if (!empty($row['special_needs'])) $detailTxt .= "<b>Kebut. Khusus:</b> " . htmlspecialchars($row['special_needs']) . "\n";
             } elseif ($type === 'Repair') {
                 $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '-') . "\n";
@@ -345,6 +346,9 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
     $msg .= "<b>Unit:</b> " . htmlspecialchars($unit) . "\n";
     if ($type === 'Repair') {
         $msg .= "<b>Masalah:</b> " . htmlspecialchars($purpose) . "\n";
+    } elseif ($type === 'Zoom' || $type === 'Room') {
+        $keg = (!empty($purpose) && $purpose !== '0') ? $purpose : ($row['request_type'] ?? '-');
+        $msg .= "<b>Nama Kegiatan:</b> " . htmlspecialchars($keg) . "\n";
     } else {
         $msg .= "<b>Keperluan:</b> " . htmlspecialchars($purpose) . "\n";
     }
@@ -538,8 +542,11 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
                 $zName = $zoomMap[$row['zoom_account_id']] ?? $row['zoom_account_id'];
             }
             if (!empty($row['zoom_account_id'])) $detailTxt .= "<b>Akun Zoom:</b> " . htmlspecialchars($zName) . "\n";
-            $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type'] ?? '-') . "\n";
-            $detailTxt .= "<b>Kebutuhan Khusus:</b> " . htmlspecialchars($row['special_needs'] ?? '-') . "\n";
+            $kegVal = (!empty($row['purpose']) && $row['purpose'] !== '0') ? $row['purpose'] : ($row['request_type'] ?? '');
+            if (!empty($row['request_type']) && $row['request_type'] !== $kegVal && $row['request_type'] !== '0') {
+                $detailTxt .= "<b>Permintaan Tambahan:</b> " . htmlspecialchars($row['request_type']) . "\n";
+            }
+            if (!empty($row['special_needs'])) $detailTxt .= "<b>Kebutuhan Khusus:</b> " . htmlspecialchars($row['special_needs']) . "\n";
             $detailTxt .= "<b>Waktu:</b> " . ($row['date_start'] ?? '') . " " . substr($row['time_start'] ?? '', 0, 5) . " s/d " . ($row['date_end'] ?? '') . " " . substr($row['time_end'] ?? '', 0, 5) . "\n";
         } elseif ($type === 'Repair') {
             $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '') . "\n";
@@ -564,9 +571,11 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         $msgApprover .= "<b>Pemohon:</b> " . htmlspecialchars($row['applicant_name'] ?? '-') . "\n";
         $msgApprover .= "<b>Unit:</b> " . htmlspecialchars($row['applicant_unit'] ?? '-') . "\n";
         
-        $purpose = $row['purpose'] ?? $row['issue_description'] ?? '-';
+        $purpose = (!empty($row['purpose']) && $row['purpose'] !== '0') ? $row['purpose'] : ($row['request_type'] ?? $row['issue_description'] ?? '-');
         if ($type === 'Repair') {
             $msgApprover .= "<b>Masalah:</b> " . htmlspecialchars($purpose) . "\n";
+        } elseif ($type === 'Zoom' || $type === 'Room') {
+            $msgApprover .= "<b>Nama Kegiatan:</b> " . htmlspecialchars($purpose) . "\n";
         } else {
             $msgApprover .= "<b>Keperluan:</b> " . htmlspecialchars($purpose) . "\n";
         }

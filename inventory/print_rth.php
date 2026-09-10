@@ -12,7 +12,7 @@ $periodType = $_GET['period_type'] ?? 'month';
 $month = $_GET['month'] ?? date('m');
 $year = $_GET['year'] ?? date('Y');
 
-$typeStr = $type === 'in' ? 'MASUK' : ($type === 'out' ? 'KELUAR' : '(KOREKSI)');
+$typeStr = $type === 'in' ? 'MASUK' : ($type === 'out' ? 'KELUAR' : ($type === 'opname' ? 'HASIL OPNAME FISIK' : '(KOREKSI)'));
 $subtypeStr = $subtype && $type !== 'koreksi' ? "(".strtoupper($subtype).")" : "";
 
 $periodStr = "";
@@ -72,6 +72,11 @@ if ($locId !== 'all') {
 if ($type === 'koreksi') {
     $sql .= " AND t.transaction_subtype = ?";
     $params[] = 'Koreksi';
+    $types .= "s";
+} elseif ($type === 'opname') {
+    // Opname disimpan sebagai IN/OUT dengan subtype 'Hasil Opname Fisik'
+    $sql .= " AND t.transaction_subtype = ?";
+    $params[] = 'Hasil Opname Fisik';
     $types .= "s";
 } else {
     $sql .= " AND t.type = ?";

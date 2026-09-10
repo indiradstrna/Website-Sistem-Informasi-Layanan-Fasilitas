@@ -314,7 +314,7 @@ switch ($action) {
         }
 
         $stmt = $conn->prepare("INSERT INTO zoom_requests (user_id, zoom_account_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, participants, request_type, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param("isssssssisss", $userId, $zoom_account_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $request_type, $special_needs);
+        $stmt->bind_param("issssssssiss", $userId, $zoom_account_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $request_type, $special_needs);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
             notifyNewRequest('Zoom', $newId, $applicant_name, $applicant_unit, $purpose);

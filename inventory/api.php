@@ -153,7 +153,7 @@ switch ($action) {
         }
 
         $year = date('Y');
-        $suffix = $type === 'in' ? 'M' : 'K';
+        $suffix = $type === 'in' ? 'M' : ($type === 'opname' ? 'O' : 'K');
         
         $likePattern = $prefix . $year . '%' . $suffix;
         $stmt = $conn->prepare("SELECT doc_number FROM inv_transactions WHERE doc_number LIKE ? ORDER BY id DESC LIMIT 1");
@@ -206,6 +206,11 @@ switch ($action) {
             $sql .= " AND t.transaction_subtype = ?";
             $params[] = 'Koreksi';
             $types .= "s";
+        } elseif ($type === 'opname') {
+            // Opname disimpan sebagai IN/OUT dengan subtype 'Hasil Opname Fisik'
+            $sql .= " AND t.transaction_subtype = ?";
+            $params[] = 'Hasil Opname Fisik';
+            $types .= "s";
         } else {
             $sql .= " AND t.type = ?";
             $params[] = $type;
@@ -247,42 +252,96 @@ switch ($action) {
 
         $conn->begin_transaction();
         try {
-            // Verify stock first if outbound
-            if ($type === 'out') {
+            if ($type === 'opname') {
+                // -------------------------------------------------------
+                // OPNAME FISIK: Simpan sebagai transaksi IN/OUT berdasarkan
+                // selisih (delta) antara stok fisik nyata vs stok buku.
+                // Ini memastikan Laporan Rincian Persediaan otomatis sinkron.
+                // -------------------------------------------------------
+                $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
+                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtUpdateStock = $conn->prepare("UPDATE inv_items SET stock = ? WHERE id = ?");
+
                 foreach ($items as $item) {
-                    $itemId = (int)$item['id'];
-                    $qty = (int)$item['qty'];
+                    $itemId     = (int)$item['id'];
+                    $stokFisik  = (int)$item['qty'];   // input user = stok fisik nyata
+                    $price      = (float)$item['price'];
+
+                    // Ambil stok buku saat ini (dengan lock agar aman concurrent)
                     $stmtCek = $conn->prepare("SELECT stock, name FROM inv_items WHERE id = ? FOR UPDATE");
                     $stmtCek->bind_param("i", $itemId);
                     $stmtCek->execute();
-                    $row = $stmtCek->get_result()->fetch_assoc();
-                    
-                    if (!$row) throw new Exception("Barang {$item['name']} tidak ditemukan.");
-                    if ($row['stock'] < $qty) throw new Exception("Stok tidak mencukupi untuk {$item['name']}. Sisa: {$row['stock']}.");
+                    $rowItem = $stmtCek->get_result()->fetch_assoc();
+                    if (!$rowItem) throw new Exception("Barang tidak ditemukan (id={$itemId}).");
+
+                    $stokBuku = (int)$rowItem['stock'];
+                    $delta    = $stokFisik - $stokBuku;  // negatif = selisih kurang, positif = selisih lebih
+
+                    // Tentukan tipe dan qty transaksi berdasarkan delta
+                    if ($delta < 0) {
+                        $txTypeSave = 'out';
+                        $qtySave    = abs($delta);
+                    } elseif ($delta > 0) {
+                        $txTypeSave = 'in';
+                        $qtySave    = $delta;
+                    } else {
+                        // Tidak ada selisih – catat dengan qty=0 agar dokumen tetap muncul di list
+                        $txTypeSave = 'out';
+                        $qtySave    = 0;
+                    }
+                    $totalSave = $qtySave * $price;
+
+                    // Insert transaksi selisih
+                    $stmtInsert->bind_param("isssssssiddi",
+                        $itemId, $txTypeSave, $subtype, $docNum, $docDate, $bookDate, $refDoc, $notes,
+                        $qtySave, $price, $totalSave, $userId
+                    );
+                    $stmtInsert->execute();
+
+                    // Set stok master ke nilai fisik nyata
+                    $stmtUpdateStock->bind_param("ii", $stokFisik, $itemId);
+                    $stmtUpdateStock->execute();
                 }
-            }
 
-            $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
-                (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                
-            $stmtUpdate = $conn->prepare("UPDATE inv_items SET stock = stock " . ($type === 'in' ? '+' : '-') . " ? WHERE id = ?");
+            } else {
+                // -------------------------------------------------------
+                // TRANSAKSI NORMAL (in / out / koreksi)
+                // -------------------------------------------------------
+                if ($type === 'out') {
+                    foreach ($items as $item) {
+                        $itemId = (int)$item['id'];
+                        $qty    = (int)$item['qty'];
+                        $stmtCek = $conn->prepare("SELECT stock, name FROM inv_items WHERE id = ? FOR UPDATE");
+                        $stmtCek->bind_param("i", $itemId);
+                        $stmtCek->execute();
+                        $row = $stmtCek->get_result()->fetch_assoc();
+                        if (!$row) throw new Exception("Barang {$item['name']} tidak ditemukan.");
+                        if ($row['stock'] < $qty) throw new Exception("Stok tidak mencukupi untuk {$item['name']}. Sisa: {$row['stock']}.");
+                    }
+                }
 
-            foreach ($items as $item) {
-                $itemId = (int)$item['id'];
-                $qty = (int)$item['qty'];
-                $price = (float)$item['price'];
-                $total = $qty * $price;
-                
-                // insert transaction
-                $stmtInsert->bind_param("isssssssiddi", 
-                    $itemId, $type, $subtype, $docNum, $docDate, $bookDate, $refDoc, $notes, $qty, $price, $total, $userId
+                $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
+                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtUpdate = $conn->prepare(
+                    "UPDATE inv_items SET stock = stock " . ($type === 'in' ? '+' : '-') . " ? WHERE id = ?"
                 );
-                $stmtInsert->execute();
-                
-                // update stock
-                $stmtUpdate->bind_param("ii", $qty, $itemId);
-                $stmtUpdate->execute();
+
+                foreach ($items as $item) {
+                    $itemId = (int)$item['id'];
+                    $qty    = (int)$item['qty'];
+                    $price  = (float)$item['price'];
+                    $total  = $qty * $price;
+
+                    $stmtInsert->bind_param("isssssssiddi",
+                        $itemId, $type, $subtype, $docNum, $docDate, $bookDate, $refDoc, $notes, $qty, $price, $total, $userId
+                    );
+                    $stmtInsert->execute();
+
+                    $stmtUpdate->bind_param("ii", $qty, $itemId);
+                    $stmtUpdate->execute();
+                }
             }
 
             $conn->commit();
