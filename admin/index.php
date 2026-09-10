@@ -498,12 +498,12 @@ let currentRequestNote = '';
 // PIC Mapping for highlighting
 const PIC_MAP = {
   'Vehicle': ['198605082025211053'], // Alfi Dwi Nugroho
-  'Item':    ['198902222025211044', '16268300055'], // Indra Septian, Dhany
-  'Item2':   ['198902222025211044'],
-  'Zoom':    ['198902222025211044'], // Indra Septian
+  'Item':    ['198605082025211053', '198902222025211044', '16268300055'], // Alfi, Indra, Dhany
+  'Item2':   ['198605082025211053', '198902222025211044'], // Alfi, Indra
+  'Zoom':    ['198605082025211053', '198902222025211044'], // Alfi, Indra
   'Room':    ['199008092025212052', '198902222025211044', '16268300055'], // Lastiah, Indra, Dhany
-  'Dormitory':['199008092025212052', '198902222025211044', '16268300055'],
-  'Repair':  ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi
+  'Dormitory':['199008092025212052', '198902222025211044', '16268300055'], // Lastiah, Indra, Dhany
+  'Repair':  ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
 };
 
 // Admin Calendar State
@@ -2695,6 +2695,7 @@ function renderDetailPengajuanTinjau() {
               
               ${vehicleSection}
               ${roomSection}
+              ${dormitorySection}
               ${zoomSection}
               ${itemSection}
 
