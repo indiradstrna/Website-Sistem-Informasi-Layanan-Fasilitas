@@ -529,7 +529,7 @@ switch ($action) {
                 if (is_array($gItems) && count($gItems) > 0) {
                     $docNum = "REP-" . $id . "-" . time();
                     $updStmt = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
-                    $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
+                    $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, CURDATE(), CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
                     
                     $bindQty = 0; $bindItemId = 0;
                     $updStmt->bind_param("ii", $bindQty, $bindItemId);
