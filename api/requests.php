@@ -633,7 +633,7 @@ switch ($action) {
                         $notes = "Otomatis dari Permintaan Barang #" . $id . " (" . $rowItem['applicant_name'] . " - " . $rowItem['applicant_unit'] . ")";
                         $refDoc = "REQ-ITM-" . str_pad($id, 4, '0', STR_PAD_LEFT);
                         
-                        $stmtInsert = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                        $stmtInsert = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, 1)");
                         $stmtUpdate = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
                         
                         // Group items by location_id (UAKPB)

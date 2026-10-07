@@ -259,8 +259,8 @@ switch ($action) {
                 // Ini memastikan Laporan Rincian Persediaan otomatis sinkron.
                 // -------------------------------------------------------
                 $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
-                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)");
                 $stmtUpdateStock = $conn->prepare("UPDATE inv_items SET stock = ? WHERE id = ?");
 
                 foreach ($items as $item) {
@@ -322,8 +322,8 @@ switch ($action) {
                 }
 
                 $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
-                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)");
                 $stmtUpdate = $conn->prepare(
                     "UPDATE inv_items SET stock = stock " . ($type === 'in' ? '+' : '-') . " ? WHERE id = ?"
                 );
