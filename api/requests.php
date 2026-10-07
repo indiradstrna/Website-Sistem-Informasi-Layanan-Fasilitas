@@ -531,19 +531,27 @@ switch ($action) {
                     $updStmt = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
                     $transStmt = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, CURDATE(), CURDATE(), ?, ?, ?, 0, 0, ?)");
                     
+                    $bindQty = 0; $bindItemId = 0;
+                    $updStmt->bind_param("ii", $bindQty, $bindItemId);
+                    
+                    $tItemId = 0; $tRefDoc = ''; $tNote = ''; $tQty = 0; $tUserId = $userId;
+                    $transStmt->bind_param("isssii", $tItemId, $docNum, $tRefDoc, $tNote, $tQty, $tUserId);
+                    
                     foreach ($gItems as $gi) {
                         if (!empty($gi['itemId'])) {
                             $itemId = (int)$gi['itemId'];
                             $qty = (int)$gi['quantity'];
                             if ($itemId > 0 && $qty > 0) {
                                 // Deduct stock
-                                $updStmt->bind_param("ii", $qty, $itemId);
+                                $bindQty = $qty;
+                                $bindItemId = $itemId;
                                 $updStmt->execute();
                                 
                                 // Insert transaction
-                                $refDoc = "REP-" . $id;
+                                $tItemId = $itemId;
+                                $tRefDoc = "REP-" . $id;
                                 $tNote = "Otomatis: Penggunaan barang untuk laporan kerusakan (Request ID: $id)";
-                                $transStmt->bind_param("isssii", $itemId, $docNum, $refDoc, $tNote, $qty, $userId);
+                                $tQty = $qty;
                                 $transStmt->execute();
                             }
                         }
@@ -946,10 +954,14 @@ switch ($action) {
             // Insert RAB baru
             $ins = $conn->prepare("INSERT INTO repair_budgets (repair_request_id, item_name, quantity, unit_price, total_price) VALUES (?,?,?,?,?)");
             $totalRAB = 0;
+            $bItemName = ''; $bQty = 0; $bUnitPrice = 0.0; $bLineTotal = 0.0;
+            $ins->bind_param("isidd", $requestId, $bItemName, $bQty, $bUnitPrice, $bLineTotal);
             foreach ($items as $item) {
-                $lineTotal  = (float)$item['quantity'] * (float)$item['unitPrice'];
-                $totalRAB  += $lineTotal;
-                $ins->bind_param("isidd", $requestId, $item['itemName'], $item['quantity'], $item['unitPrice'], $lineTotal);
+                $bItemName  = $item['itemName'];
+                $bQty       = (int)$item['quantity'];
+                $bUnitPrice = (float)$item['unitPrice'];
+                $bLineTotal = $bQty * $bUnitPrice;
+                $totalRAB  += $bLineTotal;
                 $ins->execute();
             }
             $ins->close();

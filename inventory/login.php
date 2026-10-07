@@ -3,7 +3,7 @@ session_start();
 require_once __DIR__ . '/../config.php';
 
 // Jika sudah login sebagai warehouse_admin, langsung redirect
-if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'warehouse_admin') {
+if (isset($_SESSION['user_id']) && strpos($_SESSION['role'], 'warehouse_admin') !== false) {
     header("Location: " . BASE_URL . "/inventory/index.php");
     exit;
 }
