@@ -318,6 +318,8 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
                 }
                 if (!empty($row['special_needs'])) $detailTxt .= "<b>Kebut. Khusus:</b> " . htmlspecialchars($row['special_needs']) . "\n";
             } elseif ($type === 'Repair') {
+                if (!empty($row['repair_type'])) $detailTxt .= "<b>Jenis Perbaikan:</b> " . htmlspecialchars($row['repair_type']) . "\n";
+                if (!empty($row['technician_name'])) $detailTxt .= "<b>Teknisi:</b> " . htmlspecialchars($row['technician_name']) . "\n";
                 $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '-') . "\n";
                 $detailTxt .= "<b>Waktu Kejadian:</b> " . $formatWaktu($row['incident_date'] ?? '', $row['incident_time'] ?? '', '', '') . "\n";
                 $detailTxt .= "<b>Masalah:</b> " . htmlspecialchars($row['issue_description'] ?? '-') . "\n";
@@ -549,6 +551,8 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             if (!empty($row['special_needs'])) $detailTxt .= "<b>Kebutuhan Khusus:</b> " . htmlspecialchars($row['special_needs']) . "\n";
             $detailTxt .= "<b>Waktu:</b> " . ($row['date_start'] ?? '') . " " . substr($row['time_start'] ?? '', 0, 5) . " s/d " . ($row['date_end'] ?? '') . " " . substr($row['time_end'] ?? '', 0, 5) . "\n";
         } elseif ($type === 'Repair') {
+            if (!empty($row['repair_type'])) $detailTxt .= "<b>Jenis Perbaikan:</b> " . htmlspecialchars($row['repair_type']) . "\n";
+            if (!empty($row['technician_name'])) $detailTxt .= "<b>Teknisi:</b> " . htmlspecialchars($row['technician_name']) . "\n";
             $detailTxt .= "<b>Lokasi:</b> " . htmlspecialchars($row['location_detail'] ?? '') . "\n";
             $detailTxt .= "<b>Prioritas:</b> " . strtoupper($row['priority'] ?? 'MEDIUM') . "\n";
         } elseif ($type === 'Item') {

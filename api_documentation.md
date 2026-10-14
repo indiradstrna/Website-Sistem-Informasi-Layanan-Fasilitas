@@ -138,7 +138,7 @@ Gunakan `action` dengan awalan `submit_` + `jenis pengajuan`. Contoh:
 - `submit_room`: Pengajuan ruangan
 - `submit_dormitory`: Pengajuan asrama
 - `submit_zoom`: Pengajuan zoom
-- `submit_repair`: Pengajuan perbaikan
+- `submit_repair`: Pengajuan perbaikan. Parameter: `applicant_name`, `applicant_unit`, `repair_type` (`TIK` | `Bangunan` | `Elektronik` | `Kelistrikan`), `location_detail`, `incident_date`, `incident_time`, `issue_description`, `priority`.
 - `submit_item`: Pengajuan peminjaman barang (item_loan_requests)
 - `submit_item2`: Pengajuan pengadaan barang (item_requests)
 

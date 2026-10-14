@@ -543,7 +543,7 @@ async function loadAllData(silent = false) {
                type === 'Room'    ? `${ROOM_MAP[item.room_id] || item.room_id} (${item.participants||0} org)` :
                type === 'Dormitory'? `${item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
                type === 'Zoom'    ? item.zoom_account_id :
-               type === 'Repair'  ? `${item.location_detail}: ${item.issue_description}` :
+               type === 'Repair'  ? `[${item.repair_type || 'TIK'}] ${item.location_detail}: ${item.issue_description}` :
                type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
                type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
       date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
@@ -551,6 +551,7 @@ async function loadAllData(silent = false) {
       raw_time_end:   item.time_end   || '',
       raw_date_end:   item.return_date || item.date_end || '',
       driver_name:    item.driver_name || '',
+      technician_name: item.technician_name || '',
       created_at:     item.created_at,
       vehicle_id:     item.vehicle_id || '',
       zoom_account_id: item.zoom_account_id || '',
@@ -561,6 +562,7 @@ async function loadAllData(silent = false) {
       dormitory_id:    item.dormitory_id   || '',
       occupant_name:   item.occupant_name  || '',
       location_detail: item.location_detail || '',
+      repair_type:     item.repair_type    || '',
       item_name:       item.item_name      || '',
       passenger_name:  item.passenger_name || '',
       departure:       item.departure      || '',
@@ -866,13 +868,17 @@ function renderRequestManagement() {
           <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" class="form-input" id="req-search" placeholder="Cari nama, tipe, detail..." oninput="filterRequests()" style="padding-left:2.5rem;" />
         </div>
-        <select class="form-select" id="req-type-filter" onchange="filterRequests()" style="width:160px;">
+        <select class="form-select" id="req-type-filter" onchange="filterRequests()" style="width:175px;">
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
           <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
-          <option value="Repair">Perbaikan</option>
+          <option value="Repair">Semua Perbaikan</option>
+          <option value="Repair_TIK">&nbsp;&nbsp;↳ Perbaikan: TIK</option>
+          <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
+          <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
+          <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
           <option value="Item">Barang</option>
         </select>
         <select class="form-select" id="req-status-filter" onchange="filterRequests()" style="width:160px;">
@@ -940,7 +946,14 @@ function filterRequests(preservePage = false) {
       filtered = filtered.filter(r => activeStatuses.includes(r.status));
     }
   }
-  if (type !== 'all') filtered = filtered.filter(r => r.type === type);
+  if (type !== 'all') {
+    if (type.startsWith('Repair_')) {
+      const sub = type.replace('Repair_', '');
+      filtered = filtered.filter(r => r.type === 'Repair' && (r.repair_type || 'TIK') === sub);
+    } else {
+      filtered = filtered.filter(r => r.type === type);
+    }
+  }
   if (search) filtered = filtered.filter(r =>
     r.applicant_name.toLowerCase().includes(search) ||
     r.type.toLowerCase().includes(search) ||
@@ -959,7 +972,9 @@ function renderRequestRows(data, page) {
   return paged.map(r => `
     <tr>
       <td data-label="ID" style="font-size:.78rem;color:var(--color-slate-400);">#${r.id}</td>
-      <td data-label="Tipe"><span style="font-size:.78rem;font-weight:600;padding:.15rem .5rem;background:var(--color-slate-100);border-radius:var(--radius-sm);">${r.type}</span></td>
+      <td data-label="Tipe">
+        <span style="font-size:.78rem;font-weight:600;padding:.15rem .5rem;background:var(--color-slate-100);border-radius:var(--radius-sm);">${r.type}</span>
+      </td>
       <td data-label="Pemohon">
         <div style="font-weight:600;font-size:.875rem;">${r.applicant_name}</div>
         <div style="font-size:.75rem;color:var(--color-slate-400);">${r.applicant_unit}</div>
@@ -1025,13 +1040,17 @@ function renderTrackReports() {
           <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" class="form-input" id="track-search" placeholder="Cari nama pemohon atau tipe..." oninput="filterTrack()" style="padding-left:2.5rem;" />
         </div>
-        <select class="form-select" id="track-type" onchange="filterTrack()" style="width:140px;">
+        <select class="form-select" id="track-type" onchange="filterTrack()" style="width:175px;">
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
           <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
-          <option value="Repair">Perbaikan</option>
+          <option value="Repair">Semua Perbaikan</option>
+          <option value="Repair_TIK">&nbsp;&nbsp;↳ Perbaikan: TIK</option>
+          <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
+          <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
+          <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
           <option value="Item">Barang</option>
         </select>
         <select class="form-select" id="track-status" onchange="filterTrack()" style="width:160px;">
@@ -1086,7 +1105,9 @@ function renderTrackRows(data, page) {
   return paged.map(r => `
     <tr>
       <td data-label="ID" style="font-size:.78rem;color:var(--color-slate-400);">#${r.id}</td>
-      <td data-label="Tipe"><span style="font-size:.78rem;font-weight:600;">${r.type}</span></td>
+      <td data-label="Tipe">
+        <span style="font-size:.78rem;font-weight:600;padding:.15rem .5rem;background:var(--color-slate-100);border-radius:var(--radius-sm);">${r.type}</span>
+      </td>
       <td data-label="Pemohon">
         <div style="font-weight:600;font-size:.875rem;">${r.applicant_name}</div>
         <div style="font-size:.75rem;color:var(--color-slate-400);">${r.applicant_unit}</div>
@@ -1104,7 +1125,14 @@ function getFilteredTrackRequests() {
   
   let data = allRequests;
   
-  if (type !== 'all')   data = data.filter(r => r.type === type);
+  if (type !== 'all') {
+    if (type.startsWith('Repair_')) {
+      const sub = type.replace('Repair_', '');
+      data = data.filter(r => r.type === 'Repair' && (r.repair_type || 'TIK') === sub);
+    } else {
+      data = data.filter(r => r.type === type);
+    }
+  }
   if (status !== 'all') data = data.filter(r => r.status === status);
   if (search)         data = data.filter(r => 
     r.applicant_name.toLowerCase().includes(search) || 
@@ -1380,7 +1408,7 @@ function renderCrudRows(data, page) {
     else statusBadge = '<span class="badge" style="background:#e0e7ff;color:#3730a3;">'+st+'</span>';
 
     return `<tr>
-      <td><b>#${r.id}</b><br><span style="font-size:0.75rem;color:var(--color-slate-400);">${r.type}</span></td>
+      <td><b>#${r.id}</b><br><span style="font-size:0.75rem;color:var(--color-slate-400);">${r.type}</span>${r.type === 'Repair' && r.repair_type ? `<br><span style="font-size:0.68rem;font-weight:700;color:#3730a3;background:#e0e7ff;padding:1px 4px;border-radius:3px;">${r.repair_type}</span>` : ''}${r.type === 'Repair' && r.technician_name && r.technician_name !== 'TANPA_TEKNISI' ? `<br><span style="font-size:0.68rem;font-weight:600;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;">🛠️ ${r.technician_name}</span>` : ''}${r.type === 'Vehicle' && r.driver_name && r.driver_name !== 'TANPA_SUPIR' ? `<br><span style="font-size:0.68rem;font-weight:600;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px;">🚗 ${r.driver_name}</span>` : ''}</td>
       <td>${r.applicant_name}<br><span style="font-size:0.75rem;color:var(--color-slate-400);">${r.applicant_unit}</span></td>
       <td>${r.purpose || '-'}</td>
       <td>${statusBadge}</td>
@@ -1460,6 +1488,25 @@ function renderCrudSpecificFields(req) {
     `;
   } else if (req.type === 'Repair') {
     html += `
+      <div class="form-group">
+        <label class="form-label">Jenis Perbaikan</label>
+        <select id="crud-sp-repair_type" class="form-select">
+          <option value="TIK"${(req.repair_type||'TIK') === 'TIK' ? ' selected' : ''}>TIK</option>
+          <option value="Bangunan"${req.repair_type === 'Bangunan' ? ' selected' : ''}>Bangunan</option>
+          <option value="Elektronik"${req.repair_type === 'Elektronik' ? ' selected' : ''}>Elektronik</option>
+          <option value="Kelistrikan"${req.repair_type === 'Kelistrikan' ? ' selected' : ''}>Kelistrikan</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teknisi / Pelaksana</label>
+        <select id="crud-sp-technician_name" class="form-select">
+          <option value="">-- Belum Ditugaskan --</option>
+          <option value="TANPA_TEKNISI"${req.technician_name === 'TANPA_TEKNISI' ? ' selected' : ''}>[0] Tanpa Teknisi (Mandiri / Vendor Luar)</option>
+          ${(Array.isArray(allEmployees) ? allEmployees : []).map(emp => `
+            <option value="${emp.full_name}"${(req.technician_name && req.technician_name.includes(emp.full_name)) ? ' selected' : ''}>${emp.full_name} (${emp.position || 'Staff'})</option>
+          `).join('')}
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Detail Lokasi</label><input type="text" id="crud-sp-location_detail" class="form-input" value="${req.location_detail || ''}"></div>
       <div class="form-group"><label class="form-label">Deskripsi Masalah</label><textarea id="crud-sp-issue_description" class="form-input" rows="2">${req.issue_description || ''}</textarea></div>
     `;
@@ -1508,6 +1555,8 @@ async function doCrudSave() {
     payload.zoom_account_id = document.getElementById('crud-sp-zoom_account_id').value || null;
     payload.participants = document.getElementById('crud-sp-participants').value || 0;
   } else if (type === 'Repair') {
+    payload.repair_type = document.getElementById('crud-sp-repair_type')?.value || 'TIK';
+    payload.technician_name = document.getElementById('crud-sp-technician_name')?.value || null;
     payload.location_detail = document.getElementById('crud-sp-location_detail').value;
     payload.issue_description = document.getElementById('crud-sp-issue_description').value;
   } else if (type === 'Item') {
@@ -1549,17 +1598,55 @@ function renderAnalytics() {
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const currentMonth = (document.getElementById('stat-month') || {}).value || months[new Date().getMonth()];
   const currentYear = (document.getElementById('stat-year') || {}).value || new Date().getFullYear();
+  const currentDriver = (document.getElementById('stat-driver') || {}).value || 'all';
+  const currentTech = (document.getElementById('stat-technician') || {}).value || 'all';
+
+  // Distinct Drivers list
+  const driverSet = new Set();
+  (allRequests || []).forEach(r => {
+    if (r.type === 'Vehicle' && r.driver_name && r.driver_name.trim() !== '') {
+      driverSet.add(r.driver_name.trim());
+    }
+  });
+  (allEmployees || []).forEach(e => {
+    const pos = (e.position || '').toLowerCase();
+    const dept = (e.department || '').toLowerCase();
+    if (pos.includes('driver') || pos.includes('pengemudi') || pos.includes('sopir') || dept.includes('driver')) {
+      if (e.full_name) driverSet.add(e.full_name.trim());
+    }
+  });
+  const driverList = Array.from(driverSet).sort();
+
+  // Distinct Technicians list
+  const techSet = new Set();
+  (allRequests || []).forEach(r => {
+    if (r.type === 'Repair' && r.technician_name && r.technician_name.trim() !== '') {
+      techSet.add(r.technician_name.trim());
+    }
+  });
+  (allEmployees || []).forEach(e => {
+    if (['Alfi Dwi Nugroho, A.Md', 'Indra Septian, A.Md', 'Agus Sujadi', 'Indira Destriana Anjani'].includes(e.full_name)) {
+      techSet.add(e.full_name.trim());
+    }
+  });
+  const techList = Array.from(techSet).sort();
 
   const html = `
-  <div class="page-header mb-4" style="display:flex; justify-content:space-between; align-items:flex-end;">
+  <div class="page-header mb-4" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:1rem;">
     <div>
       <h1 class="h3 mb-0 text-gray-800">Laporan & Statistik</h1>
-      <p class="text-muted">Analisis data pengajuan dan unduh dokumen laporan (.csv)</p>
+      <p class="text-muted">Analisis data pengajuan dan unduh dokumen laporan (PDF & Excel)</p>
     </div>
-    <button class="btn btn-primary" onclick="exportExcel()" style="display:flex; align-items:center;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export Excel
-    </button>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+      <button class="btn btn-outline" onclick="exportPDF()" style="display:flex; align-items:center; background:#fff; border-color:#e2e8f0; color:#dc2626; font-weight:600;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Export PDF
+      </button>
+      <button class="btn btn-primary" onclick="exportExcel()" style="display:flex; align-items:center; font-weight:600;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Excel
+      </button>
+    </div>
   </div>
 
   <div class="grid-dashboard-top mb-4" style="display: grid; grid-template-columns: 3fr 1fr; gap: 1.5rem;">
@@ -1639,9 +1726,13 @@ function renderAnalytics() {
               <option value="all">Semua Tipe</option>
               <option value="Vehicle">Kendaraan</option>
               <option value="Room">Ruangan</option>
-          <option value="Dormitory">Dormitory</option>
+              <option value="Dormitory">Dormitory</option>
               <option value="Zoom">Zoom</option>
-              <option value="Repair">Perbaikan</option>
+              <option value="Repair">Semua Perbaikan</option>
+              <option value="Repair_TIK">&nbsp;&nbsp;↳ Perbaikan: TIK</option>
+              <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
+              <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
+              <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
               <option value="Item">Barang</option>
             </select>
           </div>
@@ -1666,7 +1757,24 @@ function renderAnalytics() {
             <div>
               <label class="form-label" style="font-size:0.7rem; margin-bottom:0.2rem;">Tahun</label>
               <select class="form-select" id="stat-year" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; height: auto;">
+                <option value="all" ${currentYear === 'all' ? 'selected' : ''}>Semua</option>
                 ${[2024, 2025, 2026].map(y => `<option value="${y}" ${y == currentYear ? 'selected' : ''}>${y}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div>
+              <label class="form-label" style="font-size:0.7rem; margin-bottom:0.2rem;">Driver (Pengemudi)</label>
+              <select class="form-select" id="stat-driver" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; height: auto;">
+                <option value="all">Semua Driver</option>
+                ${driverList.map(d => `<option value="${d}" ${d === currentDriver ? 'selected' : ''}>${d}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.7rem; margin-bottom:0.2rem;">Teknisi</label>
+              <select class="form-select" id="stat-technician" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; height: auto;">
+                <option value="all">Semua Teknisi</option>
+                ${techList.map(t => `<option value="${t}" ${t === currentTech ? 'selected' : ''}>${t}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -1763,102 +1871,72 @@ function renderAnalytics() {
     </div>
   </div>
 
-  <!-- Export Section (Dipindah ke bawah) -->
-  <div class="card card-shadow mb-4">
-    <div class="card-header-stats d-flex justify-content-between align-items-center">
-      <h6 class="m-0 font-weight-bold-stats text-primary-stats">Pusat Unduh Laporan (PDF)</h6>
-      <span class="badge badge-pill badge-primary-stats" style="font-size: 0.7rem; padding: 0.3rem 0.8rem;">Sesuai Filter Periode</span>
-    </div>
-    <div class="card-body">
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:1rem;">
-        <div class="export-tile" onclick="exportPDF('Vehicle')">
-          <div class="tile-icon icon-vehicle"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 .6.4 1 1 1h1"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg></div>
-          <div class="tile-label">Kendaraan</div>
-        </div>
-        <div class="export-tile" onclick="exportPDF('Room')">
-          <div class="tile-icon icon-room"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
-          <div class="tile-label">Ruangan</div>
-        </div>
-        <div class="export-tile" onclick="exportPDF('Dormitory')">
-          <div class="tile-icon icon-room"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
-          <div class="tile-label">Dormitory</div>
-        </div>
-        <div class="export-tile" onclick="exportPDF('Zoom')">
-          <div class="tile-icon icon-zoom"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
-          <div class="tile-label">Virtual (Zoom)</div>
-        </div>
-        <div class="export-tile" onclick="exportPDF('Repair')">
-          <div class="tile-icon icon-repair"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
-          <div class="tile-label">Perbaikan</div>
-        </div>
-        <div class="export-tile" onclick="exportPDF('Item')">
-          <div class="tile-icon icon-item"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><polyline points="3.29 7l8.71 5 8.71-5"/><line x1="12" y1="22" x2="12" y2="12"/></svg></div>
-          <div class="tile-label">Barang</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <style>
-    .export-tile {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 0.75rem;
-      padding: 1.25rem 1rem;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .export-tile:hover {
-      background: #fff;
-      transform: translateY(-3px);
-      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-      border-color: #4e73df;
-    }
-    .tile-icon {
-      width: 42px;
-      height: 42px;
-      margin: 0 auto 0.75rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-    }
-    .tile-label { font-size: 0.8rem; font-weight: 700; color: #475569; }
-    
-    .icon-vehicle { background: rgba(37,99,235,0.1); color: #2563eb; }
-    .icon-room    { background: rgba(5,150,105,0.1); color: #059669; }
-    .icon-zoom    { background: rgba(139,92,246,0.1); color: #8b5cf6; }
-    .icon-repair  { background: rgba(220,38,38,0.1); color: #dc2626; }
-    .icon-item    { background: rgba(217,119,6,0.1); color: #d97706; }
-  </style>
   `;
   setTimeout(initAnalyticsListeners, 50);
   return html;
 }
-window.exportPDF = function(subType) {
-  const monthName = (document.getElementById('stat-month') || {}).value;
-  const yearStr = (document.getElementById('stat-year') || {}).value;
-  const selectedStatus = (document.getElementById('stat-status') || {}).value;
+
+window.openRepairExportModal = function() {
+  Modal.open('modal-export-repair');
+};
+
+window.exportPDF = function(subTypeParam = null, specificCategoryParam = null) {
+  const monthName = (document.getElementById('stat-month') || {}).value || 'all';
+  const yearStr = (document.getElementById('stat-year') || {}).value || 'all';
+  const selectedStatus = (document.getElementById('stat-status') || {}).value || 'all';
+  const filterType = subTypeParam || (document.getElementById('stat-type') || {}).value || 'all';
+  const selectedDriver = (document.getElementById('stat-driver') || {}).value || 'all';
+  const selectedTechnician = (document.getElementById('stat-technician') || {}).value || 'all';
   
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const monthIdx = months.indexOf(monthName);
-  const year = parseInt(yearStr);
+  const year = yearStr === 'all' ? null : parseInt(yearStr);
 
   // Filter Data
   const filtered = allRequests.filter(r => {
-    if (r.type !== subType) return false;
+    // Filter Driver
+    if (selectedDriver !== 'all') {
+      if (r.type !== 'Vehicle') return false;
+      const rDriver = (r.driver_name || '').toLowerCase();
+      const dVal = selectedDriver.toLowerCase();
+      if (!rDriver.includes(dVal) && !dVal.includes(rDriver)) return false;
+    }
+
+    // Filter Technician
+    if (selectedTechnician !== 'all') {
+      if (r.type !== 'Repair') return false;
+      const rTech = (r.technician_name || '').toLowerCase();
+      const tVal = selectedTechnician.toLowerCase();
+      if (!rTech.includes(tVal) && !tVal.includes(rTech)) return false;
+    }
+
+    // Filter Type
+    if (filterType !== 'all') {
+      if (filterType.startsWith('Repair_')) {
+        const subCat = filterType.replace('Repair_', '');
+        if (r.type !== 'Repair' || (r.repair_type || 'TIK') !== subCat) return false;
+      } else if (filterType === 'Repair') {
+        if (r.type !== 'Repair') return false;
+        if (specificCategoryParam && specificCategoryParam !== 'ALL_SEPARATED') {
+          if ((r.repair_type || 'TIK') !== specificCategoryParam) return false;
+        }
+      } else {
+        if (r.type !== filterType) return false;
+      }
+    }
+
+    // Filter Month, Year, Status
     const dStr = r.created_at || r.date_start;
     if (!dStr) return false;
-    const d = new Date(dStr);
+    const d = new Date(dStr.includes(' ') ? dStr.replace(' ', 'T') : dStr);
     const mMatch = monthName === 'all' || d.getMonth() === monthIdx;
-    const yMatch = d.getFullYear() === year;
+    const yMatch = year === null || d.getFullYear() === year;
     const sMatch = selectedStatus === 'all' || r.status === selectedStatus;
     return mMatch && yMatch && sMatch;
   });
 
   if (filtered.length === 0) {
-    Toast.error(`Tidak ada data ${subType} untuk periode ${monthName} ${year}.`);
+    Toast.error(`Tidak ada data untuk filter yang dipilih (Periode: ${monthName === 'all' ? 'Sepanjang Tahun' : monthName} ${yearStr === 'all' ? 'Semua Tahun' : yearStr}).`);
     return;
   }
 
@@ -1866,67 +1944,206 @@ window.exportPDF = function(subType) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   
-  // Header
+  // Header Instansi
   doc.setFontSize(22);
   doc.setTextColor(22, 163, 74); // emerald-600
   doc.setFont('inter', 'bold');
-  doc.text('SEAMEO BIOTROP', 105, 20, null, 'center');
+  doc.text('SEAMEO BIOTROP', 105, 18, null, 'center');
   
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(100, 116, 139); // slate-500
   doc.setFont('inter', 'normal');
-  doc.text('Jl. Raya Tajur Km. 6, Bogor, Jawa Barat, Indonesia', 105, 27, null, 'center');
+  doc.text('Jl. Raya Tajur Km. 6, Bogor, Jawa Barat, Indonesia | Sistem Informasi Layanan Fasilitas (SILATAS)', 105, 24, null, 'center');
   
   doc.setDrawColor(226, 232, 240); // slate-200
-  doc.line(15, 35, 195, 35);
+  doc.line(15, 30, 195, 30);
 
-  // Report Title
-  doc.setFontSize(16);
+  // Judul Laporan
+  doc.setFontSize(14);
   doc.setTextColor(15, 23, 42); // slate-900
   doc.setFont('inter', 'bold');
-  const typeLabels = { 'Vehicle': 'Kendaraan', 'Room': 'Ruangan', 'Dormitory': 'Dormitory', 'Repair': 'Maintenance/Perbaikan', 'Item': 'Peminjaman Barang', 'Zoom': 'Virtual (Zoom)' };
-  doc.text(`LAPORAN PENGGUNAAN FASILITAS: ${typeLabels[subType] || subType}`, 105, 48, null, 'center');
   
-  doc.setFontSize(11);
+  const typeTitles = {
+    'all': 'LAPORAN REKAPITULASI SEMUA LAYANAN FASILITAS',
+    'Vehicle': 'LAPORAN PENGGUNAAN KENDARAAN DINAS',
+    'Room': 'LAPORAN PENGGUNAAN RUANGAN',
+    'Dormitory': 'LAPORAN PENGGUNAAN DORMITORY / WISMA',
+    'Zoom': 'LAPORAN PENGGUNAAN VIRTUAL (ZOOM)',
+    'Repair': 'LAPORAN PERBAIKAN FASILITAS (SEMUA KATEGORI)',
+    'Repair_TIK': 'LAPORAN PERBAIKAN FASILITAS: TIK',
+    'Repair_Bangunan': 'LAPORAN PERBAIKAN FASILITAS: BANGUNAN',
+    'Repair_Elektronik': 'LAPORAN PERBAIKAN FASILITAS: ELEKTRONIK',
+    'Repair_Kelistrikan': 'LAPORAN PERBAIKAN FASILITAS: KELISTRIKAN',
+    'Item': 'LAPORAN PEMINJAMAN BARANG'
+  };
+
+  let reportTitle = typeTitles[filterType] || `LAPORAN PENGGUNAAN: ${filterType.toUpperCase()}`;
+  if (selectedDriver !== 'all') {
+    reportTitle = `LAPORAN PENUGASAN DRIVER: ${selectedDriver.toUpperCase()}`;
+  } else if (selectedTechnician !== 'all') {
+    reportTitle = `LAPORAN PENUGASAN TEKNISI: ${selectedTechnician.toUpperCase()}`;
+  }
+  doc.text(reportTitle, 105, 40, null, 'center');
+  
+  doc.setFontSize(9);
   doc.setFont('inter', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Periode: ${monthName} ${year}`, 105, 54, null, 'center');
+  const statusLabel = selectedStatus === 'all' ? 'Semua Status' : selectedStatus.toUpperCase();
+  const periodLabel = `${monthName === 'all' ? 'Semua Bulan' : monthName} ${yearStr === 'all' ? '(Semua Tahun)' : yearStr}`;
+  let subText = `Periode: ${periodLabel}   |   Status: ${statusLabel}   |   Total: ${filtered.length} Data`;
+  if (selectedDriver !== 'all') subText += `   |   Driver: ${selectedDriver}`;
+  if (selectedTechnician !== 'all') subText += `   |   Teknisi: ${selectedTechnician}`;
+  doc.text(subText, 105, 46, null, 'center');
 
-  // Table
-  const tableData = filtered.map((r, i) => [
-    i + 1,
-    (r.created_at || r.date_start) ? new Date((r.created_at || r.date_start).includes(' ') ? (r.created_at || r.date_start).replace(' ', 'T') : (r.created_at || r.date_start)).toLocaleDateString('id-ID') : '-',
-    r.applicant_name,
-    r.applicant_unit,
-    r.status.toUpperCase(),
-    r.details
-  ]);
+  let currentY = 54;
 
-  doc.autoTable({
-    startY: 65,
-    head: [['No', 'Tanggal', 'Pengusul', 'Unit', 'Status', 'Keterangan/Detail']],
-    body: tableData,
-    theme: 'grid',
-    headStyles: { fillColor: [22, 163, 74], textColor: 255, fontStyle: 'bold' },
-    styles: { fontSize: 9, cellPadding: 3 },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 35 },
-      3: { cellWidth: 30 },
-      4: { cellWidth: 25 },
-      5: { cellWidth: 'auto' }
+  const renderSectionTable = (title, items, isRepair = false) => {
+    if (!items || items.length === 0) return;
+
+    if (currentY > 230) {
+      doc.addPage();
+      currentY = 20;
     }
-  });
 
-  // Footer / Signature (Bottom right)
-  const finalY = doc.lastAutoTable.finalY + 20;
-  doc.setFontSize(10);
-  doc.setTextColor(0);
-  doc.text('Dicetak oleh sistem pada: ' + new Date().toLocaleString('id-ID'), 15, doc.internal.pageSize.height - 10);
-  
-  doc.save(`Laporan_${subType}_${monthName}_${year}.pdf`);
-  Toast.success('Laporan PDF berhasil diunduh.');
+    if (title) {
+      doc.setFontSize(11);
+      doc.setTextColor(22, 163, 74);
+      doc.setFont('inter', 'bold');
+      doc.text(`${title} (${items.length} Data)`, 15, currentY);
+      currentY += 4;
+    }
+
+    let head = [];
+    let body = [];
+    let colStyles = {};
+
+    if (isRepair) {
+      head = [['No', 'Tanggal', 'Pengusul', 'Unit', 'Kategori', 'Teknisi', 'Status', 'Lokasi & Detail Kerusakan']];
+      body = items.map((r, i) => [
+        i + 1,
+        (r.created_at || r.date_start) ? new Date((r.created_at || r.date_start).includes(' ') ? (r.created_at || r.date_start).replace(' ', 'T') : (r.created_at || r.date_start)).toLocaleDateString('id-ID') : '-',
+        r.applicant_name,
+        r.applicant_unit,
+        r.repair_type || 'TIK',
+        r.technician_name ? (r.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi' : r.technician_name) : '-',
+        (r.status || '').toUpperCase(),
+        r.details || '-'
+      ]);
+      colStyles = {
+        0: { cellWidth: 8 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 'auto' }
+      };
+    } else if (items[0]?.type === 'Vehicle') {
+      head = [['No', 'Tanggal', 'Pengusul', 'Unit', 'Driver', 'Status', 'Tujuan / Detail']];
+      body = items.map((r, i) => [
+        i + 1,
+        (r.created_at || r.date_start) ? new Date((r.created_at || r.date_start).includes(' ') ? (r.created_at || r.date_start).replace(' ', 'T') : (r.created_at || r.date_start)).toLocaleDateString('id-ID') : '-',
+        r.applicant_name,
+        r.applicant_unit,
+        r.driver_name ? (r.driver_name === 'TANPA_SUPIR' ? 'Tanpa Supir' : r.driver_name) : '-',
+        (r.status || '').toUpperCase(),
+        r.details || '-'
+      ]);
+      colStyles = {
+        0: { cellWidth: 8 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 22 },
+        6: { cellWidth: 'auto' }
+      };
+    } else {
+      head = [['No', 'Tanggal', 'Pengusul', 'Unit', 'Status', 'Keterangan / Detail']];
+      body = items.map((r, i) => [
+        i + 1,
+        (r.created_at || r.date_start) ? new Date((r.created_at || r.date_start).includes(' ') ? (r.created_at || r.date_start).replace(' ', 'T') : (r.created_at || r.date_start)).toLocaleDateString('id-ID') : '-',
+        r.applicant_name,
+        r.applicant_unit,
+        (r.status || '').toUpperCase(),
+        r.details || '-'
+      ]);
+      colStyles = {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 'auto' }
+      };
+    }
+
+    doc.autoTable({
+      startY: currentY,
+      head: head,
+      body: body,
+      theme: 'grid',
+      headStyles: { fillColor: [22, 163, 74], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8.5, cellPadding: 2.5 },
+      columnStyles: colStyles
+    });
+
+    currentY = doc.lastAutoTable.finalY + 10;
+  };
+
+  // Rendering berdasarkan filter
+  if (selectedDriver !== 'all') {
+    renderSectionTable(`REKAPITULASI PENUGASAN DRIVER: ${selectedDriver.toUpperCase()}`, filtered, false);
+  } else if (selectedTechnician !== 'all') {
+    renderSectionTable(`REKAPITULASI PENUGASAN TEKNISI: ${selectedTechnician.toUpperCase()}`, filtered, true);
+  } else if (filterType === 'all') {
+    const typeGroups = [
+      { type: 'Vehicle', label: '1. KENDARAAN DINAS' },
+      { type: 'Room', label: '2. RUANGAN' },
+      { type: 'Dormitory', label: '3. DORMITORY / WISMA' },
+      { type: 'Zoom', label: '4. VIRTUAL ZOOM' },
+      { type: 'Repair', label: '5. PERBAIKAN FASILITAS', isRepair: true },
+      { type: 'Item', label: '6. PEMINJAMAN BARANG' }
+    ];
+
+    typeGroups.forEach(grp => {
+      const groupItems = filtered.filter(r => r.type === grp.type);
+      if (groupItems.length > 0) {
+        renderSectionTable(grp.label, groupItems, grp.isRepair || false);
+      }
+    });
+  } else if (filterType === 'Repair') {
+    const repairCats = ['TIK', 'Bangunan', 'Elektronik', 'Kelistrikan'];
+    repairCats.forEach(cat => {
+      const catItems = filtered.filter(r => (r.repair_type || 'TIK') === cat);
+      if (catItems.length > 0) {
+        renderSectionTable(`KATEGORI PERBAIKAN: ${cat.toUpperCase()}`, catItems, true);
+      }
+    });
+  } else if (filterType.startsWith('Repair_')) {
+    renderSectionTable(null, filtered, true);
+  } else {
+    renderSectionTable(null, filtered, false);
+  }
+
+  // Footer & Page Numbers
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text('Dicetak oleh sistem SILATAS pada: ' + new Date().toLocaleString('id-ID'), 15, doc.internal.pageSize.height - 8);
+    doc.text(`Halaman ${i} dari ${pageCount}`, doc.internal.pageSize.width - 15, doc.internal.pageSize.height - 8, { align: 'right' });
+  }
+
+  let fileSlug = filterType.replace(/[^a-zA-Z0-9]/g, '_');
+  if (selectedDriver !== 'all') fileSlug = 'Driver_' + selectedDriver.replace(/[^a-zA-Z0-9]/g, '_');
+  if (selectedTechnician !== 'all') fileSlug = 'Teknisi_' + selectedTechnician.replace(/[^a-zA-Z0-9]/g, '_');
+  const monthSlug = monthName === 'all' ? 'SemuaBulan' : monthName;
+  const yearSlug = yearStr === 'all' ? 'SemuaTahun' : yearStr;
+  doc.save(`Laporan_SILATAS_${fileSlug}_${monthSlug}_${yearSlug}.pdf`);
+  Toast.success('Laporan PDF berhasil diunduh sesuai filter.');
 }
 
 let chartInstances = {};
@@ -1936,8 +2153,20 @@ function initAnalyticsListeners() {
   const s = document.getElementById('stat-status');
   const m = document.getElementById('stat-month');
   const y = document.getElementById('stat-year');
+  const drv = document.getElementById('stat-driver');
+  const tch = document.getElementById('stat-technician');
   if(!m || !y) return;
   
+  drv?.addEventListener('change', () => {
+    if (drv.value !== 'all' && tch) tch.value = 'all';
+    updateAnalyticsDashboard();
+  });
+
+  tch?.addEventListener('change', () => {
+    if (tch.value !== 'all' && drv) drv.value = 'all';
+    updateAnalyticsDashboard();
+  });
+
   [t, s, m, y].forEach(el => (el && el.addEventListener)('change', updateAnalyticsDashboard));
   
   // Register Chart.js defaults
@@ -1950,20 +2179,42 @@ function initAnalyticsListeners() {
 }
 
 function updateAnalyticsDashboard() {
-  const type = (document.getElementById('stat-type') || {}).value;
-  const status = (document.getElementById('stat-status') || {}).value;
-  const monthName = (document.getElementById('stat-month') || {}).value;
-  const year = parseInt((document.getElementById('stat-year') || {}).value);
+  const type = (document.getElementById('stat-type') || {}).value || 'all';
+  const status = (document.getElementById('stat-status') || {}).value || 'all';
+  const monthName = (document.getElementById('stat-month') || {}).value || 'all';
+  const yearVal = (document.getElementById('stat-year') || {}).value || 'all';
+  const driver = (document.getElementById('stat-driver') || {}).value || 'all';
+  const technician = (document.getElementById('stat-technician') || {}).value || 'all';
 
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const monthIdx = months.indexOf(monthName);
+  const year = yearVal === 'all' ? null : parseInt(yearVal);
   
   let filtered = allRequests.filter(r => {
+    // Driver filter
+    if (driver !== 'all') {
+      if (r.type !== 'Vehicle') return false;
+      const rDriver = (r.driver_name || '').toLowerCase();
+      const dVal = driver.toLowerCase();
+      if (!rDriver.includes(dVal) && !dVal.includes(rDriver)) return false;
+    }
+
+    // Technician filter
+    if (technician !== 'all') {
+      if (r.type !== 'Repair') return false;
+      const rTech = (r.technician_name || '').toLowerCase();
+      const tVal = technician.toLowerCase();
+      if (!rTech.includes(tVal) && !tVal.includes(rTech)) return false;
+    }
+
     const dStr = r.created_at || r.date_start;
     if (!dStr) return false;
-    const d = new Date(dStr);
+    const d = new Date(dStr.includes(' ') ? dStr.replace(' ', 'T') : dStr);
     const mMatch = monthName === 'all' || d.getMonth() === monthIdx;
-    return mMatch && d.getFullYear() === year && (type === 'all' || r.type === type) && (status === 'all' || r.status === status);
+    const yMatch = year === null || d.getFullYear() === year;
+    const typeMatch = (type === 'all') || 
+      (type.startsWith('Repair_') ? (r.type === 'Repair' && (r.repair_type || 'TIK') === type.replace('Repair_', '')) : (r.type === type));
+    return mMatch && yMatch && typeMatch && (status === 'all' || r.status === status);
   });
 
   // 1. Calculate KPIs
@@ -2492,6 +2743,7 @@ function openDetailView(id, type, mode = 'tinjau') {
 function checkResourceConflict(currentReq, resourceType, resourceId) {
   if (!resourceId) return false;
   if (resourceType === 'driver' && resourceId === 'TANPA_SUPIR') return false;
+  if (resourceType === 'technician' && resourceId === 'TANPA_TEKNISI') return false;
 
   const activeStatuses = ['approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'];
   
@@ -2508,6 +2760,7 @@ function checkResourceConflict(currentReq, resourceType, resourceId) {
     let match = false;
     if (resourceType === 'Vehicle' && r.type === 'Vehicle' && String(r.vehicle_id) === String(resourceId)) match = true;
     if (resourceType === 'driver' && r.type === 'Vehicle' && String(r.driver_name) === String(resourceId)) match = true;
+    if (resourceType === 'technician' && r.type === 'Repair' && String(r.technician_name) === String(resourceId)) match = true;
     if (resourceType === 'Room' && r.type === 'Room' && String(r.room_id) === String(resourceId)) match = true;
     if (resourceType === 'Dormitory' && r.type === 'Dormitory' && String(r.dormitory_id) === String(resourceId)) match = true;
     
@@ -2677,6 +2930,30 @@ function renderDetailPengajuanTinjau() {
           Update Penempatan Dormitory
         </button>
       ` : ''}
+    </div>` : '';
+
+  // ── Bagian assign Teknisi Repair ──
+  const repairSection = (req.type === 'Repair' && (isPIC || isSuperAdmin || isManagerFMD || hasRole('bendahara')) && !['canceled', 'rejected', 'completed'].includes(req.status)) ? `
+    <div style="background:#f0fdfa; border:1px solid #ccfbf1; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
+      <div style="font-weight:700; color:#0f766e; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Pilih Teknisi / Pelaksana (Repair)
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <select id="assign-technician" class="form-select" style="background:#fff;">
+          <option value="">Pilih Teknisi / Pegawai FMD...</option>
+          <option value="TANPA_TEKNISI" style="color:#ea580c; font-weight:bold;">[0] Tanpa Teknisi (Mandiri / Vendor Luar)</option>
+          ${(Array.isArray(allEmployees) ? allEmployees : []).map(emp => {
+            const conflict = checkResourceConflict(req, 'technician', emp.full_name);
+            return `<option value="${emp.full_name}"${(req.technician_name && req.technician_name.includes(emp.full_name)) ? ' selected' : ''}${conflict ? ' disabled' : ''}>${emp.full_name} - ${emp.position || 'Staff'}${conflict ? ' (Bertugas)' : ''}</option>`;
+          }).join('')}
+        </select>
+        <div style="font-size:0.75rem; color:#0d9488; font-style:italic; margin-top:0.5rem;">* Teknisi yang ditugaskan akan menerima pemberitahuan tugas perbaikan.</div>
+      </div>
+      <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#0d9488; border-color:#0f766e; color:#fff;" onclick="doRepairAssign(${req.id})">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Update Penugasan Teknisi
+      </button>
     </div>` : '';
 
   // NOTE: All users on admin/index.php have CURRENT_ROLE='admin' (from login redirect).
@@ -2885,6 +3162,7 @@ function renderDetailPengajuanTinjau() {
             <div>
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Tipe & Status:</span>
               <span style="display:inline-block; padding:0.15rem 0.5rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:0.25rem; font-size:0.75rem; font-weight:600; margin-right:0.5rem;">${req.type}</span>
+              ${req.type === 'Repair' && req.repair_type ? `<span style="display:inline-block; padding:0.15rem 0.5rem; background:#e0e7ff; color:#3730a3; border-radius:0.25rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem;">${req.repair_type}</span>` : ''}
               ${getStatusBadge(req.status)}
             </div>
             <div style="grid-column:1/3;">
@@ -2892,6 +3170,7 @@ function renderDetailPengajuanTinjau() {
               <div style="font-weight:500; font-size:1.1rem; color:var(--color-blue-700);">
                 ${req.type === 'Vehicle' ? (req.vehicle_id === 'TANPA_KENDARAAN' ? 'Tanpa Kendaraan (Hanya Jasa Driver)' : (ALL_VEHICLES.find(v => v.id === req.vehicle_id) || {}).name || req.details) : (ROOM_MAP[req.room_id] || req.details)}
                 ${req.type === 'Vehicle' && req.driver_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Driver: ${req.driver_name === 'TANPA_SUPIR' ? 'Tidak Ada' : req.driver_name})</span>` : ''}
+                ${req.type === 'Repair' && req.technician_name ? ` <span style="font-size:0.85rem;color:#4b5563;">(Teknisi: ${req.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi' : req.technician_name})</span>` : ''}
               </div>
             </div>
             <div style="grid-column:1/3;">
@@ -2980,8 +3259,10 @@ function renderDetailPengajuanTinjau() {
               
               ${vehicleSection}
               ${roomSection}
+              ${dormitorySection}
               ${zoomSection}
               ${itemSection}
+              ${repairSection}
 
               ${actionBtns ? `<div style="display:flex; flex-direction:column; gap:0.5rem;">${actionBtns}</div>` : ''}
             </div>
@@ -3116,6 +3397,15 @@ function buildDetailBody(req) {
         <div class="tv-label">Kategori</div>
         <div class="tv-value">${catLabel}</div>
       </div>
+      ${req.type === 'Repair' ? `
+      <div class="tv-row">
+        <div class="tv-label">Jenis Perbaikan</div>
+        <div class="tv-value"><span style="display:inline-block;padding:0.2rem 0.6rem;background:#e0e7ff;color:#3730a3;border-radius:0.35rem;font-weight:700;font-size:0.85rem;">${req.repair_type || 'TIK'}</span></div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Teknisi / Pelaksana</div>
+        <div class="tv-value" style="font-weight:600;color:#0f766e;">🛠️ ${req.technician_name ? (req.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi (Mandiri / Vendor Luar)' : req.technician_name) : 'Belum Ditugaskan'}</div>
+      </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Item / Lokasi</div>
         <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>
@@ -3291,11 +3581,40 @@ async function doDisburseRepair(id) {
     Toast.error('Pilih pekerja/staff terlebih dahulu!');
     return;
   }
+  // Simpan penugasan teknisi ke database
+  const res = await apiPost(API_BASE + 'requests.php', {
+    action: 'update_repair_assignment', id, technician_name: worker
+  });
+  if (!res.success) {
+    Toast.error(res.message);
+    return;
+  }
+  if (currentDetailReq) currentDetailReq.technician_name = worker;
+
   const noteEl = document.getElementById('admin-note');
   if (noteEl) {
     noteEl.value = `Dana dicairkan. Pekerja: ${worker}. ` + (noteEl.value || '');
   }
   await updateStatus(id, 'Repair', 'in-progress');
+}
+
+async function doRepairAssign(id) {
+  const techName = (document.getElementById('assign-technician') || {}).value || '';
+  if (!techName) {
+    Toast.error('Pilih teknisi/pelaksana perbaikan!');
+    return;
+  }
+
+  const res = await apiPost(API_BASE + 'requests.php', {
+    action: 'update_repair_assignment', id, technician_name: techName
+  });
+  if (!res.success) { Toast.error(res.message); return; }
+
+  const tDisplay = techName === 'TANPA_TEKNISI' ? 'Tanpa Teknisi (Mandiri / Vendor Luar)' : techName;
+  Toast.success(`Penugasan teknisi berhasil diperbarui: ${tDisplay}`);
+  if (currentDetailReq) currentDetailReq.technician_name = techName;
+  await loadAllData();
+  openDetailView(id, 'Repair', 'tinjau');
 }
 
 async function doApproveRequest(id, type, targetStatus = 'approved') {
@@ -3992,8 +4311,12 @@ window.showAdminDayDetail = function(dateStr, updateGrid = true) {
 
 function exportExcel() {
   const month = (document.getElementById('stat-month') || {}).value || '';
-  const year = (document.getElementById('stat-year') || {}).value || new Date().getFullYear();
-  window.open(API_BASE + `export_excel.php?month=${month}&year=${year}`, '_blank');
+  const year = (document.getElementById('stat-year') || {}).value || 'all';
+  const type = (document.getElementById('stat-type') || {}).value || 'all';
+  const status = (document.getElementById('stat-status') || {}).value || 'all';
+  const driver = (document.getElementById('stat-driver') || {}).value || 'all';
+  const technician = (document.getElementById('stat-technician') || {}).value || 'all';
+  window.open(API_BASE + `export_excel.php?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}&type=${encodeURIComponent(type)}&status=${encodeURIComponent(status)}&driver=${encodeURIComponent(driver)}&technician=${encodeURIComponent(technician)}`, '_blank');
 }
 
 // ===== UTILITIES =====
@@ -4582,6 +4905,46 @@ async function deleteMasterData(id) {
     <div class="modal-footer">
       <button class="btn btn-outline modal-close-btn">Batal</button>
       <button class="btn btn-primary" onclick="doCrudSave()">Simpan Perubahan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Export Repair Report (Separated Categories) -->
+<div class="modal-overlay" id="modal-export-repair" style="z-index: 99999;">
+  <div class="modal" style="max-width: 500px; width: 90%;">
+    <div class="modal-header">
+      <h3 class="modal-title" style="font-size: 1.15rem; font-weight: 700; color: #1e293b;">Unduh Laporan Perbaikan (PDF)</h3>
+      <button class="modal-close" onclick="Modal.close('modal-export-repair')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 1.25rem;">
+      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; line-height: 1.5;">
+        Pilih format laporan perbaikan yang ingin diunduh. Sistem dapat memisahkan laporan secara otomatis per kategori kerusakan:
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+        <button class="btn btn-primary" onclick="exportPDF('Repair', 'ALL_SEPARATED'); Modal.close('modal-export-repair');" style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; width: 100%;">
+          <span>📑 <strong>Semua Kategori (Otomatis Terpisah)</strong></span>
+          <span style="font-size: 0.75rem; background: rgba(255,255,255,0.25); padding: 0.15rem 0.5rem; border-radius: 4px;">Lengkap</span>
+        </button>
+        <button class="btn btn-outline" onclick="exportPDF('Repair', 'TIK'); Modal.close('modal-export-repair');" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; width: 100%;">
+          <span>💻 <strong>Khusus Perbaikan TIK</strong></span>
+          <span style="font-size: 0.75rem; color: #64748b;">Komputer, Jaringan, IT</span>
+        </button>
+        <button class="btn btn-outline" onclick="exportPDF('Repair', 'Bangunan'); Modal.close('modal-export-repair');" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; width: 100%;">
+          <span>🏢 <strong>Khusus Perbaikan Bangunan</strong></span>
+          <span style="font-size: 0.75rem; color: #64748b;">Pintu, Atap, Dinding, Fisik</span>
+        </button>
+        <button class="btn btn-outline" onclick="exportPDF('Repair', 'Elektronik'); Modal.close('modal-export-repair');" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; width: 100%;">
+          <span>⚡ <strong>Khusus Perbaikan Elektronik</strong></span>
+          <span style="font-size: 0.75rem; color: #64748b;">AC, Proyektor, Elektronik</span>
+        </button>
+        <button class="btn btn-outline" onclick="exportPDF('Repair', 'Kelistrikan'); Modal.close('modal-export-repair');" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; width: 100%;">
+          <span>💡 <strong>Khusus Perbaikan Kelistrikan</strong></span>
+          <span style="font-size: 0.75rem; color: #64748b;">Lampu, MCB, Saklar, Kabel</span>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 0.75rem 1.25rem;">
+      <button class="btn btn-ghost" onclick="Modal.close('modal-export-repair')">Tutup</button>
     </div>
   </div>
 </div>

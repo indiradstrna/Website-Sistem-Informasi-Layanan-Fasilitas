@@ -1024,7 +1024,8 @@ function renderMyTypeRows(type) {
     else if (type === 'dormitory') { detail = DORMITORIES.find(x => x.id === r.dormitory_id)?.name || r.dormitory_id; period = `${r.date_start||''} ${r.time_start||''}`; }
     else if (type === 'zoom')   { detail = r.zoom_account_id;   period = `${r.date_start||''} ${r.time_start||''}`; }
     else if (type === 'repair') { 
-      detail = `<div style="font-weight:700;">${r.location_detail || '-'}</div><div style="font-size:0.75rem;color:var(--color-slate-500);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.issue_description}">${r.issue_description}</div>`; 
+      const repBadge = r.repair_type ? `<span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:0.7rem;font-weight:700;background:#e0e7ff;color:#3730a3;margin-bottom:2px;">${r.repair_type}</span> ` : '';
+      detail = `<div>${repBadge}<span style="font-weight:700;">${r.location_detail || '-'}</span></div><div style="font-size:0.75rem;color:var(--color-slate-500);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.issue_description}">${r.issue_description}</div>`; 
       const prio = (r.priority || 'medium').toLowerCase();
       const prioColors = { high: '#ef4444', medium: '#f59e0b', low: '#10b981' };
       const prioLabels = { high: 'TINGGI (Urgent)', medium: 'SEDANG', low: 'RENDAH' };
@@ -1102,13 +1103,17 @@ function renderMyReports() {
           <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" class="form-input" id="my-reports-search" placeholder="Cari detail atau tipe..." oninput="filterMyReports()" style="padding-left:2.5rem;" />
         </div>
-        <select class="form-select" id="my-reports-type" onchange="filterMyReports()" style="width:140px;">
+        <select class="form-select" id="my-reports-type" onchange="filterMyReports()" style="width:160px;">
           <option value="all">Semua Tipe</option>
           <option value="Vehicle">Kendaraan</option>
           <option value="Room">Ruangan</option>
           <option value="Dormitory">Dormitory</option>
           <option value="Zoom">Zoom</option>
-          <option value="Repair">Perbaikan</option>
+          <option value="Repair">Semua Perbaikan</option>
+          <option value="Repair_TIK">&nbsp;&nbsp;↳ Perbaikan: TIK</option>
+          <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
+          <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
+          <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
           <option value="Item">Barang</option>
         </select>
         <select class="form-select" id="my-reports-status" onchange="filterMyReports()" style="width:160px;">
@@ -1151,7 +1156,9 @@ function renderMyReportsRows(data, page) {
     return `
     <tr>
       <td data-label="ID" style="font-size:.78rem;color:var(--color-slate-400);">#${r.id}</td>
-      <td data-label="Tipe"><span style="font-size:.78rem;font-weight:600;padding:.15rem .5rem;background:var(--color-slate-100);border-radius:var(--radius-sm);">${typeLabel}</span></td>
+      <td data-label="Tipe">
+        <span style="font-size:.78rem;font-weight:600;padding:.15rem .5rem;background:var(--color-slate-100);border-radius:var(--radius-sm);">${typeLabel}</span>
+      </td>
       <td data-label="Detail" style="font-size:.875rem;">${detail}</td>
       <td data-label="Tanggal" style="font-size:.82rem;">${formatDate(r.created_at, true)}</td>
       <td data-label="Status">${getStatusBadge(r.status)}</td>
@@ -1180,6 +1187,7 @@ function renderRecentIncidents() {
     <div style="padding:1.25rem; border-bottom:1px solid var(--color-slate-50); position:relative; transition: background 0.2s;" onmouseover="this.style.background='var(--color-slate-50)'" onmouseout="this.style.background='transparent'">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
         <div style="font-weight:700; color:var(--color-slate-800); font-size:0.95rem; line-height:1.4; flex:1; padding-right:1rem;">
+          <span style="display:inline-block;padding:0.15rem 0.5rem;background:#e0e7ff;color:#3730a3;font-size:0.7rem;font-weight:700;border-radius:4px;margin-right:0.4rem;vertical-align:middle;">${r.repair_type || 'TIK'}</span>
           ${r.issue_description.split(' ').slice(0, 5).join(' ')}${r.issue_description.split(' ').length > 5 ? '...' : ''}
         </div>
         <div style="background:${c.bg}; color:${c.text}; font-size:0.65rem; font-weight:800; padding:0.25rem 0.6rem; border-radius:4px; text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0;">
@@ -1193,7 +1201,10 @@ function renderRecentIncidents() {
       <div style="font-size:0.82rem; color:var(--color-slate-500); line-height:1.5; margin-bottom:1rem;">
         ${r.issue_description}
       </div>
-      <div style="display:flex; justify-content:flex-end;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          ${r.technician_name && r.technician_name !== 'TANPA_TEKNISI' ? `<span style="font-size:0.75rem; font-weight:600; color:#0f766e; background:#ccfbf1; padding:2px 6px; border-radius:4px;">🛠️ ${r.technician_name}</span>` : ''}
+        </div>
         <div style="font-size:0.75rem; color:var(--color-slate-400); font-weight:500;">
           ${dateFormatted}
         </div>
@@ -1208,7 +1219,14 @@ function filterMyReports() {
   const status = document.getElementById('my-reports-status')?.value || 'all';
   
   let data = currentRequests;
-  if (type !== 'all') data = data.filter(r => r._type === type);
+  if (type !== 'all') {
+    if (type.startsWith('Repair_')) {
+      const sub = type.replace('Repair_', '');
+      data = data.filter(r => r._type === 'Repair' && (r.repair_type || 'TIK') === sub);
+    } else {
+      data = data.filter(r => r._type === type);
+    }
+  }
   if (status !== 'all') data = data.filter(r => r.status === status);
   
   if (search) {
@@ -1234,7 +1252,14 @@ function goReportsPage(page) {
   const status = document.getElementById('my-reports-status')?.value || 'all';
   
   let data = currentRequests;
-  if (type !== 'all') data = data.filter(r => r._type === type);
+  if (type !== 'all') {
+    if (type.startsWith('Repair_')) {
+      const sub = type.replace('Repair_', '');
+      data = data.filter(r => r._type === 'Repair' && (r.repair_type || 'TIK') === sub);
+    } else {
+      data = data.filter(r => r._type === type);
+    }
+  }
   if (status !== 'all') data = data.filter(r => r.status === status);
   
   if (search) {
@@ -1589,6 +1614,16 @@ function buildForm(type) {
 
   if (type === 'repair') return `
   ${nameUnit}
+  <div class="form-group">
+    <label class="form-label">Jenis Perbaikan <span style="color:#ef4444;">*</span></label>
+    <select id="f-repair-type" class="form-select" required>
+      <option value="" disabled selected>-- Pilih Jenis Perbaikan --</option>
+      <option value="TIK">💻 TIK (Hardware & Software)</option>
+      <option value="Bangunan">🏢 Bangunan (Pintu, Jendela, Atap, Lantai, Dinding, Plafon)</option>
+      <option value="Elektronik">⚡ Elektronik (AC, Proyektor, Kulkas, Dispenser, Alat Elektronik)</option>
+      <option value="Kelistrikan">💡 Kelistrikan (Lampu, Stop Kontak, Saklar, MCB, Kabel Listrik)</option>
+    </select>
+  </div>
   <div class="form-group"><label class="form-label">Lokasi Fasilitas (yang bermasalah)</label><input type="text" id="f-location" class="form-input" required placeholder="Contoh: Gedung A Lantai 2, Ruang Rapat 201" /></div>
   <div class="grid-2">
     <div class="form-group"><label class="form-label">Waktu Ditemukan/Terjadi</label><input type="date" id="f-date-start" class="form-input" value="${new Date().toISOString().split('T')[0]}" required /></div>
@@ -1598,7 +1633,7 @@ function buildForm(type) {
   <select id="f-priority" class="form-select" required>
     <option value="low">🟢 Low (Masih bisa digunakan, tidak mendesak)</option>
     <option value="medium" selected>🟡 Medium (Mengganggu fungsionalitas normal)</option>
-    <option value="high">🟠 High (Mendesak / Mendesak)</option>
+    <option value="high">🟠 High (Mendesak / Butuh penanganan cepat)</option>
     <option value="critical">🔴 Critical (Sangat Mendesak / Risiko Keselamatan)</option>
   </select></div>
   <div class="form-group"><label class="form-label">Deskripsi Masalah / Kerusakan</label><textarea id="f-purpose" class="form-textarea" required placeholder="Jelaskan detail kerusakan agar teknisi mudah memahaminya..."></textarea></div>`;
@@ -1876,6 +1911,13 @@ async function doSubmitForm() {
     const needs  = document.getElementById('f-needs')?.value || '';
     data.special_needs = [addReq, needs].filter(x => x).join('; ');
   } else if (currentFormType === 'repair') {
+    const repairTypeVal = document.getElementById('f-repair-type')?.value || '';
+    if (!repairTypeVal) {
+      if (typeof Toast !== 'undefined') Toast.error('Silakan pilih Jenis Perbaikan terlebih dahulu!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    data.repair_type       = repairTypeVal;
     data.location_detail   = document.getElementById('f-location')?.value   || '';
     data.incident_date     = document.getElementById('f-date-start')?.value || '';
     data.incident_time     = document.getElementById('f-time-start')?.value || '';
@@ -2105,6 +2147,20 @@ function buildDetailBody(req) {
         <div class="tv-label">Kategori</div>
         <div class="tv-value">${catLabel}</div>
       </div>
+      ${type === 'repair' ? `
+      <div class="tv-row">
+        <div class="tv-label">Jenis Perbaikan</div>
+        <div class="tv-value"><span style="display:inline-block;padding:0.2rem 0.6rem;background:#e0e7ff;color:#3730a3;border-radius:0.35rem;font-weight:700;font-size:0.85rem;">${req.repair_type || 'TIK'}</span></div>
+      </div>
+      <div class="tv-row">
+        <div class="tv-label">Teknisi / Pelaksana</div>
+        <div class="tv-value" style="font-weight:600;color:#0f766e;">🛠️ ${req.technician_name ? (req.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi (Mandiri / Vendor Luar)' : req.technician_name) : 'Belum Ditugaskan'}</div>
+      </div>` : ''}
+      ${type === 'vehicle' && req.driver_name ? `
+      <div class="tv-row">
+        <div class="tv-label">Driver</div>
+        <div class="tv-value" style="font-weight:600;color:#92400e;">🚗 ${req.driver_name === 'TANPA_SUPIR' ? 'Tanpa Driver' : req.driver_name}</div>
+      </div>` : ''}
       <div class="tv-row">
         <div class="tv-label">Item / Lokasi</div>
         <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>

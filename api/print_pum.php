@@ -123,7 +123,11 @@ $bulan_indo = ['Januari','Februari','Maret','April','Mei','Juni',
                'Juli','Agustus','September','Oktober','November','Desember'];
 $tanggal_sekarang = date('d') . ' ' . $bulan_indo[(int)date('m') - 1] . ' ' . date('Y');
 
-$activity_desc = "Perbaikan " . htmlspecialchars($repair['repair_type'] ?? '') . " di " . htmlspecialchars($repair['location_details'] ?? '');
+$locStr = $repair['location_detail'] ?? ($repair['location_details'] ?? '');
+$activity_desc = "Perbaikan " . htmlspecialchars($repair['repair_type'] ?? '') . " di " . htmlspecialchars($locStr);
+if (!empty($repair['technician_name'])) {
+    $activity_desc .= " (Teknisi: " . htmlspecialchars($repair['technician_name']) . ")";
+}
 
 // ---------- 8. Load composer autoload (PhpSpreadsheet) ----------
 $autoload_path = __DIR__ . '/../vendor/autoload.php';

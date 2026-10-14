@@ -106,7 +106,7 @@ switch ($action) {
         break;
 
     case 'get_repair':
-        $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests ORDER BY created_at DESC LIMIT 100");
+        $res = $conn->query("SELECT id, user_id, applicant_name, applicant_unit, repair_type, technician_name, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests ORDER BY created_at DESC LIMIT 100");
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
@@ -160,7 +160,7 @@ switch ($action) {
         break;
 
     case 'get_repair_by_user':
-        $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt = $conn->prepare("SELECT id, user_id, applicant_name, applicant_unit, repair_type, technician_name, location_detail, DATE_FORMAT(incident_date,'%Y-%m-%d') as incident_date, incident_time, issue_description, priority, status, note, created_at FROM repair_requests WHERE user_id = ? ORDER BY created_at DESC");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -328,17 +328,18 @@ switch ($action) {
     case 'submit_repair':
         $applicant_name  = $_POST['applicant_name']  ?? '';
         $applicant_unit  = $_POST['applicant_unit']  ?? '';
+        $repair_type     = $_POST['repair_type']     ?? 'TIK';
         $location_detail = $_POST['location_detail'] ?? '';
         $incident_date   = !empty($_POST['incident_date']) ? $_POST['incident_date'] : null;
         $incident_time   = !empty($_POST['incident_time']) ? $_POST['incident_time'] : null;
         $issue_description = $_POST['issue_description'] ?? '';
         $priority        = $_POST['priority']        ?? 'medium';
 
-        $stmt = $conn->prepare("INSERT INTO repair_requests (user_id, applicant_name, applicant_unit, location_detail, incident_date, incident_time, issue_description, priority) VALUES (?,?,?,?,?,?,?,?)");
-        $stmt->bind_param("isssssss", $userId, $applicant_name, $applicant_unit, $location_detail, $incident_date, $incident_time, $issue_description, $priority);
+        $stmt = $conn->prepare("INSERT INTO repair_requests (user_id, applicant_name, applicant_unit, repair_type, location_detail, incident_date, incident_time, issue_description, priority) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("issssssss", $userId, $applicant_name, $applicant_unit, $repair_type, $location_detail, $incident_date, $incident_time, $issue_description, $priority);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
-            notifyNewRequest('Repair', $newId, $applicant_name, $applicant_unit, $issue_description);
+            notifyNewRequest('Repair', $newId, $applicant_name, $applicant_unit, "[$repair_type] " . $issue_description);
             jsonResponse(true, 'Laporan perbaikan berhasil dikirim!', ['id' => $newId]);
         } else {
             jsonResponse(false, 'Gagal menyimpan data.');
@@ -902,6 +903,60 @@ switch ($action) {
         break;
 
     // ============================================================
+    // 4d. UPDATE REPAIR TECHNICIAN ASSIGNMENT
+    // ============================================================
+    case 'update_repair_assignment':
+        $id              = (int)($_POST['id']              ?? 0);
+        $technicianName  = trim($_POST['technician_name']  ?? '');
+
+        if (!$id) jsonResponse(false, 'Parameter ID tidak valid.');
+
+        $stmt = $conn->prepare("UPDATE repair_requests SET technician_name = ? WHERE id = ?");
+        $stmt->bind_param("si", $technicianName, $id);
+        if ($stmt->execute()) {
+            $stmt->close();
+            
+            // Kirim notifikasi ke teknisi jika teknisi terdaftar di employees & users
+            if ($technicianName && $technicianName !== 'TANPA_TEKNISI') {
+                $stmtReq = $conn->prepare("SELECT id, applicant_name, applicant_unit, repair_type, location_detail, issue_description, priority, status FROM repair_requests WHERE id = ?");
+                $stmtReq->bind_param("i", $id);
+                $stmtReq->execute();
+                $reqRow = $stmtReq->get_result()->fetch_assoc();
+                $stmtReq->close();
+
+                if ($reqRow) {
+                    $stmtTech = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
+                    $stmtTech->bind_param("s", $technicianName);
+                    $stmtTech->execute();
+                    $techRow = $stmtTech->get_result()->fetch_assoc();
+                    $stmtTech->close();
+
+                    if ($techRow) {
+                        $repType = $reqRow['repair_type'] ?? 'Umum';
+                        $loc     = $reqRow['location_detail'] ?? '-';
+                        $issue   = $reqRow['issue_description'] ?? '-';
+                        $pri     = strtoupper($reqRow['priority'] ?? 'MEDIUM');
+                        $app     = $reqRow['applicant_name'] . ' (' . $reqRow['applicant_unit'] . ')';
+
+                        if (!empty($techRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                            $msgTech = "🛠️ *TUGAS PERBAIKAN BARU (TEKNISI)*\n\nHalo *$technicianName*,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan *REP-$id*.\n\n*Pemohon:* $app\n*Jenis Perbaikan:* $repType\n*Lokasi:* $loc\n*Detail Kerusakan:* $issue\n*Prioritas:* $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
+                            sendWhatsAppFonnte($msgTech, $techRow['whatsapp_number']);
+                        }
+                        if (!empty($techRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                            $msgTechTg = "🛠️ <b>TUGAS PERBAIKAN BARU (TEKNISI)</b>\n\nHalo <b>$technicianName</b>,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan <b>REP-$id</b>.\n\n<b>Pemohon:</b> $app\n<b>Jenis Perbaikan:</b> $repType\n<b>Lokasi:</b> $loc\n<b>Detail Kerusakan:</b> $issue\n<b>Prioritas:</b> $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
+                            sendTelegramPHP($msgTechTg, $techRow['telegram_chat_id']);
+                        }
+                    }
+                }
+            }
+
+            jsonResponse(true, 'Teknisi pelaksana perbaikan berhasil ditetapkan.');
+        } else {
+            jsonResponse(false, 'Gagal menetapkan teknisi perbaikan.');
+        }
+        break;
+
+    // ============================================================
     // 5. UPDATE VEHICLE REQUEST TIME — setara updateVehicleRequestTime()
     // ============================================================
     case 'update_vehicle_time':
@@ -1082,8 +1137,10 @@ switch ($action) {
         } else if ($type === 'Repair') {
             $loc = $_POST['location_detail'] ?? '';
             $iss = $_POST['issue_description'] ?? '';
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, status=?, note=?, incident_date=?, incident_time=?, location_detail=?, issue_description=? WHERE id=?");
-            $stmt->bind_param("ssssssssi", $applicant_name, $applicant_unit, $status, $note, $date_start, $time_start, $loc, $iss, $id);
+            $repair_type = $_POST['repair_type'] ?? 'TIK';
+            $tech = $_POST['technician_name'] ?? null;
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, repair_type=?, technician_name=?, status=?, note=?, incident_date=?, incident_time=?, location_detail=?, issue_description=? WHERE id=?");
+            $stmt->bind_param("ssssssssssi", $applicant_name, $applicant_unit, $repair_type, $tech, $status, $note, $date_start, $time_start, $loc, $iss, $id);
         } else if ($type === 'Item') {
             $item = $_POST['item_name'] ?? '';
             $qty = (int)($_POST['item_quantity'] ?? 0);
