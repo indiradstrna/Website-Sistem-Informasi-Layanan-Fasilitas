@@ -119,13 +119,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     $targetNumbers = [];
     $targetTelegramIds = [];
     $picMap = [
-        'Vehicle' => ['198605082025211053'], // Alfi
-        'Item'    => ['198902222025211044'], // Indra
-        'Item2'   => ['198902222025211044'], // Indra
-        'Zoom'    => ['198902222025211044'], // Indra
-        'Room'    => ['199008092025212052', '16268300055'], // Lastiah, Dani
-        'Dormitory'=> ['199008092025212052', '16268300055'], // Lastiah, Dani
-        'Repair'  => ['16268000027', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
+        'Vehicle'   => ['198605082025211053'], // Alfi
+        'Item'      => ['198902222025211044', '198605082025211053'], // Indra & Alfi
+        'Item2'     => ['198902222025211044', '198605082025211053'], // Indra & Alfi
+        'Zoom'      => ['198902222025211044'], // Indra
+        'Room'      => ['199008092025212052', '16268300055'], // Lastiah, Dhany
+        'Dormitory' => ['199008092025212052', '16268300055'], // Lastiah, Dhany
+        'Repair'    => ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
     ];
 
     if ($newStatus === 'pending' || $newStatus === 'approved') {
@@ -175,13 +175,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         }
     }
 
-    $targetNumbers = array_unique($targetNumbers);
+    $targetNumbers = array_values(array_unique(array_filter(array_map('trim', $targetNumbers))));
     if (!empty($targetNumbers) && function_exists('sendWhatsAppFonnte')) {
         $targets = implode(',', $targetNumbers);
         sendWhatsAppFonnte($waMsg, $targets);
     }
 
-    $targetTelegramIds = array_unique($targetTelegramIds);
+    $targetTelegramIds = array_values(array_unique(array_filter(array_map('trim', $targetTelegramIds))));
     if (!empty($targetTelegramIds) && function_exists('sendTelegramPHP')) {
         foreach ($targetTelegramIds as $tgId) {
             sendTelegramPHP($tgMsg, $tgId);

@@ -498,13 +498,13 @@ let currentRequestNote = '';
 
 // PIC Mapping for highlighting
 const PIC_MAP = {
-  'Vehicle': ['198605082025211053'], // Alfi Dwi Nugroho
-  'Item':    ['198902222025211044'], // Indra Septian
-  'Item2':   ['198902222025211044'],
-  'Zoom':    ['198902222025211044'], // Indra Septian
-  'Room':    ['199008092025212052', '198902222025211044', '16268300055'], // Lastiah, Indra, Dhany
-  'Dormitory':['199008092025212052', '198902222025211044', '16268300055'],
-  'Repair':  ['198605082025211053', '197212162014091003'] // Alfi, Agus Sujadi
+  'Vehicle':   ['198605082025211053'], // Alfi Dwi Nugroho
+  'Item':      ['198902222025211044', '198605082025211053'], // Indra & Alfi
+  'Item2':     ['198902222025211044', '198605082025211053'], // Indra & Alfi
+  'Zoom':      ['198902222025211044'], // Indra Septian
+  'Room':      ['199008092025212052', '16268300055'], // Lastiah & Dhany
+  'Dormitory': ['199008092025212052', '16268300055'], // Lastiah & Dhany
+  'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
 };
 
 // Admin Calendar State
@@ -2808,13 +2808,13 @@ function renderDetailPengajuanTinjau() {
 
   // ── Strict Role-Based Workflow Logic (deklarasi di awal agar bisa digunakan di seluruh fungsi) ──
   const PIC_MAP_LOCAL = {
-    'Vehicle': ['198605082025211053'],
-    'Item':    ['198902222025211044'],
-    'Item2':   ['198902222025211044'],
-    'Zoom':    ['198902222025211044'],
-    'Room':    ['199008092025212052', '198902222025211044', '16268300055'],
-    'Dormitory': ['199008092025212052', '198902222025211044', '16268300055'],
-    'Repair':  ['198605082025211053', '197212162014091003']
+    'Vehicle':   ['198605082025211053'],
+    'Item':      ['198902222025211044', '198605082025211053'],
+    'Item2':     ['198902222025211044', '198605082025211053'],
+    'Zoom':      ['198902222025211044'],
+    'Room':      ['199008092025212052', '16268300055'],
+    'Dormitory': ['199008092025212052', '16268300055'],
+    'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044']
   };
   const SUPER_ADMIN_NIKS_LOCAL = ['000000000000000000'];
   const allowedPICs  = PIC_MAP_LOCAL[req.type] || [];
