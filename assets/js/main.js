@@ -112,10 +112,25 @@ function formatRupiah(amount) {
 async function api(url, options = {}) {
     try {
         const res = await fetch(url, options);
-        return await res.json();
+        const data = await res.json();
+        if (data && data.success === false && typeof data.message === 'string') {
+            const msgLow = data.message.toLowerCase();
+            if (msgLow.includes('session tidak valid') || msgLow === 'unauthorized.' || msgLow.includes('forbidden: admin')) {
+                if (!window._isRedirectingSession) {
+                    window._isRedirectingSession = true;
+                    if (typeof Toast !== 'undefined' && Toast.error) {
+                        Toast.error('Sesi login telah berakhir. Mengalihkan ke halaman login...');
+                    }
+                    setTimeout(() => {
+                        window.location.href = (window.BASE_URL || '') + '/index.php?error=session_expired';
+                    }, 1200);
+                }
+            }
+        }
+        return data;
     } catch (err) {
         console.error('API Error:', err);
-        return { success: false, message: 'Terjadi kesalahan jaringan.' };
+        return { success: false, message: 'Terjadi kesalahan jaringan atau server tidak merespons.' };
     }
 }
 

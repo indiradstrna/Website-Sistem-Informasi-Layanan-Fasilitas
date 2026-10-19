@@ -530,46 +530,60 @@ async function loadAllData(silent = false) {
 
     systemSettings = (settingsRaw && settingsRaw.data) ? settingsRaw.data : {};
 
-    // Normalize (same as before)
-    const norm = (data, type) => data.map(item => ({
-      id: item.id,
-      type,
-      applicant_name: item.applicant_name,
-      applicant_unit: item.applicant_unit,
-      status: item.status || 'pending',
-      purpose: item.purpose || item.issue_description || '-',
-      note: item.note || '',
-      details: type === 'Vehicle' ? (VEHICLE_MAP[item.vehicle_id] || item.vehicle_id) :
-               type === 'Room'    ? `${ROOM_MAP[item.room_id] || item.room_id} (${item.participants||0} org)` :
-               type === 'Dormitory'? `${item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
-               type === 'Zoom'    ? item.zoom_account_id :
-               type === 'Repair'  ? `[${item.repair_type || 'TIK'}] ${item.location_detail}: ${item.issue_description}` :
-               type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
-               type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
-      date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
-      raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.incident_time || ''),
-      raw_time_end:   item.time_end   || '',
-      raw_date_end:   item.return_date || item.date_end || '',
-      driver_name:    item.driver_name || '',
-      technician_name: item.technician_name || '',
-      created_at:     item.created_at,
-      vehicle_id:     item.vehicle_id || '',
-      zoom_account_id: item.zoom_account_id || '',
-      request_type:    item.request_type   || '',
-      special_needs:   item.special_needs  || '',
-      participants:    item.participants   || '',
-      room_id:         item.room_id        || '',
-      dormitory_id:    item.dormitory_id   || '',
-      occupant_name:   item.occupant_name  || '',
-      location_detail: item.location_detail || '',
-      repair_type:     item.repair_type    || '',
-      item_name:       item.item_name      || '',
-      passenger_name:  item.passenger_name || '',
-      departure:       item.departure      || '',
-      destination:     item.destination    || '',
-      cost_bearer:     item.cost_bearer    || '',
-      items_json:      item.items_json     || '',
-    }));
+    // Check if session has expired or returned error
+    const rawResponses = [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees];
+    const sessionErr = rawResponses.find(r => r && r.success === false && typeof r.message === 'string' && (r.message.toLowerCase().includes('session') || r.message.toLowerCase().includes('unauthorized')));
+    if (sessionErr) {
+      if (!silent) Toast.error('Sesi Anda telah berakhir. Mengalihkan ke halaman login...');
+      setTimeout(() => {
+        window.location.href = (window.BASE_URL || '') + '/index.php?error=session_expired';
+      }, 1200);
+      return;
+    }
+
+    // Normalize safely (protect against non-array responses)
+    const norm = (data, type) => {
+      if (!Array.isArray(data)) return [];
+      return data.map(item => ({
+        id: item.id,
+        type,
+        applicant_name: item.applicant_name,
+        applicant_unit: item.applicant_unit,
+        status: item.status || 'pending',
+        purpose: item.purpose || item.issue_description || '-',
+        note: item.note || '',
+        details: type === 'Vehicle' ? ((typeof VEHICLE_MAP !== 'undefined' && VEHICLE_MAP[item.vehicle_id]) || item.vehicle_id) :
+                 type === 'Room'    ? `${(typeof ROOM_MAP !== 'undefined' && ROOM_MAP[item.room_id]) || item.room_id} (${item.participants||0} org)` :
+                 type === 'Dormitory'? `${(typeof DORMITORY_MAP !== 'undefined' && DORMITORY_MAP[item.dormitory_id]) || item.dormitory_id} (${item.occupant_name||''} - ${item.participants||0} org)` :
+                 type === 'Zoom'    ? item.zoom_account_id :
+                 type === 'Repair'  ? `[${item.repair_type || 'TIK'}] ${item.location_detail}: ${item.issue_description}` :
+                 type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
+                 type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
+        date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
+        raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.incident_time || ''),
+        raw_time_end:   item.time_end   || '',
+        raw_date_end:   item.return_date || item.date_end || '',
+        driver_name:    item.driver_name || '',
+        technician_name: item.technician_name || '',
+        created_at:     item.created_at,
+        vehicle_id:     item.vehicle_id || '',
+        zoom_account_id: item.zoom_account_id || '',
+        request_type:    item.request_type   || '',
+        special_needs:   item.special_needs  || '',
+        participants:    item.participants   || '',
+        room_id:         item.room_id        || '',
+        dormitory_id:    item.dormitory_id   || '',
+        occupant_name:   item.occupant_name  || '',
+        location_detail: item.location_detail || '',
+        repair_type:     item.repair_type    || '',
+        item_name:       item.item_name      || '',
+        passenger_name:  item.passenger_name || '',
+        departure:       item.departure      || '',
+        destination:     item.destination    || '',
+        cost_bearer:     item.cost_bearer    || '',
+        items_json:      item.items_json     || '',
+      }));
+    };
 
     const statusWeight = {
       'pending': 1,

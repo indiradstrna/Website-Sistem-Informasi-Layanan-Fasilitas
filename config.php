@@ -54,21 +54,20 @@ if (!defined('BASE_URL')) {
     define('BASE_URL', $protocol . $host . $app_root);
 }
 
-// Buat koneksi
-$conn = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
-$conn->set_charset('utf8mb4');
-
-// Set Timezone ke WIB (Asia/Jakarta)
-date_default_timezone_set('Asia/Jakarta');
-$conn->query("SET time_zone = '+07:00'");
-
-if ($conn->connect_error) {
-    // Jika koneksi gagal, sistem akan mengirimkan error JSON
-    http_response_code(500);
-    header('Content-Type: application/json');
+// Buat koneksi dengan try-catch agar mysqli_sql_exception tertangani dengan baik
+try {
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
+    $conn->set_charset('utf8mb4');
+    date_default_timezone_set('Asia/Jakarta');
+    $conn->query("SET time_zone = '+07:00'");
+} catch (\Throwable $e) {
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+    }
     die(json_encode([
         'success' => false, 
-        'message' => 'Database Error: ' . $conn->connect_error 
+        'message' => 'Koneksi database gagal. Pastikan service MySQL di XAMPP sudah berjalan.'
     ]));
 }
 
