@@ -12,6 +12,22 @@ $session   = getSession();
 $userName  = $session['fullName'];
 $userRole  = $session['role'];
 $userLogin = $session['username'];
+$userDept  = $session['department'] ?? '';
+$userEmpId = $_SESSION['employee_id'] ?? 0;
+$userRoleTitle = $_SESSION['role_title'] ?? '';
+if (empty($userRoleTitle) && $userEmpId) {
+    $stmtEmpTitle = $conn->prepare("SELECT role_title, department FROM employees WHERE id = ?");
+    if ($stmtEmpTitle) {
+        $stmtEmpTitle->bind_param("i", $userEmpId);
+        $stmtEmpTitle->execute();
+        $resEmpTitle = $stmtEmpTitle->get_result()->fetch_assoc();
+        if ($resEmpTitle) {
+            $userRoleTitle = $resEmpTitle['role_title'] ?? '';
+            if (empty($userDept)) $userDept = $resEmpTitle['department'] ?? '';
+        }
+        $stmtEmpTitle->close();
+    }
+}
 
 renderPageHead('Dashboard Admin');
 ?>
@@ -479,7 +495,36 @@ window.BASE_URL = '<?= BASE_URL ?>';
 const ADMIN_NAME = <?= json_encode($userName) ?>;
 const ADMIN_USERNAME = <?= json_encode($userLogin) ?>;
 const CURRENT_ROLE = <?= json_encode($userRole) ?>;
+const ADMIN_DEPT = <?= json_encode($userDept) ?>;
+const ADMIN_ROLE_TITLE = <?= json_encode($userRoleTitle) ?>;
 const API_BASE   = '<?= BASE_URL ?>/api/';
+
+function hasRole(r) {
+  if (CURRENT_ROLE === 'superadmin' || CURRENT_ROLE === 'super admin') return true;
+  return (CURRENT_ROLE || '').toLowerCase() === (r || '').toLowerCase();
+}
+
+function isManagerForDept(applicantUnit) {
+  if (CURRENT_ROLE === 'superadmin' || CURRENT_ROLE === 'super admin') return true;
+  if (!applicantUnit) return false;
+  const myDept = (ADMIN_DEPT || '').toLowerCase().trim();
+  const myTitle = (ADMIN_ROLE_TITLE || '').toLowerCase().trim();
+  const reqUnit = (applicantUnit || '').toLowerCase().trim();
+  
+  const isManagerTitle = myTitle.includes('manajer') || myTitle.includes('manager') || myTitle.includes('direktur') || myTitle.includes('pejabat');
+  
+  if (isManagerTitle && myDept) {
+    let cleanReq = reqUnit.replace(/^(divisi|bagian|unit)\s+/i, '').trim();
+    let cleanMy = myDept.replace(/^(divisi|bagian|unit)\s+/i, '').trim();
+    if (cleanReq === 'hrd') cleanReq = 'hrad';
+    if (cleanMy === 'hrd') cleanMy = 'hrad';
+    
+    if (reqUnit.includes(myDept) || myDept.includes(reqUnit) || cleanReq === cleanMy || cleanReq.includes(cleanMy) || cleanMy.includes(cleanReq)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // --- STATE ---
 let allRequests = [];
@@ -504,8 +549,36 @@ const PIC_MAP = {
   'Zoom':      ['198902222025211044'], // Indra Septian
   'Room':      ['199008092025212052', '16268300055'], // Lastiah & Dhany
   'Dormitory': ['199008092025212052', '16268300055'], // Lastiah & Dhany
-  'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
+  'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044', '16268000027'] // Alfi, Agus Sujadi, Indra, Saripudin
 };
+
+// Daftar Teknisi Resmi untuk Permintaan Perbaikan
+const REPAIR_TECHNICIAN_CONFIG = [
+  { nip: '198902222025211044', name: 'Indra Septian, A.Md', alias: 'indra septian' },
+  { nip: '198605082025211053', name: 'Alfi Dwi Nugroho, A.Md', alias: 'alfi dwi nugroho' },
+  { nip: '197212162014091003', name: 'Agus Sujadi', alias: 'agus sujadi' },
+  { nip: '16268000027', name: 'SARIPUDIN', alias: 'saripudin' }
+];
+
+function getRepairTechnicians(employees) {
+  const empArr = Array.isArray(employees) ? employees : [];
+  return REPAIR_TECHNICIAN_CONFIG.map(cfg => {
+    const found = empArr.find(e => {
+      const nik = String(e.nip_nik || e.nik || '').trim();
+      if (nik && nik === cfg.nip) return true;
+      const fn = (e.full_name || '').toLowerCase();
+      return fn.includes(cfg.alias) || (cfg.alias.includes('septian') && (fn.includes('septian') || fn.includes('septiawan')));
+    });
+    const fullName = found ? found.full_name : cfg.name;
+    const nip = (found && found.nip_nik) ? found.nip_nik : cfg.nip;
+    return {
+      nip_nik: nip,
+      full_name: fullName,
+      display_label: `${fullName} (${nip})`,
+      position: found ? found.position : 'Teknisi'
+    };
+  });
+}
 
 // Admin Calendar State
 window._adminCalYear     = new Date().getFullYear();
@@ -615,25 +688,47 @@ async function loadAllData(silent = false) {
     allEmployees = Array.isArray(employees) ? employees : [];
 
     const isManagerFMD = (hasRole('managerfmd') || ADMIN_USERNAME === '197707072025211067');
+    const isSuperAdmin = (CURRENT_ROLE === 'superadmin' || CURRENT_ROLE === 'super admin' || ADMIN_USERNAME === 'admin');
     
     const picPending = allRequests.filter(r => {
+      if (r.type === 'Item2') {
+        if (r.status === 'waiting_manager_unit' || r.status === 'pending') {
+          return isManagerForDept(r.applicant_unit) || isSuperAdmin;
+        }
+        if (r.status === 'verified') {
+          const allowed = PIC_MAP['Item2'] || [];
+          return isSuperAdmin || allowed.includes(ADMIN_USERNAME);
+        }
+        if (r.status === 'waiting_manager_fmd') {
+          return isManagerFMD || isSuperAdmin;
+        }
+        if (r.status === 'approved') {
+          const allowed = PIC_MAP['Item2'] || [];
+          return isSuperAdmin || allowed.includes(ADMIN_USERNAME);
+        }
+        if (r.status === 'ready_for_user') {
+          const allowed = PIC_MAP['Item2'] || [];
+          return isSuperAdmin || allowed.includes(ADMIN_USERNAME);
+        }
+        return false;
+      }
       if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
         const allowed = PIC_MAP[r.type] || [];
-        return allowed.length === 0 || allowed.includes(ADMIN_USERNAME);
+        return allowed.length === 0 || allowed.includes(ADMIN_USERNAME) || isSuperAdmin;
       }
-      if (r.status === 'waiting_manager_fmd') return isManagerFMD;
-      if (r.status === 'verified' && r.type === 'Repair') return isManagerFMD;
-      if (r.status === 'waiting_manager_fad' && hasRole('managerfad')) return true;
-      if (r.status === 'waiting_ppk' && hasRole('ppk')) return true;
-      if (r.status === 'waiting_bod' && hasRole('bod')) return true;
-      if (r.status === 'approved_waiting_fund' && hasRole('bendahara')) return true;
+      if (r.status === 'waiting_manager_fmd') return isManagerFMD || isSuperAdmin;
+      if (r.status === 'verified' && r.type === 'Repair') return isManagerFMD || isSuperAdmin;
+      if (r.status === 'waiting_manager_fad' && (hasRole('managerfad') || isSuperAdmin)) return true;
+      if (r.status === 'waiting_ppk' && (hasRole('ppk') || isSuperAdmin)) return true;
+      if (r.status === 'waiting_bod' && (hasRole('bod') || isSuperAdmin)) return true;
+      if (r.status === 'approved_waiting_fund' && (hasRole('bendahara') || isSuperAdmin)) return true;
       return false;
     });
 
     const picTrack = allRequests.filter(r => {
       if (r.status === 'approved' || r.status === 'ready_for_user') {
         const allowed = PIC_MAP[r.type] || [];
-        return allowed.length === 0 || allowed.includes(ADMIN_USERNAME);
+        return allowed.length === 0 || allowed.includes(ADMIN_USERNAME) || isSuperAdmin;
       }
       return false;
     });
@@ -744,13 +839,13 @@ function renderCurrentView() {
 
 // --- DASHBOARD ---
 function renderDashboard() {
-  const pending   = allRequests.filter(r => r.status === 'pending' || r.status === 'waiting_manager_fmd').length;
+  const pending   = allRequests.filter(r => ['pending', 'waiting_manager_unit', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'].includes(r.status)).length;
   const approved  = allRequests.filter(r => r.status === 'approved').length;
   const completed = allRequests.filter(r => ['completed','returned'].includes(r.status)).length;
   const rejected  = allRequests.filter(r => r.status === 'rejected').length;
   const total     = allRequests.length;
 
-  const recentPending = allRequests.filter(r => r.status === 'pending' || r.status === 'waiting_manager_fmd').slice(0, 5);
+  const recentPending = allRequests.filter(r => ['pending', 'waiting_manager_unit', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'].includes(r.status)).slice(0, 5);
 
   return `
   <div class="page-header">
@@ -893,13 +988,15 @@ function renderRequestManagement() {
           <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
           <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
           <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
-          <option value="Item">Barang</option>
+          <option value="Item">Peminjaman Barang</option>
+          <option value="Item2">Permintaan Barang</option>
         </select>
         <select class="form-select" id="req-status-filter" onchange="filterRequests()" style="width:160px;">
           <option value="all" ${initStatus === 'all' ? 'selected' : ''}>Semua Status</option>
           <option value="pending" ${initStatus === 'pending' ? 'selected' : ''}>Pending PIC</option>
+          <option value="waiting_manager_unit" ${initStatus === 'waiting_manager_unit' ? 'selected' : ''}>Waiting Manager Unit</option>
           <option value="waiting_manager_fmd" ${initStatus === 'waiting_manager_fmd' ? 'selected' : ''}>Waiting Manager FMD</option>
-          <option value="verified" ${initStatus === 'verified' ? 'selected' : ''}>Verified (Review Teknisi)</option>
+          <option value="verified" ${initStatus === 'verified' ? 'selected' : ''}>Verified (Review)</option>
           <option value="in-progress" ${initStatus === 'in-progress' ? 'selected' : ''}>In-Progress</option>
           <option value="approved" ${initStatus === 'approved' ? 'selected' : ''}>Approved</option>
           <option value="ready_for_user" ${initStatus === 'ready_for_user' ? 'selected' : ''}>Ready for User</option>
@@ -956,7 +1053,7 @@ function filterRequests(preservePage = false) {
     filtered = filtered.filter(r => r.status === status);
   } else {
     if (currentReqTab === 'all_active') {
-      const activeStatuses = ['pending','verified','in-progress','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+      const activeStatuses = ['pending','waiting_manager_unit','verified','in-progress','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
       filtered = filtered.filter(r => activeStatuses.includes(r.status));
     }
   }
@@ -1065,13 +1162,15 @@ function renderTrackReports() {
           <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
           <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
           <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
-          <option value="Item">Barang</option>
+          <option value="Item">Peminjaman Barang</option>
+          <option value="Item2">Permintaan Barang</option>
         </select>
         <select class="form-select" id="track-status" onchange="filterTrack()" style="width:160px;">
           <option value="all">Semua Status</option>
           <option value="pending">Pending PIC</option>
+          <option value="waiting_manager_unit">Waiting Manager Unit</option>
           <option value="waiting_manager_fmd">Waiting Manager FMD</option>
-          <option value="verified">Verified (Review Teknisi)</option>
+          <option value="verified">Verified (Review)</option>
           <option value="in-progress">In-Progress</option>
           <option value="waiting_ppk">Waiting PPK</option>
           <option value="waiting_bod">Waiting BOD</option>
@@ -1511,15 +1610,26 @@ function renderCrudSpecificFields(req) {
           <option value="Kelistrikan"${req.repair_type === 'Kelistrikan' ? ' selected' : ''}>Kelistrikan</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Teknisi / Pelaksana</label>
-        <select id="crud-sp-technician_name" class="form-select">
-          <option value="">-- Belum Ditugaskan --</option>
-          <option value="TANPA_TEKNISI"${req.technician_name === 'TANPA_TEKNISI' ? ' selected' : ''}>[0] Tanpa Teknisi (Mandiri / Vendor Luar)</option>
-          ${(Array.isArray(allEmployees) ? allEmployees : []).map(emp => `
-            <option value="${emp.full_name}"${(req.technician_name && req.technician_name.includes(emp.full_name)) ? ' selected' : ''}>${emp.full_name} (${emp.position || 'Staff'})</option>
-          `).join('')}
-        </select>
+      <div class="form-group" style="grid-column:1/3;">
+        <label class="form-label" style="font-weight:700;">Teknisi / Pelaksana (Bisa Pilih > 1):</label>
+        <div style="display:flex; flex-direction:column; gap:0.35rem; max-height:170px; overflow-y:auto; border:1px solid #cbd5e1; padding:0.5rem; border-radius:6px; background:#f8fafc;">
+          ${getRepairTechnicians(allEmployees).map(emp => {
+            const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
+            const isSelected = req.technician_name !== 'TANPA_TEKNISI' && (
+              curTechs.includes(emp.full_name.toLowerCase()) || 
+              curTechs.some(t => t && (t.includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(t)))
+            );
+            return `
+            <label style="display:flex; align-items:center; gap:0.5rem; background:#fff; padding:0.4rem 0.6rem; border:1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}; border-radius:4px; font-size:0.85rem; cursor:pointer; margin:0;">
+              <input type="checkbox" name="crud_sp_technician_checkbox" value="${emp.full_name}" ${isSelected ? 'checked' : ''} style="accent-color:#0d9488;" />
+              <span><strong>${emp.full_name}</strong> <span style="font-size:0.75rem; color:#64748b;">(${emp.nip_nik})</span></span>
+            </label>`;
+          }).join('')}
+          <label style="display:flex; align-items:center; gap:0.5rem; background:#fff; padding:0.4rem 0.6rem; border:1px solid ${req.technician_name === 'TANPA_TEKNISI' ? '#ea580c' : '#e2e8f0'}; border-radius:4px; font-size:0.85rem; cursor:pointer; margin:0;">
+            <input type="checkbox" name="crud_sp_technician_checkbox" value="TANPA_TEKNISI" ${req.technician_name === 'TANPA_TEKNISI' ? 'checked' : ''} style="accent-color:#ea580c;" />
+            <span style="color:#ea580c; font-weight:700;">[0] Tanpa Teknisi (Mandiri / Vendor Luar)</span>
+          </label>
+        </div>
       </div>
       <div class="form-group"><label class="form-label">Detail Lokasi</label><input type="text" id="crud-sp-location_detail" class="form-input" value="${req.location_detail || ''}"></div>
       <div class="form-group"><label class="form-label">Deskripsi Masalah</label><textarea id="crud-sp-issue_description" class="form-input" rows="2">${req.issue_description || ''}</textarea></div>
@@ -1528,6 +1638,14 @@ function renderCrudSpecificFields(req) {
     html += `
       <div class="form-group"><label class="form-label">Nama Barang</label><input type="text" id="crud-sp-item_name" class="form-input" value="${req.item_name || ''}"></div>
       <div class="form-group"><label class="form-label">Jumlah Barang</label><input type="number" id="crud-sp-item_quantity" class="form-input" value="${req.item_quantity || ''}"></div>
+    `;
+  } else if (req.type === 'Item2') {
+    html += `
+      <div class="form-group" style="grid-column:1/3;">
+        <label class="form-label">Daftar Barang Permintaan (JSON)</label>
+        <textarea id="crud-sp-items_json" class="form-input" rows="4" style="font-family:monospace; font-size:0.8rem;">${req.items_json || '[]'}</textarea>
+        <small style="color:#64748b;">Format JSON daftar barang: [{"id":1,"name":"Contoh","quantity":2}]</small>
+      </div>
     `;
   }
   return html;
@@ -1570,12 +1688,15 @@ async function doCrudSave() {
     payload.participants = document.getElementById('crud-sp-participants').value || 0;
   } else if (type === 'Repair') {
     payload.repair_type = document.getElementById('crud-sp-repair_type')?.value || 'TIK';
-    payload.technician_name = document.getElementById('crud-sp-technician_name')?.value || null;
+    const spChecked = Array.from(document.querySelectorAll('input[name="crud_sp_technician_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
+    payload.technician_name = spChecked.length > 0 ? (spChecked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : spChecked.join(', ')) : (document.getElementById('crud-sp-technician_name')?.value || null);
     payload.location_detail = document.getElementById('crud-sp-location_detail').value;
     payload.issue_description = document.getElementById('crud-sp-issue_description').value;
   } else if (type === 'Item') {
     payload.item_name = document.getElementById('crud-sp-item_name').value;
     payload.item_quantity = document.getElementById('crud-sp-item_quantity').value || 0;
+  } else if (type === 'Item2') {
+    payload.items_json = document.getElementById('crud-sp-items_json')?.value || '[]';
   }
 
   const res = await apiPost(API_BASE + 'requests.php', payload);
@@ -1639,7 +1760,7 @@ function renderAnalytics() {
     }
   });
   (allEmployees || []).forEach(e => {
-    if (['Alfi Dwi Nugroho, A.Md', 'Indra Septian, A.Md', 'Agus Sujadi', 'Indira Destriana Anjani'].includes(e.full_name)) {
+    if (['Alfi Dwi Nugroho, A.Md', 'Indra Septian, A.Md', 'Agus Sujadi', 'SARIPUDIN', 'Saripudin'].includes(e.full_name)) {
       techSet.add(e.full_name.trim());
     }
   });
@@ -2604,7 +2725,7 @@ function getTimelineEvents(req) {
     id: 'created',
     title: 'Request Created',
     date: req.created_at || req.date_start,
-    desc: 'Permohonan berhasil dikirim dan menunggu verifikasi.',
+    desc: (req.type === 'Item2') ? 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.' : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
     user: req.applicant_name,
     role: 'Applicant',
     icon: 'file-text',
@@ -2624,19 +2745,20 @@ function getTimelineEvents(req) {
         let color = '#3b82f6';
         let icon  = 'history';
 
-        if (status === 'approved') { title = 'Approved by FMD Manager'; color = '#16a34a'; icon = 'check-circle'; }
-        else if (status === 'ready_for_user') { title = 'Ready for User'; color = '#0891b2'; icon = 'check-circle'; }
+        if (status === 'approved') { title = (req.type === 'Item2') ? 'Approved by Manager FMD (Gudang Menyiapkan Barang)' : 'Approved by FMD Manager'; color = '#16a34a'; icon = 'check-circle'; }
+        else if (status === 'ready_for_user') { title = 'Ready for User (Siap Diambil di Gudang)'; color = '#0891b2'; icon = 'check-circle'; }
         else if (status === 'completed') { title = 'Completed'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'returned') { title = 'Returned'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'rejected') { title = 'Rejected'; color = '#dc2626'; icon = 'x-circle'; }
         else if (status === 'canceled') { title = 'Declined / Canceled'; color = '#6b7280'; icon = 'x-circle'; }
-        else if (status === 'verified') { title = 'Verified by Admin'; color = '#6366f1'; icon = 'check-circle'; }
+        else if (status === 'waiting_manager_unit') { title = 'Menunggu Approval Manager Unit'; color = '#8b5cf6'; icon = 'clock'; }
+        else if (status === 'verified') { title = (req.type === 'Item2') ? 'Disetujui Manager Unit (Proses PIC Gudang)' : 'Verified by Admin'; color = '#6366f1'; icon = 'check-circle'; }
         else if (status === 'in-progress') { title = 'Processed by PIC'; color = '#f97316'; icon = 'wrench'; }
-        else if (status === 'waiting_manager_fmd') { title = 'Waiting for FMD Manager'; color = '#6366f1'; }
-        else if (status === 'waiting_manager_fad') { title = 'Waiting for FAD Manager'; color = '#6366f1'; }
-        else if (status === 'waiting_ppk') { title = 'Waiting for PPK'; color = '#a855f7'; }
-        else if (status === 'waiting_bod') { title = 'Waiting for BOD'; color = '#db2777'; }
-        else if (status === 'approved_waiting_fund') { title = 'Approved - Waiting Fund'; color = '#d97706'; }
+        else if (status === 'waiting_manager_fmd') { title = 'Waiting for FMD Manager'; color = '#6366f1'; icon = 'clock'; }
+        else if (status === 'waiting_manager_fad') { title = 'Waiting for FAD Manager'; color = '#6366f1'; icon = 'clock'; }
+        else if (status === 'waiting_ppk') { title = 'Waiting for PPK'; color = '#a855f7'; icon = 'clock'; }
+        else if (status === 'waiting_bod') { title = 'Waiting for BOD'; color = '#db2777'; icon = 'clock'; }
+        else if (status === 'approved_waiting_fund') { title = 'Approved - Waiting Fund'; color = '#d97706'; icon = 'clock'; }
 
         events.push({
           id: 'note-' + idx,
@@ -2774,7 +2896,10 @@ function checkResourceConflict(currentReq, resourceType, resourceId) {
     let match = false;
     if (resourceType === 'Vehicle' && r.type === 'Vehicle' && String(r.vehicle_id) === String(resourceId)) match = true;
     if (resourceType === 'driver' && r.type === 'Vehicle' && String(r.driver_name) === String(resourceId)) match = true;
-    if (resourceType === 'technician' && r.type === 'Repair' && String(r.technician_name) === String(resourceId)) match = true;
+    if (resourceType === 'technician' && r.type === 'Repair' && r.technician_name) {
+      const assigned = r.technician_name.split(',').map(s => s.trim().toLowerCase());
+      if (assigned.includes(String(resourceId).toLowerCase())) match = true;
+    }
     if (resourceType === 'Room' && r.type === 'Room' && String(r.room_id) === String(resourceId)) match = true;
     if (resourceType === 'Dormitory' && r.type === 'Dormitory' && String(r.dormitory_id) === String(resourceId)) match = true;
     
@@ -2828,7 +2953,7 @@ function renderDetailPengajuanTinjau() {
     'Zoom':      ['198902222025211044'],
     'Room':      ['199008092025212052', '16268300055'],
     'Dormitory': ['199008092025212052', '16268300055'],
-    'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044']
+    'Repair':    ['198605082025211053', '197212162014091003', '198902222025211044', '16268000027']
   };
   const SUPER_ADMIN_NIKS_LOCAL = ['000000000000000000'];
   const allowedPICs  = PIC_MAP_LOCAL[req.type] || [];
@@ -2946,25 +3071,56 @@ function renderDetailPengajuanTinjau() {
       ` : ''}
     </div>` : '';
 
-  // ── Bagian assign Teknisi Repair ──
+  // ── Bagian assign Teknisi Repair (Multi-Select) ──
   const repairSection = (req.type === 'Repair' && (isPIC || isSuperAdmin || isManagerFMD || hasRole('bendahara')) && !['canceled', 'rejected', 'completed'].includes(req.status)) ? `
     <div style="background:#f0fdfa; border:1px solid #ccfbf1; padding:1.25rem; border-radius:0.5rem; margin-bottom:1rem;">
-      <div style="font-weight:700; color:#0f766e; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-        Pilih Teknisi / Pelaksana (Repair)
+      <div style="font-weight:700; color:#0f766e; margin-bottom:0.75rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+        <span style="display:flex; align-items:center; gap:0.5rem;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Pilih Teknisi / Pelaksana (Bisa Pilih > 1)
+        </span>
+        <span id="assign-tech-count-badge" style="font-size:0.72rem; font-weight:700; color:#0f766e; background:#ccfbf1; padding:2px 8px; border-radius:12px;">
+          ${(function(){
+            const curTechs = (req.technician_name && req.technician_name !== 'TANPA_TEKNISI') ? req.technician_name.split(',').map(s=>s.trim()).filter(Boolean) : [];
+            return curTechs.length ? `${curTechs.length} Teknisi Terpilih` : (req.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi' : 'Belum Dipilih');
+          })()}
+        </span>
       </div>
-      <div class="form-group" style="margin-bottom:0">
-        <select id="assign-technician" class="form-select" style="background:#fff;">
-          <option value="">Pilih Teknisi / Pegawai FMD...</option>
-          <option value="TANPA_TEKNISI" style="color:#ea580c; font-weight:bold;">[0] Tanpa Teknisi (Mandiri / Vendor Luar)</option>
-          ${(Array.isArray(allEmployees) ? allEmployees : []).map(emp => {
-            const conflict = checkResourceConflict(req, 'technician', emp.full_name);
-            return `<option value="${emp.full_name}"${(req.technician_name && req.technician_name.includes(emp.full_name)) ? ' selected' : ''}${conflict ? ' disabled' : ''}>${emp.full_name} - ${emp.position || 'Staff'}${conflict ? ' (Bertugas)' : ''}</option>`;
-          }).join('')}
-        </select>
-        <div style="font-size:0.75rem; color:#0d9488; font-style:italic; margin-top:0.5rem;">* Teknisi yang ditugaskan akan menerima pemberitahuan tugas perbaikan.</div>
+      <div style="display:flex; flex-direction:column; gap:0.45rem;">
+        ${getRepairTechnicians(allEmployees).map((emp) => {
+          const conflict = checkResourceConflict(req, 'technician', emp.full_name);
+          const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
+          const isSelected = req.technician_name !== 'TANPA_TEKNISI' && (
+            curTechs.includes(emp.full_name.toLowerCase()) || 
+            curTechs.some(t => t && (t.includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(t)))
+          );
+          return `
+          <label style="display:flex; align-items:center; gap:0.65rem; padding:0.6rem 0.75rem; background:${isSelected ? '#f0fdf4' : '#fff'}; border:1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}; border-radius:6px; cursor:pointer; transition:all 0.15s; margin:0;" class="tech-checkbox-row">
+            <input type="checkbox" name="assign_technician_checkbox" value="${emp.full_name}" 
+                   ${isSelected ? 'checked' : ''} 
+                   onchange="onTechnicianCheckboxChange(this)" 
+                   style="width:17px; height:17px; accent-color:#0d9488; cursor:pointer; flex-shrink:0;" />
+            <div style="flex:1; min-width:0; line-height:1.3;">
+              <div style="font-size:0.875rem; font-weight:600; color:#1e293b;">${emp.full_name}</div>
+              <div style="font-size:0.72rem; color:#64748b;">NIP/NIK: ${emp.nip_nik}${conflict ? ' <span style="color:#dc2626; font-weight:700;">(Sedang Bertugas)</span>' : ''}</div>
+            </div>
+            ${isSelected ? '<span style="font-size:0.7rem; font-weight:700; color:#0d9488; background:#ccfbf1; padding:2px 6px; border-radius:4px;">Terpilih</span>' : ''}
+          </label>`;
+        }).join('')}
+        
+        <label style="display:flex; align-items:center; gap:0.65rem; padding:0.6rem 0.75rem; background:${req.technician_name === 'TANPA_TEKNISI' ? '#fff7ed' : '#fff'}; border:1px solid ${req.technician_name === 'TANPA_TEKNISI' ? '#ea580c' : '#e2e8f0'}; border-radius:6px; cursor:pointer; transition:all 0.15s; margin-top:0.25rem;" class="tech-checkbox-row">
+          <input type="checkbox" name="assign_technician_checkbox" value="TANPA_TEKNISI" 
+                 ${req.technician_name === 'TANPA_TEKNISI' ? 'checked' : ''} 
+                 onchange="onTechnicianCheckboxChange(this)" 
+                 style="width:17px; height:17px; accent-color:#ea580c; cursor:pointer; flex-shrink:0;" />
+          <div style="flex:1; min-width:0; line-height:1.3;">
+            <div style="font-size:0.85rem; font-weight:700; color:#ea580c;">[0] Tanpa Teknisi (Mandiri / Vendor Luar)</div>
+            <div style="font-size:0.7rem; color:#9a3412;">Pilih opsi ini jika perbaikan dilakukan pihak ketiga atau mandiri</div>
+          </div>
+        </label>
       </div>
-      <button class="btn btn-warning btn-full" style="margin-top:1rem; background-color:#0d9488; border-color:#0f766e; color:#fff;" onclick="doRepairAssign(${req.id})">
+      <div style="font-size:0.75rem; color:#0d9488; font-style:italic; margin-top:0.6rem;">* Centang satu atau beberapa teknisi sekaligus untuk penugasan tim perbaikan.</div>
+      <button class="btn btn-warning btn-full" style="margin-top:0.85rem; background-color:#0d9488; border-color:#0f766e; color:#fff;" onclick="doRepairAssign(${req.id})">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.25rem;vertical-align:-3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Update Penugasan Teknisi
       </button>
@@ -3017,11 +3173,18 @@ function renderDetailPengajuanTinjau() {
       actionBtns = `<button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','approved_waiting_fund')">✓ Approve (Cairkan Dana)</button>`;
     } else if (req.status === 'approved_waiting_fund' && (hasRole('bendahara') || isSuperAdmin)) {
       actionBtns = `<div style="background:#fffbeb;border:1px solid #fef3c7;padding:1rem;border-radius:.5rem;">
-        <label class="form-label" style="font-weight:700;color:#92400e;">Pilih Pekerja / Staff:</label>
-        <select id="assign-worker" class="form-select" style="margin-bottom:1rem;">
-          <option value="">Pilih Pekerja...</option>
-          ${allEmployees.map(e => `<option value="${e.full_name}">${e.full_name} (${e.position})</option>`).join('')}
-        </select>
+        <div style="font-weight:700;color:#92400e;margin-bottom:0.5rem;">Pilih Pekerja / Staff (Bisa Pilih > 1):</div>
+        <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:1rem;">
+          ${getRepairTechnicians(allEmployees).map(e => {
+            const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
+            const isSelected = curTechs.includes(e.full_name.toLowerCase()) || curTechs.some(t => t && t.includes(e.full_name.toLowerCase()));
+            return `
+            <label style="display:flex; align-items:center; gap:0.5rem; background:#fff; padding:0.45rem 0.65rem; border:1px solid #fde68a; border-radius:6px; font-size:0.85rem; cursor:pointer; margin:0;">
+              <input type="checkbox" name="assign_worker_checkbox" value="${e.full_name}" ${isSelected ? 'checked' : ''} style="accent-color:#d97706;" />
+              <span><strong>${e.full_name}</strong> <span style="font-size:0.75rem; color:#78350f;">(${e.nip_nik})</span></span>
+            </label>`;
+          }).join('')}
+        </div>
         <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})" style="margin-bottom:1rem;">💰 Cairkan Dana & Mulai Kerja</button>
         <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;">🖨️ Cetak PUM (PDF)</a>
       </div>`;
@@ -3033,6 +3196,110 @@ function renderDetailPengajuanTinjau() {
     } else {
       picMessage = reminderBox('⏳', 'Menunggu Proses',
         `Pengajuan sedang dalam tahap: <b>${getStatusLabel(req.status)}</b>. Tidak ada tindakan yang tersedia untuk peran Anda saat ini.`);
+    }
+
+  } else if (req.type === 'Item2') {
+    // ══════════════════════════════════════════════════════════════
+    // WORKFLOW ITEM2: PERMINTAAN BARANG
+    // 1. (pending / waiting_manager_unit) -> Manager Dept Approval
+    // 2. (verified) -> PIC Permintaan Barang (Edit/Review & Forward)
+    // 3. (waiting_manager_fmd) -> Manager FMD Approval
+    // 4. (approved) -> Dikembalikan ke PIC Gudang untuk siapkan barang -> Ready for User
+    // 5. (ready_for_user) -> Notif ke user dengan kontak gudang -> Selesai (Completed)
+    // ══════════════════════════════════════════════════════════════
+    const isDeptManager = isManagerForDept(req.applicant_unit) || isSuperAdmin;
+
+    if (req.status === 'waiting_manager_unit' || req.status === 'pending') {
+      // ── TAHAP 1: Approval Manajer Departemen ──
+      if (isDeptManager) {
+        actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
+          <div style="background:#f5f3ff;border:1px solid #ddd6fe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#5b21b6;margin-bottom:.5rem;">
+            <strong>👔 Persetujuan Manajer Departemen (${req.applicant_unit || 'Unit'})</strong><br>
+            Sebagai Manajer Departemen, periksa kebutuhan barang ini. Jika disetujui, pengajuan akan diteruskan ke PIC Gudang untuk verifikasi ketersediaan stok barang.
+          </div>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-success" style="flex:1;" onclick="updateStatus(${req.id},'Item2','verified')">✓ Setujui (ke PIC Gudang)</button>
+            <button class="btn btn-danger" style="flex:1;" onclick="updateStatus(${req.id},'Item2','rejected')">✕ Tolak</button>
+          </div>
+        </div>`;
+      } else {
+        picMessage = reminderBox('⌛', 'Menunggu Approval Manajer Departemen',
+          `Pengajuan permintaan barang ini sedang menunggu persetujuan dari <b>Manajer Departemen ${req.applicant_unit || '-'}</b>. Setelah disetujui, pengajuan akan masuk ke tahap verifikasi PIC Gudang.`);
+      }
+
+    } else if (req.status === 'verified') {
+      // ── TAHAP 2: PIC Permintaan Barang Review & Forward ke Manager FMD ──
+      if (isPIC || isSuperAdmin) {
+        actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
+            <strong>🔍 Disetujui Manajer Departemen (${req.applicant_unit || 'Unit'}).</strong><br>
+            Silakan PIC Gudang memeriksa ketersediaan barang. Anda dapat mengedit, menambah, atau mengubah jumlah barang di tabel di atas sebelum meneruskan ke Manager FMD.
+          </div>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-primary" style="flex:1;" onclick="updateStatus(${req.id},'Item2','waiting_manager_fmd')">✓ Teruskan ke Manager FMD</button>
+            <button class="btn btn-danger" style="flex:1;" onclick="updateStatus(${req.id},'Item2','rejected')">✕ Tolak</button>
+          </div>
+        </div>`;
+      } else {
+        picMessage = reminderBox('🔍', 'Proses Verifikasi PIC Gudang',
+          'Pengajuan telah disetujui oleh Manajer Departemen dan saat ini sedang dalam proses pemeriksaan ketersediaan barang oleh PIC Gudang sebelum diteruskan ke Manager FMD.');
+      }
+
+    } else if (req.status === 'waiting_manager_fmd') {
+      // ── TAHAP 3: Approval Manager FMD ──
+      if (isManagerFMD || isSuperAdmin) {
+        actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
+          <div style="background:#eef2ff;border:1px solid #c7d2fe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#3730a3;margin-bottom:.5rem;">
+            <strong>👔 Persetujuan Manager FMD</strong><br>
+            Daftar barang telah diverifikasi oleh PIC Gudang. Berikan persetujuan akhir. Setelah disetujui, pengajuan akan dikembalikan ke PIC Gudang untuk penyiapan barang.
+          </div>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-success" style="flex:1;" onclick="updateStatus(${req.id},'Item2','approved')">✓ Setujui (Approved)</button>
+            <button class="btn btn-danger" style="flex:1;" onclick="updateStatus(${req.id},'Item2','rejected')">✕ Tolak</button>
+          </div>
+        </div>`;
+      } else if (isPIC) {
+        picMessage = reminderBox('⏳', 'Menunggu Keputusan Manager FMD',
+          'Pengajuan telah diverifikasi dan diteruskan ke Manager FMD. Menunggu persetujuan Manager FMD.');
+      } else {
+        picMessage = reminderBox('🔒', 'Akses Terbatas',
+          'Tahap ini hanya dapat diproses oleh Manager FMD.');
+      }
+
+    } else if (req.status === 'approved') {
+      // ── TAHAP 4: Approved → PIC Gudang siapkan barang & ubah status ke Ready for User ──
+      if (isPIC || isSuperAdmin) {
+        actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="background:#ecfdf5;border:1px solid #a7f3d0;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#065f46;">
+            <strong>✅ Disetujui Manager FMD.</strong><br>
+            Pengajuan telah disetujui Manager FMD dan dikembalikan ke PIC Gudang. Silakan siapkan barang di gudang. Jika barang sudah siap diserahkan kepada pemohon, klik tombol di bawah untuk mengubah status menjadi <b>Ready for User</b>. Pemohon akan otomatis menerima notifikasi untuk mengambil barang.
+          </div>
+          <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Item2','ready_for_user')">📦 Tandai Barang Siap Diambil (Ready for User)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Item2','canceled')">✕ Batalkan Pengajuan</button>
+        </div>`;
+      } else if (isManagerFMD) {
+        picMessage = reminderBox('✅', 'Pengajuan Telah Disetujui',
+          'Anda telah menyetujui pengajuan ini. Pengajuan dikembalikan ke PIC Gudang untuk penyiapan barang.');
+      } else {
+        picMessage = reminderBox('📦', 'Sedang Disiapkan di Gudang',
+          'Pengajuan telah disetujui oleh Manager FMD. PIC Gudang sedang menyiapkan barang.');
+      }
+
+    } else if (req.status === 'ready_for_user') {
+      // ── TAHAP 5: Ready for User → Selesai (Completed) ──
+      if (isPIC || isSuperAdmin) {
+        actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
+            <strong>📦 Status: Ready for User.</strong><br>
+            Notifikasi telah dikirim ke pemohon. Klik tombol di bawah jika barang telah diambil/diserahkan untuk menyelesaikan permintaan (Completed) dan memotong stok otomatis.
+          </div>
+          <button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Item2','completed')">✓ Konfirmasi Barang Telah Diambil (Selesai)</button>
+          <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Item2','canceled')">✕ Batalkan Pengajuan</button>
+        </div>`;
+      } else {
+        picMessage = reminderBox('📦', 'Siap Diambil di Gudang',
+          'Barang telah siap di gudang dan pemohon telah menerima notifikasi untuk mengambil barang.');
+      }
     }
 
   } else if (req.status === 'pending') {
@@ -3146,7 +3413,7 @@ function renderDetailPengajuanTinjau() {
   }
 
   return `
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 1.5rem;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 1.5rem; flex-wrap:wrap; gap:0.75rem;">
       <div style="display:flex; align-items:center;">
         <button class="btn btn-outline btn-sm" onclick="switchView(previousView || 'dashboard')" style="margin-right:1rem;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.2rem; vertical-align: middle;"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -3209,18 +3476,7 @@ function renderDetailPengajuanTinjau() {
               <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Pembebanan Biaya:</span>
               ${req.cost_bearer || '-'}
             </div>` : ''}
-            ${req.type === 'Item2' ? `
-            <div style="grid-column:1/3;">
-              <span style="font-weight:600; display:block; margin-bottom:0.25rem;">Daftar Barang:</span>
-              <ul style="margin:0; padding-left:1.25rem; font-size:0.85rem; color:#1e293b; line-height:1.5;">
-                ${(function(){
-                  try {
-                    let items = JSON.parse(req.items_json);
-                    return items.map(i => `<li><strong>${i.name}</strong> (${i.quantity} unit)</li>`).join('');
-                  } catch(e) { return '<li>Format data invalid</li>'; }
-                })()}
-              </ul>
-            </div>` : ''}
+            ${req.type === 'Item2' ? renderItem2ItemsEditor(req, isFinal) : ''}
             <div style="grid-column:1/3; background:#f8fafc; padding:0.75rem 1rem; border-radius:0.5rem; border:1px solid #f1f5f9;">
               ${req.type === 'Zoom' ? `
                 <div style="display:flex;flex-direction:column;gap:0.5rem;">
@@ -3425,18 +3681,18 @@ function buildDetailBody(req) {
         <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>
       </div>
       ${req.type === 'Item2' ? `
-      <div class="tv-row" style="grid-column:1/3; margin-top:0.5rem;">
+      <div class="tv-row tv-row-item2" style="grid-column:1/-1; margin-top:0.5rem; width:100%; box-sizing:border-box;">
         <div class="tv-label" style="margin-bottom:0.5rem;">Daftar Permintaan:</div>
-        <div class="tv-value" style="width:100%;">
+        <div class="tv-value" style="width:100%; max-width:100%; box-sizing:border-box; overflow-x:auto;">
           <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
             <thead style="background:#f1f5f9; border-bottom:1px solid #e2e8f0;">
-              <tr><th style="padding:0.5rem;text-align:left;">Nama Barang</th><th style="padding:0.5rem;text-align:center;">Jumlah</th></tr>
+              <tr><th style="padding:0.5rem;text-align:left;">Nama Barang</th><th style="padding:0.5rem;text-align:center;width:75px;">Jumlah</th></tr>
             </thead>
             <tbody>
               ${(function(){
                 try {
                   let items = JSON.parse(req.items_json);
-                  return items.map(i => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:0.5rem;">${i.name}</td><td style="padding:0.5rem;text-align:center;font-weight:600;">${i.quantity}</td></tr>`).join('');
+                  return items.map(i => `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:0.5rem;word-break:break-word;">${String(i.name || '').replace(/</g, '&lt;')}</td><td style="padding:0.5rem;text-align:center;font-weight:700;color:#2563eb;">${i.quantity}</td></tr>`).join('');
                 } catch(e) { return '<tr><td colspan="2" style="padding:0.5rem;color:red;">Format data invalid</td></tr>'; }
               })()}
             </tbody>
@@ -3590,9 +3846,10 @@ async function handleApproveRAB(id) {
 }
 
 async function doDisburseRepair(id) {
-  const worker = (document.getElementById('assign-worker') || {}).value || '';
+  const checked = Array.from(document.querySelectorAll('input[name="assign_worker_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
+  let worker = checked.length > 0 ? checked.join(', ') : ((document.getElementById('assign-worker') || {}).value || '');
   if (!worker) {
-    Toast.error('Pilih pekerja/staff terlebih dahulu!');
+    Toast.error('Pilih minimal satu pekerja/staff perbaikan!');
     return;
   }
   // Simpan penugasan teknisi ke database
@@ -3612,10 +3869,61 @@ async function doDisburseRepair(id) {
   await updateStatus(id, 'Repair', 'in-progress');
 }
 
+function onTechnicianCheckboxChange(el) {
+  const allCbs = document.querySelectorAll('input[name="assign_technician_checkbox"]');
+  if (el.value === 'TANPA_TEKNISI' && el.checked) {
+    allCbs.forEach(cb => {
+      if (cb.value !== 'TANPA_TEKNISI') cb.checked = false;
+    });
+  } else if (el.value !== 'TANPA_TEKNISI' && el.checked) {
+    allCbs.forEach(cb => {
+      if (cb.value === 'TANPA_TEKNISI') cb.checked = false;
+    });
+  }
+
+  const checked = Array.from(allCbs).filter(cb => cb.checked);
+  allCbs.forEach(cb => {
+    const row = cb.closest('.tech-checkbox-row');
+    if (row) {
+      if (cb.checked) {
+        row.style.borderColor = cb.value === 'TANPA_TEKNISI' ? '#ea580c' : '#0d9488';
+        row.style.background = cb.value === 'TANPA_TEKNISI' ? '#fff7ed' : '#f0fdf4';
+      } else {
+        row.style.borderColor = '#e2e8f0';
+        row.style.background = '#fff';
+      }
+    }
+  });
+
+  const badge = document.getElementById('assign-tech-count-badge');
+  if (badge) {
+    if (checked.some(cb => cb.value === 'TANPA_TEKNISI')) {
+      badge.textContent = 'Tanpa Teknisi';
+      badge.style.background = '#ffedd5';
+      badge.style.color = '#c2410c';
+    } else if (checked.length > 0) {
+      badge.textContent = `${checked.length} Teknisi Terpilih`;
+      badge.style.background = '#ccfbf1';
+      badge.style.color = '#0f766e';
+    } else {
+      badge.textContent = 'Belum Dipilih';
+      badge.style.background = '#f1f5f9';
+      badge.style.color = '#64748b';
+    }
+  }
+}
+
 async function doRepairAssign(id) {
-  const techName = (document.getElementById('assign-technician') || {}).value || '';
+  const checked = Array.from(document.querySelectorAll('input[name="assign_technician_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
+  let techName = '';
+  if (checked.length > 0) {
+    techName = checked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : checked.join(', ');
+  } else {
+    techName = (document.getElementById('assign-technician') || {}).value || '';
+  }
+
   if (!techName) {
-    Toast.error('Pilih teknisi/pelaksana perbaikan!');
+    Toast.error('Pilih minimal satu teknisi/pelaksana perbaikan!');
     return;
   }
 
@@ -3629,6 +3937,656 @@ async function doRepairAssign(id) {
   if (currentDetailReq) currentDetailReq.technician_name = techName;
   await loadAllData();
   openDetailView(id, 'Repair', 'tinjau');
+}
+
+// ============================================================
+// ITEM2 (PERMINTAAN BARANG) EDITOR LOGIC FOR SUPERADMIN / PIC (MOBILE FRIENDLY)
+// ============================================================
+function renderItem2ItemsEditor(req, isFinal) {
+  let items = [];
+  try {
+    items = typeof req.items_json === 'string' ? JSON.parse(req.items_json) : (Array.isArray(req.items_json) ? req.items_json : []);
+  } catch(e) {
+    items = [];
+  }
+  window._item2EditItems = JSON.parse(JSON.stringify(items));
+  window._item2OriginalItems = JSON.parse(JSON.stringify(items));
+  window._item2CurrentReqId = req.id;
+  window._item2IsReadOnly = isFinal;
+
+  const invList = (typeof ALL_INV_ITEMS !== 'undefined' && Array.isArray(ALL_INV_ITEMS)) ? ALL_INV_ITEMS : [];
+
+  return `
+  <style>
+    .item2-desktop-view {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto;
+    }
+    .item2-mobile-view {
+      display: none;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .item2-mobile-card {
+      box-sizing: border-box !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      word-break: break-word !important;
+    }
+    .item2-stepper-btn {
+      width: 32px;
+      height: 32px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #334155;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      padding: 0;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .item2-stepper-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
+    .item2-stepper-btn:active { background: #cbd5e1; }
+    @media (max-width: 860px) {
+      .item2-desktop-view { display: none !important; }
+      .item2-mobile-view { display: flex !important; flex-direction: column !important; gap: 0.75rem !important; }
+      .item2-editor-box { padding: 0.75rem 0.5rem !important; }
+      .item2-add-box { padding: 0.75rem 0.6rem !important; box-sizing: border-box !important; width: 100% !important; max-width: 100% !important; }
+      .item2-add-row { flex-direction: column !important; align-items: stretch !important; gap: 0.5rem !important; width: 100% !important; }
+      .item2-add-row select { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+      .item2-add-row-bottom { display: flex !important; flex-direction: column !important; gap: 0.5rem !important; align-items: stretch !important; width: 100% !important; }
+      .item2-add-row-bottom > div { width: 100% !important; justify-content: flex-start !important; }
+      .item2-add-row-bottom button { width: 100% !important; min-height: 42px !important; justify-content: center !important; }
+      .item2-footer-row { flex-direction: column !important; align-items: stretch !important; gap: 0.75rem !important; width: 100% !important; }
+      .item2-footer-row button { width: 100% !important; min-height: 44px !important; justify-content: center !important; font-size: 0.95rem !important; }
+    }
+  </style>
+
+  <div class="item2-editor-box" style="grid-column:1/-1; margin-top:0.5rem; background:#f8fafc; border:1px solid #cbd5e1; border-radius:0.5rem; padding:0.9rem; box-sizing:border-box; width:100%; max-width:100%; overflow-x:hidden;">
+    <!-- HEADER DAFTAR BARANG -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem; width:100%; box-sizing:border-box;">
+      <div style="max-width:calc(100% - 90px);">
+        <span style="font-weight:700; color:#0f172a; font-size:0.95rem; display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+          <span>📦 Daftar Barang Permintaan</span>
+          ${!isFinal ? `<span style="font-size:0.72rem; font-weight:600; background:#dbeafe; color:#1e40af; padding:2px 6px; border-radius:4px;">Dapat Diedit Superadmin/PIC</span>` : ''}
+        </span>
+        <span style="font-size:0.75rem; color:#64748b; margin-top:0.15rem; display:block; line-height:1.3;">
+          ${isFinal ? 'Pengajuan ini telah selesai/final (read-only).' : 'Superadmin/PIC dapat mengubah barang, mengatur jumlah, menghapus, atau menambah item.'}
+        </span>
+      </div>
+      <span id="item2-badge-count" style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem; padding:4px 10px; border-radius:999px; white-space:nowrap; flex-shrink:0;">
+        ${items.length} Barang
+      </span>
+    </div>
+
+    <!-- TAMPILAN DESKTOP: TABEL -->
+    <div class="item2-desktop-view" style="overflow-x:auto; background:#fff; border:1px solid #e2e8f0; border-radius:8px; width:100%; max-width:100%; box-sizing:border-box;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+        <thead style="background:#f1f5f9; color:#334155; font-weight:700; border-bottom:1px solid #cbd5e1;">
+          <tr>
+            <th style="padding:0.6rem 0.5rem; text-align:center; width:45px;">No</th>
+            <th style="padding:0.6rem 0.75rem; text-align:left;">Nama Barang (Inventaris)</th>
+            <th style="padding:0.6rem 0.5rem; text-align:center; width:130px;">Jumlah</th>
+            ${!isFinal ? `<th style="padding:0.6rem 0.5rem; text-align:center; width:75px;">Aksi</th>` : ''}
+          </tr>
+        </thead>
+        <tbody id="item2-editor-tbody">
+          ${renderItem2RowsHtml(isFinal)}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- TAMPILAN MOBILE: KARTU -->
+    <div class="item2-mobile-view" id="item2-mobile-cards-container" style="width:100%; max-width:100%; box-sizing:border-box;">
+      ${renderItem2MobileCardsHtml(isFinal)}
+    </div>
+
+    ${!isFinal ? `
+      <!-- FORM TAMBAH BARANG -->
+      <div class="item2-add-box" style="margin-top:0.85rem; padding:0.85rem; background:#fff; border:1px dashed #94a3b8; border-radius:8px; width:100%; max-width:100%; box-sizing:border-box;">
+        <div style="font-weight:700; font-size:0.82rem; color:#1e293b; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.3rem;">
+          ➕ Tambah Barang ke Daftar Permintaan:
+        </div>
+        <div class="item2-add-row" style="display:flex; flex-direction:column; gap:0.5rem; width:100%; box-sizing:border-box;">
+          <div onclick="openItem2PickerModal('add')" 
+               id="item2-add-picker-btn"
+               style="display:flex; justify-content:space-between; align-items:center; background:#fff; cursor:pointer; width:100%; max-width:100%; box-sizing:border-box; padding:0.55rem 0.75rem; border:1px solid #cbd5e1; border-radius:6px; min-height:42px;">
+            <span id="item2-add-picker-label" style="font-size:0.85rem; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:calc(100% - 35px);">
+              🔍 Klik di sini untuk Cari & Pilih Barang...
+            </span>
+            <span style="font-size:0.75rem; font-weight:700; color:#2563eb; background:#eff6ff; padding:3px 8px; border-radius:4px; flex-shrink:0;">Pilih ▾</span>
+          </div>
+          <input type="hidden" id="item2-add-select" value="" />
+          <div class="item2-add-row-bottom" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; width:100%; box-sizing:border-box;">
+            <div style="display:inline-flex; align-items:center; gap:0.3rem;">
+              <button type="button" class="item2-stepper-btn" onclick="stepItem2AddQty(-1)" title="Kurangi 1">−</button>
+              <input type="number" id="item2-add-qty" min="1" value="1" class="form-input" style="width:55px; text-align:center; padding:0.4rem 0.25rem; font-weight:700; font-size:0.85rem; border:1px solid #cbd5e1; border-radius:6px;" placeholder="Qty" title="Jumlah">
+              <button type="button" class="item2-stepper-btn" onclick="stepItem2AddQty(1)" title="Tambah 1">+</button>
+              <span style="font-size:0.8rem; color:#64748b; margin-left:2px;">unit</span>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="onItem2Add()" style="padding:0.45rem 1rem; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:0.3rem; border-radius:6px; cursor:pointer;">
+              <span>➕ Tambah ke Daftar</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTER SIMPAN & STATUS -->
+      <div class="item2-footer-row" style="display:flex; justify-content:space-between; align-items:center; margin-top:0.85rem; padding-top:0.85rem; border-top:1px solid #e2e8f0; flex-wrap:wrap; gap:0.6rem; width:100%; box-sizing:border-box;">
+        <div id="item2-change-status" style="font-size:0.78rem; color:#64748b; line-height:1.4; width:100%; box-sizing:border-box;">
+          <span>ℹ️ Anda dapat mengganti pilihan barang, mengatur jumlah, menghapus, atau menambah barang baru.</span>
+        </div>
+        <button type="button" id="btn-save-item2" class="btn btn-success" onclick="saveItem2Changes(${req.id})" style="padding:0.5rem 1.2rem; font-size:0.875rem; font-weight:700; background:#059669; border-color:#047857; color:#fff; display:inline-flex; align-items:center; gap:0.4rem; border-radius:6px; cursor:pointer; transition:all 0.2s;">
+          💾 Simpan Perubahan Barang
+        </button>
+      </div>
+    ` : ''}
+  </div>`;
+}
+
+function renderItem2RowsHtml(isFinal) {
+  const items = window._item2EditItems || [];
+  if (items.length === 0) {
+    return `<tr><td colspan="${isFinal ? 3 : 4}" style="padding:1.5rem; text-align:center; color:#94a3b8; font-style:italic;">Belum ada barang dalam daftar permintaan.</td></tr>`;
+  }
+
+  const invList = (typeof ALL_INV_ITEMS !== 'undefined' && Array.isArray(ALL_INV_ITEMS)) ? ALL_INV_ITEMS : [];
+
+  return items.map((item, idx) => {
+    const inv = invList.find(x => String(x.id) === String(item.id)) || invList.find(x => (x.name || '').toLowerCase() === (item.name || '').toLowerCase());
+    const stk = inv ? parseInt(inv.stock) || 0 : null;
+    const stkUnit = inv ? (inv.unit || 'unit') : '';
+    const stkCol = stk === null ? '#64748b' : (stk <= 0 ? '#dc2626' : (stk <= 5 ? '#d97706' : '#16a34a'));
+    const stkText = stk === null ? '(Item kustom)' : `Stok gudang: <strong>${stk} ${stkUnit}</strong>`;
+
+    if (isFinal) {
+      return `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:0.6rem 0.5rem; text-align:center; color:#64748b;">${idx + 1}</td>
+        <td style="padding:0.6rem 0.75rem; font-weight:600; color:#1e293b;">
+          ${String(item.name || '').replace(/</g, '&lt;')}
+          ${inv ? `<span style="font-size:0.75rem; color:#64748b; font-weight:400; margin-left:0.5rem;">(${inv.stock} ${inv.unit || 'unit'} tersedia)</span>` : ''}
+        </td>
+        <td style="padding:0.6rem 0.5rem; text-align:center; font-weight:700; color:#2563eb;">${item.quantity || 1}</td>
+      </tr>`;
+    }
+
+    return `
+    <tr style="border-bottom:1px solid #f1f5f9; background:#fff;">
+      <td style="padding:0.6rem 0.5rem; text-align:center; color:#64748b; font-weight:600;">${idx + 1}</td>
+      <td style="padding:0.6rem 0.75rem;">
+        <div onclick="openItem2PickerModal(${idx})" 
+             style="display:flex; justify-content:space-between; align-items:center; background:#fff; cursor:pointer; width:100%; box-sizing:border-box; padding:0.4rem 0.6rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem;">
+          <span style="font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:calc(100% - 30px);">
+            ${String(item.name || 'Pilih Barang...').replace(/</g, '&lt;')}
+          </span>
+          <span style="font-size:0.72rem; color:#2563eb; font-weight:700; flex-shrink:0;">Ganti ▾</span>
+        </div>
+        <div style="font-size:0.72rem; margin-top:3px; color:${stkCol};">
+          📦 ${stkText}
+        </div>
+      </td>
+      <td style="padding:0.6rem 0.5rem; text-align:center;">
+        <div style="display:inline-flex; align-items:center; justify-content:center; gap:0.25rem;">
+          <button type="button" class="item2-stepper-btn" style="width:28px; height:28px; font-size:0.95rem;" onclick="stepItem2Qty(${idx}, -1)" title="Kurangi 1">−</button>
+          <input type="number" min="1" value="${item.quantity || 1}" 
+            onchange="onItem2QtyChange(${idx}, this.value)" 
+            oninput="onItem2QtyChange(${idx}, this.value)" 
+            class="form-input" 
+            style="width:52px; text-align:center; padding:0.25rem 0.15rem; font-weight:700; font-size:0.85rem; border:1px solid #cbd5e1; border-radius:6px;" />
+          <button type="button" class="item2-stepper-btn" style="width:28px; height:28px; font-size:0.95rem;" onclick="stepItem2Qty(${idx}, 1)" title="Tambah 1">+</button>
+        </div>
+      </td>
+      <td style="padding:0.6rem 0.5rem; text-align:center;">
+        <button type="button" class="btn btn-sm" onclick="onItem2Delete(${idx})" 
+          style="padding:0.35rem 0.6rem; font-size:0.78rem; background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; border-radius:6px; cursor:pointer;" 
+          title="Hapus barang ini dari daftar">
+          🗑️ Hapus
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderItem2MobileCardsHtml(isFinal) {
+  const items = window._item2EditItems || [];
+  if (items.length === 0) {
+    return `<div style="padding:1.25rem; text-align:center; color:#94a3b8; font-style:italic; background:#fff; border-radius:8px; border:1px dashed #cbd5e1; width:100%; box-sizing:border-box;">Belum ada barang dalam daftar permintaan.</div>`;
+  }
+
+  const invList = (typeof ALL_INV_ITEMS !== 'undefined' && Array.isArray(ALL_INV_ITEMS)) ? ALL_INV_ITEMS : [];
+
+  return items.map((item, idx) => {
+    const inv = invList.find(x => String(x.id) === String(item.id)) || invList.find(x => (x.name || '').toLowerCase() === (item.name || '').toLowerCase());
+    const stk = inv ? parseInt(inv.stock) || 0 : null;
+    const stkUnit = inv ? (inv.unit || 'unit') : '';
+    const stkCol = stk === null ? '#64748b' : (stk <= 0 ? '#dc2626' : (stk <= 5 ? '#d97706' : '#16a34a'));
+    const stkBg  = stk === null ? '#f1f5f9' : (stk <= 0 ? '#fee2e2' : (stk <= 5 ? '#fef3c7' : '#dcfce7'));
+    const stkText = stk === null ? 'Item Kustom' : `Stok: ${stk} ${stkUnit}`;
+
+    if (isFinal) {
+      return `
+      <div class="item2-mobile-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:0.85rem; box-shadow:0 1px 2px rgba(0,0,0,0.04); width:100%; max-width:100%; box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem; flex-wrap:wrap; gap:0.3rem;">
+          <span style="font-size:0.75rem; font-weight:700; color:#475569; background:#f1f5f9; padding:2px 8px; border-radius:4px;">#${idx + 1}</span>
+          <span style="font-size:0.75rem; font-weight:700; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:4px;">
+            Jumlah: ${item.quantity || 1} ${stkUnit || 'unit'}
+          </span>
+        </div>
+        <div style="font-weight:600; font-size:0.9rem; color:#1e293b; line-height:1.4; word-break:break-word;">
+          ${String(item.name || '').replace(/</g, '&lt;')}
+        </div>
+        ${inv ? `
+        <div style="font-size:0.75rem; color:${stkCol}; margin-top:0.25rem;">
+          📦 ${stkText}
+        </div>` : ''}
+      </div>`;
+    }
+
+    return `
+    <div class="item2-mobile-card" style="background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:0.85rem; box-shadow:0 1px 3px rgba(0,0,0,0.05); width:100%; max-width:100%; box-sizing:border-box;">
+      <!-- CARD HEADER: NO, BADGE, & DELETE -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; padding-bottom:0.5rem; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:0.4rem; width:100%;">
+        <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap; max-width:calc(100% - 85px);">
+          <span style="font-size:0.78rem; font-weight:700; color:#1e293b; background:#f1f5f9; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0; white-space:nowrap;">
+            Barang #${idx + 1}
+          </span>
+          <span style="font-size:0.72rem; font-weight:600; color:${stkCol}; background:${stkBg}; padding:2px 6px; border-radius:4px; white-space:nowrap;">
+            📦 ${stkText}
+          </span>
+        </div>
+        <button type="button" onclick="onItem2Delete(${idx})" 
+          style="padding:0.3rem 0.65rem; font-size:0.78rem; font-weight:600; background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:0.25rem; flex-shrink:0;" 
+          title="Hapus barang ini">
+          🗑️ Hapus
+        </button>
+      </div>
+
+      <!-- SELECT ITEM -->
+      <div style="margin-bottom:0.65rem; width:100%;">
+        <label style="display:block; font-size:0.75rem; font-weight:600; color:#475569; margin-bottom:0.25rem;">Pilih / Ganti Barang:</label>
+        <div onclick="openItem2PickerModal(${idx})" 
+             style="display:flex; justify-content:space-between; align-items:center; background:#fff; cursor:pointer; width:100%; max-width:100%; box-sizing:border-box; padding:0.5rem 0.75rem; border:1px solid #cbd5e1; border-radius:6px; min-height:40px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+          <div style="min-width:0; flex:1; overflow:hidden; margin-right:0.4rem;">
+            <div style="font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.875rem;">
+              ${String(item.name || 'Pilih Barang...').replace(/</g, '&lt;')}
+            </div>
+            <div style="font-size:0.72rem; color:${stkCol}; font-weight:600; margin-top:1px;">
+              📦 ${stkText}
+            </div>
+          </div>
+          <span style="font-size:0.75rem; font-weight:700; color:#2563eb; background:#eff6ff; padding:3px 8px; border-radius:4px; flex-shrink:0;">Ganti ▾</span>
+        </div>
+      </div>
+
+      <!-- QUANTITY CONTROLS -->
+      <div style="width:100%;">
+        <label style="display:block; font-size:0.75rem; font-weight:600; color:#475569; margin-bottom:0.25rem;">Jumlah Kebutuhan:</label>
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.4rem; width:100%;">
+          <div style="display:inline-flex; align-items:center; gap:0.35rem;">
+            <button type="button" class="item2-stepper-btn" onclick="stepItem2Qty(${idx}, -1)" title="Kurangi 1">−</button>
+            <input type="number" min="1" value="${item.quantity || 1}" 
+              onchange="onItem2QtyChange(${idx}, this.value)" 
+              oninput="onItem2QtyChange(${idx}, this.value)" 
+              class="form-input" 
+              style="width:55px; text-align:center; padding:0.4rem 0.25rem; font-weight:700; font-size:0.95rem; border:1px solid #cbd5e1; border-radius:6px;" />
+            <button type="button" class="item2-stepper-btn" onclick="stepItem2Qty(${idx}, 1)" title="Tambah 1">+</button>
+            <span style="font-size:0.82rem; font-weight:600; color:#64748b; margin-left:0.25rem;">${stkUnit || 'unit'}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshItem2Editor() {
+  const isReadOnly = window._item2IsReadOnly || false;
+  const tbody = document.getElementById('item2-editor-tbody');
+  if (tbody) {
+    tbody.innerHTML = renderItem2RowsHtml(isReadOnly);
+  }
+  const mobileContainer = document.getElementById('item2-mobile-cards-container');
+  if (mobileContainer) {
+    mobileContainer.innerHTML = renderItem2MobileCardsHtml(isReadOnly);
+  }
+  const countBadge = document.getElementById('item2-badge-count');
+  if (countBadge && window._item2EditItems) {
+    countBadge.textContent = `${window._item2EditItems.length} Barang`;
+  }
+}
+
+function stepItem2Qty(idx, delta) {
+  if (!window._item2EditItems || !window._item2EditItems[idx]) return;
+  const current = parseInt(window._item2EditItems[idx].quantity) || 1;
+  const nextVal = Math.max(1, current + delta);
+  window._item2EditItems[idx].quantity = nextVal;
+  markItem2Changed();
+  refreshItem2Editor();
+}
+
+function stepItem2AddQty(delta) {
+  const qtyEl = document.getElementById('item2-add-qty');
+  if (!qtyEl) return;
+  const current = parseInt(qtyEl.value) || 1;
+  qtyEl.value = Math.max(1, current + delta);
+}
+
+function onItem2ItemChange(idx, selectEl) {
+  if (!window._item2EditItems || !window._item2EditItems[idx]) return;
+  const opt = selectEl.options[selectEl.selectedIndex];
+  const newId = parseInt(opt.value) || 0;
+  const newName = opt.getAttribute('data-name') || opt.text;
+  window._item2EditItems[idx].id = newId;
+  window._item2EditItems[idx].name = newName;
+  markItem2Changed();
+  refreshItem2Editor();
+}
+
+function onItem2QtyChange(idx, val) {
+  if (!window._item2EditItems || !window._item2EditItems[idx]) return;
+  const q = Math.max(1, parseInt(val) || 1);
+  window._item2EditItems[idx].quantity = q;
+  markItem2Changed();
+}
+
+function onItem2Delete(idx) {
+  if (!window._item2EditItems || window._item2EditItems.length <= 1) {
+    Toast.error('Permintaan barang harus memiliki minimal 1 barang!');
+    return;
+  }
+  const removed = window._item2EditItems.splice(idx, 1);
+  refreshItem2Editor();
+  markItem2Changed();
+  Toast.info(`Barang "${removed[0]?.name || ''}" dihapus dari daftar sementara. Klik "Simpan Perubahan Barang" untuk menerapkan.`);
+}
+
+function onItem2Add() {
+  const sel = document.getElementById('item2-add-select');
+  const qtyEl = document.getElementById('item2-add-qty');
+  if (!sel || !sel.value) {
+    Toast.error('Pilih barang dari daftar inventaris terlebih dahulu! (Klik kolom pilihan barang)');
+    return;
+  }
+  const opt = (sel.options && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex] : null;
+  const itemId = parseInt(sel.value) || 0;
+  const itemName = sel.getAttribute('data-name') || (opt ? (opt.getAttribute('data-name') || opt.text) : '');
+  const qty = Math.max(1, parseInt(qtyEl ? qtyEl.value : 1) || 1);
+
+  if (!itemName) {
+    Toast.error('Pilih barang dari daftar terlebih dahulu!');
+    return;
+  }
+
+  window._item2EditItems = window._item2EditItems || [];
+  const existing = window._item2EditItems.find(x => (itemId > 0 && String(x.id) === String(itemId)) || (x.name || '').toLowerCase() === itemName.toLowerCase());
+  if (existing) {
+    existing.quantity += qty;
+    Toast.info(`Jumlah "${itemName}" ditambahkan menjadi ${existing.quantity}.`);
+  } else {
+    window._item2EditItems.push({ id: itemId, name: itemName, quantity: qty });
+    Toast.success(`Barang "${itemName}" berhasil ditambahkan. Klik "Simpan Perubahan Barang" untuk menyimpan.`);
+  }
+
+  sel.value = '';
+  sel.removeAttribute('data-name');
+  sel.removeAttribute('data-stock');
+  sel.removeAttribute('data-unit');
+  const label = document.getElementById('item2-add-picker-label');
+  if (label) {
+    label.innerHTML = '🔍 Klik di sini untuk Cari & Pilih Barang...';
+    label.style.color = '#64748b';
+  }
+  if (qtyEl) qtyEl.value = '1';
+  refreshItem2Editor();
+  markItem2Changed();
+}
+
+// ============================================================
+// SEARCHABLE MODAL ITEM PICKER LOGIC (PREVENTS BROWSER POPUP OVERFLOW)
+// ============================================================
+window._item2PickerTargetIdx = null;
+
+function openItem2PickerModal(targetIdx) {
+  window._item2PickerTargetIdx = targetIdx;
+  renderItem2PickerResults('');
+  Modal.open('modal-item2-picker');
+  setTimeout(() => {
+    const sInput = document.getElementById('item2-picker-search');
+    if (sInput) {
+      sInput.value = '';
+      sInput.focus();
+    }
+  }, 100);
+}
+
+function filterItem2PickerList() {
+  const sInput = document.getElementById('item2-picker-search');
+  renderItem2PickerResults(sInput ? sInput.value : '');
+}
+
+function renderItem2PickerResults(query = '') {
+  const container = document.getElementById('item2-picker-list');
+  const countEl = document.getElementById('item2-picker-count');
+  if (!container) return;
+
+  const invList = (typeof ALL_INV_ITEMS !== 'undefined' && Array.isArray(ALL_INV_ITEMS)) ? ALL_INV_ITEMS : [];
+  const q = (query || '').trim().toLowerCase();
+
+  const filtered = q
+    ? invList.filter(x => (x.name || '').toLowerCase().includes(q))
+    : invList.slice(0, 80);
+
+  if (countEl) {
+    countEl.innerHTML = q
+      ? `<span>Ditemukan <strong>${filtered.length}</strong> barang cocok</span>`
+      : `<span>Menampilkan <strong>${filtered.length}</strong> dari ${invList.length} barang inventaris</span>`;
+  }
+
+  const targetIdx = window._item2PickerTargetIdx;
+  const currentId = (typeof targetIdx === 'number' && window._item2EditItems && window._item2EditItems[targetIdx])
+    ? String(window._item2EditItems[targetIdx].id)
+    : (document.getElementById('item2-add-select')?.value || '');
+
+  let html = '';
+
+  if (q) {
+    html += `
+      <div onclick="selectCustomItem2PickerItem('${String(query).replace(/'/g, "\\'")}')" 
+           style="padding:0.5rem 0.75rem; margin-bottom:0.5rem; background:#f0fdf4; border:1px dashed #86efac; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+        <div style="font-size:0.8rem; color:#166534; word-break:break-word;">
+          ➕ Gunakan nama kustom: "<strong>${String(query).replace(/</g, '&lt;')}</strong>"
+        </div>
+        <span style="font-size:0.7rem; font-weight:700; color:#15803d; background:#dcfce7; padding:2px 6px; border-radius:4px; flex-shrink:0;">Kustom</span>
+      </div>
+    `;
+  }
+
+  if (filtered.length === 0) {
+    html += `
+      <div style="text-align:center; padding:1.5rem 0.5rem; color:#94a3b8; font-size:0.85rem;">
+        Tidak ada barang inventaris yang cocok dengan "${String(query).replace(/</g, '&lt;')}".
+      </div>
+    `;
+  } else {
+    html += filtered.map(item => {
+      const isSel = String(item.id) === currentId;
+      const stk = parseInt(item.stock) || 0;
+      const unit = item.unit || 'unit';
+      const stkCol = stk <= 0 ? '#dc2626' : (stk <= 5 ? '#d97706' : '#16a34a');
+      const stkBg  = stk <= 0 ? '#fee2e2' : (stk <= 5 ? '#fef3c7' : '#dcfce7');
+
+      return `
+      <div onclick="selectItem2PickerItem(${item.id})" 
+           style="padding:0.6rem 0.75rem; margin-bottom:0.35rem; border-radius:6px; border:1px solid ${isSel ? '#93c5fd' : '#e2e8f0'}; background:${isSel ? '#eff6ff' : '#fff'}; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; transition:background 0.15s;"
+           onmouseover="this.style.background='${isSel ? '#eff6ff' : '#f8fafc'}'"
+           onmouseout="this.style.background='${isSel ? '#eff6ff' : '#fff'}'">
+        <div style="min-width:0; flex:1;">
+          <div style="font-weight:600; font-size:0.875rem; color:#1e293b; word-break:break-word; line-height:1.35;">
+            ${String(item.name || '').replace(/</g, '&lt;')}
+          </div>
+          <div style="font-size:0.72rem; color:${stkCol}; font-weight:600; margin-top:2px; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <span style="background:${stkBg}; padding:1px 6px; border-radius:4px; display:inline-block;">
+              📦 Stok: ${stk} ${unit}
+            </span>
+            ${item.location_name ? `<span style="background:#f1f5f9; color:#475569; padding:1px 6px; border-radius:4px; font-weight:500;">🏛️ ${String(item.location_name).replace(/</g, '&lt;')}</span>` : ''}
+          </div>
+        </div>
+        ${isSel ? `<span style="color:#2563eb; font-weight:700; font-size:1.1rem; flex-shrink:0;">✓</span>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  container.innerHTML = html;
+}
+
+function selectItem2PickerItem(itemId) {
+  const invList = (typeof ALL_INV_ITEMS !== 'undefined' && Array.isArray(ALL_INV_ITEMS)) ? ALL_INV_ITEMS : [];
+  const item = invList.find(x => String(x.id) === String(itemId));
+  if (!item) return;
+
+  const targetIdx = window._item2PickerTargetIdx;
+  if (targetIdx === 'add') {
+    const sel = document.getElementById('item2-add-select');
+    const label = document.getElementById('item2-add-picker-label');
+    if (sel) {
+      sel.value = item.id;
+      sel.setAttribute('data-name', item.name);
+      sel.setAttribute('data-stock', item.stock);
+      sel.setAttribute('data-unit', item.unit || 'unit');
+    }
+    if (label) {
+      label.innerHTML = `<strong>${String(item.name).replace(/</g, '&lt;')}</strong> <span style="color:#059669; font-size:0.75rem;">(Stok: ${item.stock} ${item.unit || 'unit'})</span>`;
+      label.style.color = '#1e293b';
+    }
+    Toast.info(`Barang "${item.name}" dipilih.`);
+  } else if (typeof targetIdx === 'number' && window._item2EditItems && window._item2EditItems[targetIdx]) {
+    window._item2EditItems[targetIdx].id = item.id;
+    window._item2EditItems[targetIdx].name = item.name;
+    markItem2Changed();
+    refreshItem2Editor();
+    Toast.info(`Barang #${targetIdx + 1} diubah menjadi "${item.name}".`);
+  }
+
+  Modal.close('modal-item2-picker');
+}
+
+function selectCustomItem2PickerItem(customName) {
+  const name = (customName || '').trim();
+  if (!name) return;
+
+  const targetIdx = window._item2PickerTargetIdx;
+  if (targetIdx === 'add') {
+    const sel = document.getElementById('item2-add-select');
+    const label = document.getElementById('item2-add-picker-label');
+    if (sel) {
+      sel.value = '0';
+      sel.setAttribute('data-name', name);
+      sel.setAttribute('data-stock', '0');
+      sel.setAttribute('data-unit', 'unit');
+    }
+    if (label) {
+      label.innerHTML = `<strong>${String(name).replace(/</g, '&lt;')}</strong> <span style="color:#64748b; font-size:0.75rem;">(Item Kustom)</span>`;
+      label.style.color = '#1e293b';
+    }
+    Toast.info(`Barang kustom "${name}" dipilih.`);
+  } else if (typeof targetIdx === 'number' && window._item2EditItems && window._item2EditItems[targetIdx]) {
+    window._item2EditItems[targetIdx].id = 0;
+    window._item2EditItems[targetIdx].name = name;
+    markItem2Changed();
+    refreshItem2Editor();
+    Toast.info(`Barang #${targetIdx + 1} diubah menjadi "${name}" (kustom).`);
+  }
+
+  Modal.close('modal-item2-picker');
+}
+
+function markItem2Changed() {
+  const statusEl = document.getElementById('item2-change-status');
+  if (statusEl) {
+    statusEl.innerHTML = '<span style="color:#b45309; font-weight:700; background:#fef3c7; border:1px solid #fde68a; padding:0.35rem 0.65rem; border-radius:6px; display:inline-block;">⚠️ Terdapat perubahan barang yang belum disimpan. Pastikan klik tombol hijau untuk menyimpan!</span>';
+  }
+  const btn = document.getElementById('btn-save-item2');
+  if (btn) {
+    btn.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.4)';
+  }
+}
+
+function unmarkItem2Changed() {
+  const statusEl = document.getElementById('item2-change-status');
+  if (statusEl) {
+    statusEl.innerHTML = '<span style="color:#059669; font-weight:600;">✅ Perubahan daftar barang telah tersimpan ke database.</span>';
+  }
+  const btn = document.getElementById('btn-save-item2');
+  if (btn) {
+    btn.style.boxShadow = 'none';
+  }
+}
+
+async function saveItem2Changes(id) {
+  if (!window._item2EditItems || window._item2EditItems.length === 0) {
+    Toast.error('Daftar barang tidak boleh kosong!');
+    return;
+  }
+  const btn = document.getElementById('btn-save-item2');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Menyimpan...';
+  }
+
+  try {
+    const res = await apiPost(API_BASE + 'requests.php', {
+      action: 'update_item2_items',
+      id: id,
+      items_json: JSON.stringify(window._item2EditItems)
+    });
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Simpan Perubahan Barang';
+    }
+
+    if (!res || !res.success) {
+      Toast.error(res?.message || 'Gagal menyimpan perubahan barang.');
+      return;
+    }
+
+    const newJson = res.items_json || JSON.stringify(window._item2EditItems);
+    if (currentDetailReq) {
+      currentDetailReq.items_json = newJson;
+    }
+    const rObj = (allRequests || []).find(r => r.type === 'Item2' && String(r.id) === String(id));
+    if (rObj) {
+      rObj.items_json = newJson;
+      rObj.details = `Permintaan Barang (${window._item2EditItems.length} jenis)`;
+    }
+    const itmObj = (typeof items2 !== 'undefined' && Array.isArray(items2)) ? items2.find(r => String(r.id) === String(id)) : null;
+    if (itmObj) {
+      itmObj.items_json = newJson;
+    }
+
+    window._item2OriginalItems = JSON.parse(JSON.stringify(window._item2EditItems));
+    unmarkItem2Changed();
+    Toast.success('Daftar barang permintaan berhasil diperbarui!');
+    refreshItem2Editor();
+  } catch(err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Simpan Perubahan Barang';
+    }
+    Toast.error('Terjadi kesalahan sistem: ' + err.message);
+  }
 }
 
 async function doApproveRequest(id, type, targetStatus = 'approved') {
@@ -4198,7 +5156,7 @@ window.renderAdminCalendarGrid = function() {
   const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   title.textContent = `${BULAN[mo]} ${yr}`;
 
-  const occupiedStatuses = ['approved','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','completed','returned'];
+  const occupiedStatuses = ['approved','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','completed','returned'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
 
@@ -4272,7 +5230,7 @@ window.showAdminDayDetail = function(dateStr, updateGrid = true) {
   const det = document.getElementById('admin-cal-detail');
   if (!det) return;
 
-  const occupiedStatuses = ['approved','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','completed','returned'];
+  const occupiedStatuses = ['approved','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','completed','returned'];
   const activeStatuses   = [...occupiedStatuses, 'pending'];
 
   // Requests on this date
@@ -4959,6 +5917,34 @@ async function deleteMasterData(id) {
     </div>
     <div class="modal-footer" style="padding: 0.75rem 1.25rem;">
       <button class="btn btn-ghost" onclick="Modal.close('modal-export-repair')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Item2 Searchable Picker (Prevents native mobile browser popup overflow) -->
+<div class="modal-overlay" id="modal-item2-picker" style="z-index: 99999;">
+  <div class="modal" style="max-width: 480px; width: 92%; max-height: 85vh; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin: auto; box-sizing: border-box;">
+    <div class="modal-header" style="padding: 0.85rem 1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; flex-shrink: 0;">
+      <h3 class="modal-title" style="font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+        <span>📦 Cari & Pilih Barang</span>
+      </h3>
+      <button type="button" class="modal-close-btn" onclick="Modal.close('modal-item2-picker')" style="border: none; background: none; font-size: 1.25rem; cursor: pointer; color: #64748b; line-height: 1; padding: 0.25rem;">&times;</button>
+    </div>
+    <div style="padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; background: #fff; flex-shrink: 0;">
+      <div style="position: relative; width: 100%;">
+        <input type="text" id="item2-picker-search" class="form-input" placeholder="Ketik nama barang untuk mencari..." oninput="filterItem2PickerList()" style="width: 100%; box-sizing: border-box; padding: 0.55rem 0.75rem 0.55rem 2.2rem; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 6px;" autocomplete="off" />
+        <span style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); font-size: 0.95rem; color: #94a3b8; pointer-events: none;">🔍</span>
+      </div>
+      <div id="item2-picker-count" style="font-size: 0.72rem; color: #64748b; margin-top: 0.35rem; display: flex; justify-content: space-between;">
+        <span>Menampilkan barang inventaris</span>
+      </div>
+    </div>
+    <div id="item2-picker-list" style="flex: 1; overflow-y: auto; padding: 0.6rem 0.75rem; max-height: 52vh; -webkit-overflow-scrolling: touch; box-sizing: border-box;">
+      <!-- Konten dinamis via renderItem2PickerResults() -->
+    </div>
+    <div class="modal-footer" style="padding: 0.65rem 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; flex-shrink: 0;">
+      <span style="font-size: 0.72rem; color: #64748b;">Klik pada barang untuk memilih</span>
+      <button type="button" class="btn btn-outline btn-sm" onclick="Modal.close('modal-item2-picker')" style="padding: 0.35rem 0.85rem; font-size: 0.8rem;">Batal</button>
     </div>
   </div>
 </div>

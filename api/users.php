@@ -36,18 +36,18 @@ switch ($action) {
     case 'get_employees':
         $res = null;
         try {
-            $res = $conn->query("SELECT id, full_name, position, department FROM employees WHERE status = 'active'");
+            $res = $conn->query("SELECT id, nip_nik, full_name, position, department FROM employees WHERE is_active = 1");
         } catch (Exception $e) {}
         
         if (!$res) {
             try {
-                $res = $conn->query("SELECT id, full_name, position, department FROM employees");
+                $res = $conn->query("SELECT id, nip_nik, full_name, position, department FROM employees");
             } catch (Exception $e) {}
         }
         
         if (!$res) {
             try {
-                $res = $conn->query("SELECT id, full_name, 'Pengemudi' as position, '' as department FROM employees");
+                $res = $conn->query("SELECT id, nip_nik, full_name, 'Pengemudi' as position, '' as department FROM employees");
             } catch (Exception $e) {}
         }
         

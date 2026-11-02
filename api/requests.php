@@ -70,10 +70,17 @@ switch ($action) {
         $q = $_GET['q'] ?? '';
         $like = "%$q%";
         $stmt = $conn->prepare("
-            SELECT i.id, i.item_code, i.name, i.stock, i.unit,
+            SELECT i.id, i.item_code, i.name, i.stock, i.unit, l.name as location_name,
                    COALESCE((SELECT unit_price FROM inv_transactions WHERE item_id = i.id AND type='in' ORDER BY id DESC LIMIT 1), 0) as last_price
             FROM inv_items i 
-            WHERE i.item_code LIKE ? OR i.name LIKE ?
+            LEFT JOIN inv_locations l ON i.location_id = l.id
+            WHERE (i.item_code LIKE ? OR i.name LIKE ?)
+              AND i.location_id IN (
+                  SELECT id FROM inv_locations 
+                  WHERE LOWER(name) LIKE '%atk lama%' 
+                     OR LOWER(name) LIKE '%kemdikdasmen%'
+                     OR id IN (2, 8)
+              )
             LIMIT 10
         ");
         $stmt->bind_param("ss", $like, $like);
@@ -224,30 +231,35 @@ switch ($action) {
         break;
 
     case 'submit_room':
-        $room_id        = $_POST['room_id']        ?? '';
-        $applicant_name = $_POST['applicant_name'] ?? '';
-        $applicant_unit = $_POST['applicant_unit'] ?? '';
+        $room_id        = trim($_POST['room_id']        ?? '');
+        $applicant_name = trim($_POST['applicant_name'] ?? '');
+        $applicant_unit = trim($_POST['applicant_unit'] ?? '');
         $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
         $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
         $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
         $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
-        $purpose        = $_POST['purpose']        ?? '';
+        $purpose        = trim($_POST['purpose']        ?? '');
         $participants   = (int)($_POST['participants'] ?? 0);
-        $special_needs  = $_POST['special_needs']  ?? '';
+        $special_needs  = trim($_POST['special_needs']  ?? '');
 
-        if ($room_id && $date_start && $time_start && $date_end && $time_end) {
-            $startDT = $date_start . ' ' . substr($time_start, 0, 5);
-            $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
-            
-            $stmt = $conn->prepare("SELECT id FROM room_requests WHERE room_id = ? AND status IN ('approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
-            $stmt->bind_param("sss", $room_id, $endDT, $startDT);
-            $stmt->execute();
-            $resConf = $stmt->get_result();
-            if ($resConf->num_rows > 0) {
-                jsonResponse(false, 'Ruangan sudah dipesan pada jam tersebut.');
-            }
-            $stmt->close();
+        if (empty($room_id)) {
+            jsonResponse(false, 'Ruangan wajib dipilih.');
         }
+        if (empty($date_start) || empty($time_start) || empty($date_end) || empty($time_end)) {
+            jsonResponse(false, 'Tanggal dan jam mulai serta selesai wajib diisi.');
+        }
+
+        $startDT = $date_start . ' ' . substr($time_start, 0, 5);
+        $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
+        
+        $stmt = $conn->prepare("SELECT id FROM room_requests WHERE room_id = ? AND status NOT IN ('rejected','completed','returned','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt->bind_param("sss", $room_id, $endDT, $startDT);
+        $stmt->execute();
+        $resConf = $stmt->get_result();
+        if ($resConf->num_rows > 0) {
+            jsonResponse(false, 'Ruangan sudah dipesan pada rentang jam tersebut. Silakan pilih ruangan atau waktu lain.');
+        }
+        $stmt->close();
 
         $stmt = $conn->prepare("INSERT INTO room_requests (user_id, room_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, participants, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param("issssssssis", $userId, $room_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $special_needs);
@@ -287,31 +299,37 @@ switch ($action) {
         break;
 
     case 'submit_zoom':
-        $zoom_account_id = $_POST['zoom_account_id'] ?? '';
-        $applicant_name  = $_POST['applicant_name']  ?? '';
-        $applicant_unit  = $_POST['applicant_unit']  ?? '';
+        $zoom_account_id = trim($_POST['zoom_account_id'] ?? '');
+        $applicant_name  = trim($_POST['applicant_name']  ?? '');
+        $applicant_unit  = trim($_POST['applicant_unit']  ?? '');
         $date_start     = !empty($_POST['date_start']) ? $_POST['date_start'] : null;
         $time_start     = !empty($_POST['time_start']) ? $_POST['time_start'] : null;
         $date_end       = !empty($_POST['date_end']) ? $_POST['date_end'] : null;
         $time_end       = !empty($_POST['time_end']) ? $_POST['time_end'] : null;
-        $purpose        = $_POST['purpose']        ?? '';
+        $purpose        = trim($_POST['purpose']        ?? '');
         $participants    = (int)($_POST['participants'] ?? 0);
-        $request_type    = $_POST['request_type']    ?? '';
-        $special_needs   = $_POST['special_needs']   ?? '';
+        $request_type    = trim($_POST['request_type']    ?? '');
+        $special_needs   = trim($_POST['special_needs']   ?? '');
 
-        if ($zoom_account_id && $date_start && $time_start && $date_end && $time_end) {
-            $startDT = $date_start . ' ' . substr($time_start, 0, 5);
-            $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
-            
-            $stmt = $conn->prepare("SELECT id FROM zoom_requests WHERE zoom_account_id = ? AND status IN ('approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
-            $stmt->bind_param("sss", $zoom_account_id, $endDT, $startDT);
-            $stmt->execute();
-            $resConf = $stmt->get_result();
-            if ($resConf->num_rows > 0) {
-                jsonResponse(false, 'Akun Zoom sudah dipesan pada jam tersebut.');
-            }
-            $stmt->close();
+        if (empty($zoom_account_id)) {
+            jsonResponse(false, 'Silakan pilih Akun Zoom yang tersedia.');
         }
+        if (empty($date_start) || empty($time_start) || empty($date_end) || empty($time_end)) {
+            jsonResponse(false, 'Tanggal dan jam mulai serta selesai wajib diisi.');
+        }
+
+        $startDT = $date_start . ' ' . substr($time_start, 0, 5);
+        $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
+        
+        // Pengecekan bentrok jadwal Akun Zoom (mencakup pending, waiting_manager_fmd, waiting_manager_fad, verified, approved, dll)
+        $stmt = $conn->prepare("SELECT id FROM zoom_requests WHERE zoom_account_id = ? AND status NOT IN ('rejected','completed','returned','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt->bind_param("sss", $zoom_account_id, $endDT, $startDT);
+        $stmt->execute();
+        $resConf = $stmt->get_result();
+        if ($resConf->num_rows > 0) {
+            jsonResponse(false, 'Akun Zoom tersebut sudah dipesan pada rentang jam yang dipilih. Silakan pilih akun lain atau jam yang berbeda.');
+        }
+        $stmt->close();
 
         $stmt = $conn->prepare("INSERT INTO zoom_requests (user_id, zoom_account_id, applicant_name, applicant_unit, date_start, time_start, date_end, time_end, purpose, participants, request_type, special_needs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param("issssssssiss", $userId, $zoom_account_id, $applicant_name, $applicant_unit, $date_start, $time_start, $date_end, $time_end, $purpose, $participants, $request_type, $special_needs);
@@ -376,7 +394,7 @@ switch ($action) {
         $purpose        = $_POST['purpose']        ?? '';
         $items_json     = $_POST['items_json']     ?? '[]';
 
-        $stmt = $conn->prepare("INSERT INTO item_requests (user_id, applicant_name, applicant_unit, purpose, items_json, status) VALUES (?,?,?,?,?,'pending')");
+        $stmt = $conn->prepare("INSERT INTO item_requests (user_id, applicant_name, applicant_unit, purpose, items_json, status) VALUES (?,?,?,?,?,'waiting_manager_unit')");
         $stmt->bind_param("issss", $userId, $applicant_name, $applicant_unit, $purpose, $items_json);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
@@ -395,8 +413,38 @@ switch ($action) {
                 $stmtDet->close();
             }
 
+            // Notifikasi ke Group Admin Telegram & ke Manajer Unit
             notifyNewRequest('Item2', $newId, $applicant_name, $applicant_unit, $purpose);
-            jsonResponse(true, 'Permintaan barang berhasil dikirim!', ['id' => $newId]);
+
+            // Kirim notifikasi chat ke user pemohon konfirmasi pengajuan berhasil
+            $stmtUserWa = $conn->prepare("SELECT whatsapp_number, telegram_chat_id FROM users WHERE id = ?");
+            if ($stmtUserWa) {
+                $stmtUserWa->bind_param("i", $userId);
+                $stmtUserWa->execute();
+                $userWaRow = $stmtUserWa->get_result()->fetch_assoc();
+                $stmtUserWa->close();
+
+                if ($userWaRow) {
+                    if (!empty($userWaRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                        $userMsg = "📦 *PENGAJUAN PERMINTAAN BARANG (#ITM-$newId)*\n\n";
+                        $userMsg .= "Halo *$applicant_name*,\n";
+                        $userMsg .= "Pengajuan permintaan barang Anda telah berhasil dikirim ke sistem.\n\n";
+                        $userMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (*$applicant_unit*).\n\n";
+                        $userMsg .= "_Pantau status di Dashboard SILATAS:_ https://silatas.biotrop.org/";
+                        sendWhatsAppFonnte($userMsg, $userWaRow['whatsapp_number']);
+                    }
+                    if (!empty($userWaRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                        $userTgMsg = "📦 <b>PENGAJUAN PERMINTAAN BARANG (#ITM-$newId)</b>\n\n";
+                        $userTgMsg .= "Halo <b>" . htmlspecialchars($applicant_name) . "</b>,\n";
+                        $userTgMsg .= "Pengajuan permintaan barang Anda telah berhasil dikirim ke sistem.\n\n";
+                        $userTgMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (<b>" . htmlspecialchars($applicant_unit) . "</b>).\n\n";
+                        $userTgMsg .= "<i>Pantau status di Dashboard SILATAS:</i> https://silatas.biotrop.org/";
+                        sendTelegramPHP($userTgMsg, $userWaRow['telegram_chat_id']);
+                    }
+                }
+            }
+
+            jsonResponse(true, 'Permintaan barang berhasil diajukan.', ['id' => $newId]);
         } else {
             jsonResponse(false, 'Gagal menyimpan data.');
         }
@@ -422,19 +470,28 @@ switch ($action) {
             jsonResponse(false, 'Tipe request tidak valid.');
         }
 
+        // Otomatisasi teks ketika Manajer Departemen Approve Item2 (waiting_manager_unit -> verified)
+        if ($newStatus === 'verified' && empty($noteInput) && $type === 'Item2') {
+            $noteInput = "Disetujui oleh Manajer Departemen. Diteruskan ke PIC Gudang untuk pemeriksaan & verifikasi barang.";
+        }
+
         // Jika PIC melanjutkan ke Manager FMD, paksa teks note jika kosong dengan detail item
         if ($newStatus === 'waiting_manager_fmd' && empty($noteInput)) {
-            $resReq = $conn->query("SELECT * FROM `$table` WHERE id = $id");
-            if ($resReq && $row = $resReq->fetch_assoc()) {
-                $detailVal = '';
-                if ($type === 'Vehicle') $detailVal = 'Kendaraan Dinas';
-                else if ($type === 'Room') $detailVal = $row['room_id'] ?? 'Ruangan';
-                else if ($type === 'Dormitory') $detailVal = $row['dormitory_id'] ?? 'Dormitory';
-                else if ($type === 'Zoom') $detailVal = $row['zoom_account_id'] ?? 'Akun Zoom';
-                else if ($type === 'Repair') $detailVal = $row['location_detail'] ?? 'Lokasi';
-                else if ($type === 'Item') $detailVal = $row['item_name'] ?? 'Barang';
-                
-                $noteInput = "$detailVal tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
+            if ($type === 'Item2') {
+                $noteInput = "Daftar barang telah diverifikasi oleh PIC Gudang, diteruskan kepada Manager FMD untuk persetujuan.";
+            } else {
+                $resReq = $conn->query("SELECT * FROM `$table` WHERE id = $id");
+                if ($resReq && $row = $resReq->fetch_assoc()) {
+                    $detailVal = '';
+                    if ($type === 'Vehicle') $detailVal = 'Kendaraan Dinas';
+                    else if ($type === 'Room') $detailVal = $row['room_id'] ?? 'Ruangan';
+                    else if ($type === 'Dormitory') $detailVal = $row['dormitory_id'] ?? 'Dormitory';
+                    else if ($type === 'Zoom') $detailVal = $row['zoom_account_id'] ?? 'Akun Zoom';
+                    else if ($type === 'Repair') $detailVal = $row['location_detail'] ?? 'Lokasi';
+                    else if ($type === 'Item') $detailVal = $row['item_name'] ?? 'Barang';
+                    
+                    $noteInput = "$detailVal tersedia, diteruskan kepada Manager FMD untuk approval permohonan";
+                }
             }
         }
 
@@ -443,29 +500,37 @@ switch ($action) {
             $resReq = $conn->query("SELECT status FROM `$table` WHERE id = $id");
             $row = $resReq->fetch_assoc();
             if ($row && $row['status'] === 'waiting_manager_fmd') {
-                $typeLabels = [
-                    'Vehicle' => 'Kendaraan (Unit & Driver)',
-                    'Room'    => 'Ruangan & Fasilitas',
-                    'Dormitory'=> 'Dormitory',
-                    'Zoom'    => 'Akun Zoom/Link',
-                    'Item'    => 'Peminjaman Barang',
-                    'Item2'   => 'Permintaan Barang',
-                    'Repair'  => 'Perbaikan'
-                ];
-                $label = $typeLabels[$type] ?? $type;
-                $noteInput = "Disetujui oleh Manager FMD. Silakan PIC $label menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+                if ($type === 'Item2') {
+                    $noteInput = "Disetujui oleh Manager FMD. Pengajuan dikembalikan ke PIC Gudang untuk penyiapan barang.";
+                } else {
+                    $typeLabels = [
+                        'Vehicle' => 'Kendaraan (Unit & Driver)',
+                        'Room'    => 'Ruangan & Fasilitas',
+                        'Dormitory'=> 'Dormitory',
+                        'Zoom'    => 'Akun Zoom/Link',
+                        'Item'    => 'Peminjaman Barang',
+                        'Item2'   => 'Permintaan Barang',
+                        'Repair'  => 'Perbaikan'
+                    ];
+                    $label = $typeLabels[$type] ?? $type;
+                    $noteInput = "Disetujui oleh Manager FMD. Silakan PIC $label menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+                }
             }
         }
 
         // Otomatisasi teks ketika PIC melakukan Check & Recheck (approved → ready_for_user)
         if ($newStatus === 'ready_for_user' && empty($noteInput)) {
-            $typeLabels = [
-                'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
-                'Dormitory' => 'Dormitory',
-                'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
-            ];
-            $label = $typeLabels[$type] ?? $type;
-            $noteInput = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan $label telah siap untuk diserahkan/dilaksanakan.";
+            if ($type === 'Item2') {
+                $noteInput = "Barang telah siap di gudang. Mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil: 1. Indra Septian 081212874982, 2. Moh. Wahyu Noorramdhany 085693459088";
+            } else {
+                $typeLabels = [
+                    'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
+                    'Dormitory' => 'Dormitory',
+                    'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
+                ];
+                $label = $typeLabels[$type] ?? $type;
+                $noteInput = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan $label telah siap untuk diserahkan/dilaksanakan.";
+            }
         }
 
         // Otomatisasi teks ketika PIC menandai selesai (ready_for_user → completed/returned)
@@ -623,6 +688,27 @@ switch ($action) {
                 }
             }
 
+            // JIKA ITEM2 DAN READY_FOR_USER, PASTIKAN NOTIFIKASI AMBIL BARANG TERKIRIM KE USER
+            if ($type === 'Item2' && $newStatus === 'ready_for_user') {
+                $stmtReqUser = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id, r.applicant_name FROM item_requests r INNER JOIN users u ON r.user_id = u.id WHERE r.id = ?");
+                if ($stmtReqUser) {
+                    $stmtReqUser->bind_param("i", $id);
+                    $stmtReqUser->execute();
+                    $reqUserRow = $stmtReqUser->get_result()->fetch_assoc();
+                    $stmtReqUser->close();
+                    if ($reqUserRow && !empty($reqUserRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                        $readyMsg = "📦 *BARANG SIAP DIAMBIL (#ITM-$id)*\n\n";
+                        $readyMsg .= "Halo *" . ($reqUserRow['applicant_name'] ?? 'User') . "*,\n";
+                        $readyMsg .= "Permintaan barang Anda telah disetujui dan saat ini sudah siap diambil di gudang.\n\n";
+                        $readyMsg .= "mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil \n";
+                        $readyMsg .= "1. Indra Septian 081212874982\n";
+                        $readyMsg .= "2. Moh. Wahyu Noorramdhany 085693459088\n\n";
+                        $readyMsg .= "_Pantau status di Dashboard SILATAS:_ https://silatas.biotrop.org/";
+                        sendWhatsAppFonnte($readyMsg, $reqUserRow['whatsapp_number']);
+                    }
+                }
+            }
+
             // JIKA ITEM2 (Permintaan Barang) DAN COMPLETED, OTOMATIS POTONG STOK GUDANG
             if ($type === 'Item2' && $newStatus === 'completed') {
                 $resItem = $conn->query("SELECT items_json, applicant_name, applicant_unit FROM item_requests WHERE id = $id");
@@ -738,7 +824,7 @@ switch ($action) {
 
         // Cek konflik kendaraan
         if ($vehicleId && $vehicleId !== 'PENDING_ASSIGNMENT') {
-            $stmt = $conn->prepare("SELECT id FROM vehicle_requests WHERE id != ? AND vehicle_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+            $stmt = $conn->prepare("SELECT id FROM vehicle_requests WHERE id != ? AND vehicle_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
             $stmt->bind_param("isss", $id, $vehicleId, $endDT, $startDT);
             $stmt->execute();
             $resConf = $stmt->get_result();
@@ -751,7 +837,7 @@ switch ($action) {
 
         // Cek konflik driver
         if ($driverName && trim($driverName) !== '' && $driverName !== 'TANPA_SUPIR') {
-            $stmt = $conn->prepare("SELECT id FROM vehicle_requests WHERE id != ? AND driver_name = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+            $stmt = $conn->prepare("SELECT id FROM vehicle_requests WHERE id != ? AND driver_name = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
             $stmt->bind_param("isss", $id, $driverName, $endDT, $startDT);
             $stmt->execute();
             $resConf = $stmt->get_result();
@@ -843,7 +929,7 @@ switch ($action) {
         $endDT   = $reqRow['de'] . ' ' . substr($reqRow['time_end'], 0, 5);
 
         // Cek konflik ruangan
-        $stmt = $conn->prepare("SELECT id FROM room_requests WHERE id != ? AND room_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id FROM room_requests WHERE id != ? AND room_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
         $stmt->bind_param("isss", $id, $roomId, $endDT, $startDT);
         $stmt->execute();
         $resConf = $stmt->get_result();
@@ -882,7 +968,7 @@ switch ($action) {
         $endDT   = $reqRow['de'] . ' ' . substr($reqRow['time_end'], 0, 5);
 
         // Cek konflik dormitory
-        $stmt = $conn->prepare("SELECT id FROM dormitory_requests WHERE id != ? AND dormitory_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id FROM dormitory_requests WHERE id != ? AND dormitory_id = ? AND status IN ('approved', 'ready_for_user', 'in-progress', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund') AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
         $stmt->bind_param("isss", $id, $dormitoryId, $endDT, $startDT);
         $stmt->execute();
         $resConf = $stmt->get_result();
@@ -925,26 +1011,33 @@ switch ($action) {
                 $stmtReq->close();
 
                 if ($reqRow) {
-                    $stmtTech = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
-                    $stmtTech->bind_param("s", $technicianName);
-                    $stmtTech->execute();
-                    $techRow = $stmtTech->get_result()->fetch_assoc();
-                    $stmtTech->close();
+                    $repType = $reqRow['repair_type'] ?? 'Umum';
+                    $loc     = $reqRow['location_detail'] ?? '-';
+                    $issue   = $reqRow['issue_description'] ?? '-';
+                    $pri     = strtoupper($reqRow['priority'] ?? 'MEDIUM');
+                    $app     = $reqRow['applicant_name'] . ' (' . $reqRow['applicant_unit'] . ')';
 
-                    if ($techRow) {
-                        $repType = $reqRow['repair_type'] ?? 'Umum';
-                        $loc     = $reqRow['location_detail'] ?? '-';
-                        $issue   = $reqRow['issue_description'] ?? '-';
-                        $pri     = strtoupper($reqRow['priority'] ?? 'MEDIUM');
-                        $app     = $reqRow['applicant_name'] . ' (' . $reqRow['applicant_unit'] . ')';
+                    $techList = array_filter(array_map('trim', explode(',', $technicianName)));
 
-                        if (!empty($techRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                            $msgTech = "🛠️ *TUGAS PERBAIKAN BARU (TEKNISI)*\n\nHalo *$technicianName*,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan *REP-$id*.\n\n*Pemohon:* $app\n*Jenis Perbaikan:* $repType\n*Lokasi:* $loc\n*Detail Kerusakan:* $issue\n*Prioritas:* $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
-                            sendWhatsAppFonnte($msgTech, $techRow['whatsapp_number']);
-                        }
-                        if (!empty($techRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
-                            $msgTechTg = "🛠️ <b>TUGAS PERBAIKAN BARU (TEKNISI)</b>\n\nHalo <b>$technicianName</b>,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan <b>REP-$id</b>.\n\n<b>Pemohon:</b> $app\n<b>Jenis Perbaikan:</b> $repType\n<b>Lokasi:</b> $loc\n<b>Detail Kerusakan:</b> $issue\n<b>Prioritas:</b> $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
-                            sendTelegramPHP($msgTechTg, $techRow['telegram_chat_id']);
+                    foreach ($techList as $singleTech) {
+                        if (!$singleTech || $singleTech === 'TANPA_TEKNISI') continue;
+
+                        $stmtTech = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ? OR e.nip_nik = ? LIMIT 1");
+                        $stmtTech->bind_param("ss", $singleTech, $singleTech);
+                        $stmtTech->execute();
+                        $techRow = $stmtTech->get_result()->fetch_assoc();
+                        $stmtTech->close();
+
+                        if ($techRow) {
+                            $teamInfo = count($techList) > 1 ? " (Tim: $technicianName)" : "";
+                            if (!empty($techRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+                                $msgTech = "🛠️ *TUGAS PERBAIKAN BARU (TEKNISI)*\n\nHalo *$singleTech*,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan *REP-$id*$teamInfo.\n\n*Pemohon:* $app\n*Jenis Perbaikan:* $repType\n*Lokasi:* $loc\n*Detail Kerusakan:* $issue\n*Prioritas:* $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
+                                sendWhatsAppFonnte($msgTech, $techRow['whatsapp_number']);
+                            }
+                            if (!empty($techRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+                                $msgTechTg = "🛠️ <b>TUGAS PERBAIKAN BARU (TEKNISI)</b>\n\nHalo <b>$singleTech</b>,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan <b>REP-$id</b>$teamInfo.\n\n<b>Pemohon:</b> $app\n<b>Jenis Perbaikan:</b> $repType\n<b>Lokasi:</b> $loc\n<b>Detail Kerusakan:</b> $issue\n<b>Prioritas:</b> $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
+                                sendTelegramPHP($msgTechTg, $techRow['telegram_chat_id']);
+                            }
                         }
                     }
                 }
@@ -954,6 +1047,80 @@ switch ($action) {
         } else {
             jsonResponse(false, 'Gagal menetapkan teknisi perbaikan.');
         }
+        break;
+
+    // ============================================================
+    // 4e. UPDATE ITEM2 (PERMINTAAN BARANG) ITEMS — PIC / ADMIN EDIT
+    // ============================================================
+    case 'update_item2_items':
+        $id         = (int)($_POST['id']         ?? 0);
+        $items_json = trim($_POST['items_json']  ?? '[]');
+
+        if (!$id) jsonResponse(false, 'Parameter ID tidak valid.');
+
+        $items = json_decode($items_json, true);
+        if (!is_array($items) || empty($items)) {
+            jsonResponse(false, 'Daftar barang tidak boleh kosong.');
+        }
+
+        // Cek request
+        $stmtCek = $conn->prepare("SELECT status FROM item_requests WHERE id = ?");
+        $stmtCek->bind_param("i", $id);
+        $stmtCek->execute();
+        $resCek = $stmtCek->get_result()->fetch_assoc();
+        $stmtCek->close();
+
+        if (!$resCek) jsonResponse(false, 'Pengajuan permintaan barang tidak ditemukan.');
+        if ($resCek['status'] === 'completed') {
+            jsonResponse(false, 'Permintaan barang yang sudah selesai (completed) tidak dapat diubah lagi.');
+        }
+
+        // Sanitasi items
+        $cleanedItems = [];
+        foreach ($items as $itm) {
+            $iId   = (int)($itm['id'] ?? 0);
+            $iName = trim($itm['name'] ?? '');
+            $iQty  = max(1, (int)($itm['quantity'] ?? 1));
+            if ($iName === '') continue;
+            $cleanedItems[] = [
+                'id'       => $iId,
+                'name'     => $iName,
+                'quantity' => $iQty
+            ];
+        }
+
+        if (empty($cleanedItems)) {
+            jsonResponse(false, 'Daftar barang tidak valid.');
+        }
+
+        $newJson = json_encode($cleanedItems);
+
+        // Update item_requests
+        $stmtUpd = $conn->prepare("UPDATE item_requests SET items_json = ? WHERE id = ?");
+        $stmtUpd->bind_param("si", $newJson, $id);
+        if (!$stmtUpd->execute()) {
+            $stmtUpd->close();
+            jsonResponse(false, 'Gagal memperbarui daftar barang di database.');
+        }
+        $stmtUpd->close();
+
+        // Update item_request_details
+        $stmtDel = $conn->prepare("DELETE FROM item_request_details WHERE request_id = ?");
+        $stmtDel->bind_param("i", $id);
+        $stmtDel->execute();
+        $stmtDel->close();
+
+        $stmtDet = $conn->prepare("INSERT INTO item_request_details (request_id, item_id, item_name, quantity) VALUES (?,?,?,?)");
+        foreach ($cleanedItems as $itm) {
+            $iId   = $itm['id'];
+            $iName = $itm['name'];
+            $iQty  = $itm['quantity'];
+            $stmtDet->bind_param("iisi", $id, $iId, $iName, $iQty);
+            $stmtDet->execute();
+        }
+        $stmtDet->close();
+
+        jsonResponse(true, 'Daftar barang permintaan berhasil diperbarui!', ['items' => $cleanedItems, 'items_json' => $newJson]);
         break;
 
     // ============================================================
@@ -1146,6 +1313,26 @@ switch ($action) {
             $qty = (int)($_POST['item_quantity'] ?? 0);
             $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, loan_date=?, return_date=?, loan_time=?, return_time=?, item_name=?, item_quantity=? WHERE id=?");
             $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $item, $qty, $id);
+        } else if ($type === 'Item2') {
+            $items_json = $_POST['items_json'] ?? '[]';
+            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, items_json=? WHERE id=?");
+            $stmt->bind_param("ssssssi", $applicant_name, $applicant_unit, $purpose, $status, $note, $items_json, $id);
+            // Sync item_request_details jika valid json
+            $items = json_decode($items_json, true);
+            if (is_array($items)) {
+                $conn->query("DELETE FROM item_request_details WHERE request_id = $id");
+                $stmtDet = $conn->prepare("INSERT INTO item_request_details (request_id, item_id, item_name, quantity) VALUES (?,?,?,?)");
+                foreach ($items as $itm) {
+                    $iId   = (int)($itm['id'] ?? 0);
+                    $iName = trim($itm['name'] ?? '');
+                    $iQty  = max(1, (int)($itm['quantity'] ?? 1));
+                    if ($iName !== '') {
+                        $stmtDet->bind_param("iisi", $id, $iId, $iName, $iQty);
+                        $stmtDet->execute();
+                    }
+                }
+                $stmtDet->close();
+            }
         }
 
         if ($stmt->execute()) {

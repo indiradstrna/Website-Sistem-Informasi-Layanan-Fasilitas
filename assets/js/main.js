@@ -70,6 +70,7 @@ const Modal = {
 function getStatusLabel(status) {
     const labelMap = {
         pending: 'Pending PIC',
+        waiting_manager_unit: 'Waiting Manager Unit',
         verified: 'Verified (Admin)',
         approved: 'Approved',
         rejected: 'Rejected',

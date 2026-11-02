@@ -71,6 +71,13 @@ $tableMap = [
 ];
 
 $table = $tableMap[$typeCode] ?? null;
+if ($typeCode === 'ITM') {
+    $chkItm = $conn->query("SELECT id FROM item_requests WHERE id = $reqId");
+    if ($chkItm && $chkItm->num_rows > 0) {
+        $table = 'item_requests';
+    }
+}
+
 if (!$table) {
     sendWhatsAppFonnte("Maaf, format tipe pengajuan ($typeCode) tidak valid.", $sender);
     http_response_code(200);
@@ -144,12 +151,81 @@ $picMap = [
     'ZOM' => ['198902222025211044'], 
     'ROM' => ['199008092025212052', '16268300055'], 
     'DRM' => ['199008092025212052', '16268300055'], 
-    'REP' => ['198605082025211053', '197212162014091003', '198902222025211044']
+    'REP' => ['198605082025211053', '197212162014091003', '198902222025211044', '16268000027']
 ];
 $isPIC = in_array($username, $picMap[$typeCode] ?? []);
 
 // Logika Transisi Status
-if ($currentStatus === 'pending') {
+if ($table === 'item_requests') {
+    if ($currentStatus === 'waiting_manager_unit' || $currentStatus === 'pending') {
+        // Cek apakah user adalah Manajer Departemen dari pengaju
+        $appUnit = '';
+        $resUnit = $conn->query("SELECT applicant_unit FROM item_requests WHERE id = $reqId");
+        if ($resUnit && $rowU = $resUnit->fetch_assoc()) $appUnit = trim($rowU['applicant_unit']);
+
+        $isDeptMgr = false;
+        if (!empty($user['employee_id'])) {
+            $stmtEmp = $conn->prepare("SELECT department, role_title FROM employees WHERE id = ?");
+            $stmtEmp->bind_param("i", $user['employee_id']);
+            $stmtEmp->execute();
+            $empRow = $stmtEmp->get_result()->fetch_assoc();
+            $stmtEmp->close();
+            if ($empRow) {
+                $eDept = strtolower($empRow['department']);
+                $eTitle = strtolower($empRow['role_title']);
+                $cleanUnit = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit'], '', $appUnit)));
+                if ($cleanUnit === 'hrd') $cleanUnit = 'hrad';
+
+                $isMgrTitle = (strpos($eTitle, 'manajer') !== false || strpos($eTitle, 'manager') !== false || strpos($eTitle, 'direktur') !== false || strpos($eTitle, 'pejabat') !== false);
+                if ($isMgrTitle && (strpos($cleanUnit, $eDept) !== false || strpos($eDept, $cleanUnit) !== false || strpos(strtolower($appUnit), $eDept) !== false)) {
+                    $isDeptMgr = true;
+                }
+            }
+        }
+        if ($role === 'superadmin') $isDeptMgr = true;
+
+        if ($isDeptMgr) {
+            $canProcess = true;
+            $nextStatusApprove = 'verified'; // Masuk ke PIC Permintaan Barang
+        } else {
+            sendWhatsAppFonnte("Maaf, pengajuan ini memerlukan persetujuan dari Manajer Departemen ($appUnit).", $sender);
+            http_response_code(200);
+            exit;
+        }
+    } else if ($currentStatus === 'verified') {
+        // PIC Gudang meneruskan ke Manager FMD
+        if ($isPIC || $role === 'superadmin') {
+            $canProcess = true;
+            $nextStatusApprove = 'waiting_manager_fmd';
+        }
+    } else if ($currentStatus === 'waiting_manager_fmd') {
+        // Manager FMD memberi persetujuan
+        if ($isManagerFMD || $role === 'superadmin') {
+            $canProcess = true;
+            $nextStatusApprove = 'approved';
+        }
+    } else if ($currentStatus === 'approved') {
+        // PIC Gudang menyiapkan barang & ubah status ke ready_for_user
+        if ($isPIC || $role === 'superadmin') {
+            $canProcess = true;
+            $nextStatusApprove = 'ready_for_user';
+        }
+    } else if ($currentStatus === 'ready_for_user') {
+        // Konfirmasi selesai
+        $isApplicant = false;
+        $stmtA = $conn->prepare("SELECT user_id FROM item_requests WHERE id = ?");
+        $stmtA->bind_param("i", $reqId);
+        $stmtA->execute();
+        $resA = $stmtA->get_result()->fetch_assoc();
+        $stmtA->close();
+        if ($resA && $resA['user_id'] == $user['id']) $isApplicant = true;
+
+        if ($isApplicant || $isPIC || $role === 'superadmin') {
+            $canProcess = true;
+            $nextStatusApprove = 'completed';
+        }
+    }
+} else if ($currentStatus === 'pending') {
     if ($isPIC) {
         if ($typeCode === 'REP') {
             sendWhatsAppFonnte("Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.", $sender);
@@ -225,7 +301,19 @@ $finalStatus = ($actionType === 'SETUJU') ? $nextStatusApprove : $nextStatusReje
 // Generate dynamic note similar to web
 $actionNote = "Pengajuan diproses melalui WhatsApp";
 if ($actionType === 'SETUJU') {
-    if ($currentStatus === 'pending' && $nextStatusApprove === 'waiting_manager_fmd') {
+    if ($table === 'item_requests') {
+        if ($nextStatusApprove === 'verified') {
+            $actionNote = "Disetujui oleh Manajer Departemen. Diteruskan ke PIC Gudang.";
+        } else if ($nextStatusApprove === 'waiting_manager_fmd') {
+            $actionNote = "Daftar barang telah diverifikasi oleh PIC Gudang. Diteruskan kepada Manager FMD untuk persetujuan.";
+        } else if ($nextStatusApprove === 'approved') {
+            $actionNote = "Disetujui oleh Manager FMD. Pengajuan dikembalikan ke PIC Gudang untuk penyiapan barang.";
+        } else if ($nextStatusApprove === 'ready_for_user') {
+            $actionNote = "Barang telah siap di gudang. Silakan diambil dalam estimasi waktu 10-15 menit.";
+        } else if ($nextStatusApprove === 'completed') {
+            $actionNote = "Permintaan barang telah selesai diserahkan kepada pemohon.";
+        }
+    } else if ($currentStatus === 'pending' && $nextStatusApprove === 'waiting_manager_fmd') {
         if ($typeCode === 'VEH' && !empty($vehicleNameStr) && !empty($selectedDriverName)) {
             $actionNote = "{$vehicleNameStr} tersedia, diteruskan kepada Manager FMD untuk approval permohonan. Driver: {$selectedDriverName}";
         } else if ($typeCode === 'ROM' && !empty($roomNameStr)) {

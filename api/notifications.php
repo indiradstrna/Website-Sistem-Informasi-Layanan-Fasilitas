@@ -25,10 +25,16 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         'Item2'   => 'ITM'
     ];
     $code = $typeCodes[$type] ?? 'REQ';
-    $approvableStatuses = ['pending', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund', 'approved', 'ready_for_user'];
+    $approvableStatuses = ['pending', 'waiting_manager_unit', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund', 'approved', 'ready_for_user'];
     
     if (in_array($newStatus, $approvableStatuses)) {
-        if ($newStatus === 'pending') {
+        if ($newStatus === 'waiting_manager_unit' || ($newStatus === 'pending' && $type === 'Item2')) {
+            $promptWa = "\n*Untuk menyetujui pengajuan ini (Manajer Departemen), balas:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manajer Departemen), balas:</b>\nSETUJU {$code}-{$id}";
+        } else if ($newStatus === 'verified' && $type === 'Item2') {
+            $promptWa = "\n_Pengajuan telah disetujui Manajer Departemen. Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:_\nhttps://silatas.biotrop.org/";
+            $promptTg = "\n<i>Pengajuan telah disetujui Manajer Departemen. Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:</i>\nhttps://silatas.biotrop.org/";
+        } else if ($newStatus === 'pending') {
             if ($type === 'Repair') {
                 $promptWa = "\n_Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya._";
                 $promptTg = "\n<i>Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via Telegram karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.</i>";
@@ -49,8 +55,13 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
             $promptWa = "\n*Untuk menyetujui pengajuan ini (BOD), balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk menyetujui pengajuan ini (BOD), balas:</b>\nSETUJU {$code}-{$id}";
         } else if ($newStatus === 'approved') {
-            $promptWa = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
-            $promptTg = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
+            if ($type === 'Item2') {
+                $promptWa = "\n_Pengajuan disetujui Manager FMD. Silakan PIC Gudang menyiapkan barang dan mengubah status menjadi READY FOR USER di Web SILATAS:_\nhttps://silatas.biotrop.org/";
+                $promptTg = "\n<i>Pengajuan disetujui Manager FMD. Silakan PIC Gudang menyiapkan barang dan mengubah status menjadi READY FOR USER di Web SILATAS:</i>\nhttps://silatas.biotrop.org/";
+            } else {
+                $promptWa = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
+                $promptTg = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
+            }
         } else {
             $promptWa = "\n*Untuk memproses pengajuan ini, balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk memproses pengajuan ini, balas:</b>\nSETUJU {$code}-{$id}";
@@ -125,24 +136,79 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         'Zoom'      => ['198902222025211044'], // Indra
         'Room'      => ['199008092025212052', '16268300055'], // Lastiah, Dhany
         'Dormitory' => ['199008092025212052', '16268300055'], // Lastiah, Dhany
-        'Repair'    => ['198605082025211053', '197212162014091003', '198902222025211044'] // Alfi, Agus Sujadi, Indra
+        'Repair'    => ['198605082025211053', '197212162014091003', '198902222025211044', '16268000027'] // Alfi, Agus Sujadi, Indra, Saripudin
     ];
 
-    if ($newStatus === 'pending' || $newStatus === 'approved') {
-        if (isset($picMap[$type])) {
-            $usernames = $picMap[$type];
-            $placeholders = implode(',', array_fill(0, count($usernames), '?'));
-            $stmt = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders)");
-            if ($stmt) {
-                $types = str_repeat('s', count($usernames));
-                $stmt->bind_param($types, ...$usernames);
-                $stmt->execute();
-                $res = $stmt->get_result();
-                while ($row = $res->fetch_assoc()) {
-                    if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
-                    if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
+    // Target PIC untuk tipe umum atau tahap PIC Item2
+    $shouldNotifyPIC = false;
+    if ($type === 'Item2') {
+        if (in_array($newStatus, ['verified', 'approved', 'ready_for_user'])) {
+            $shouldNotifyPIC = true;
+        }
+    } else {
+        if ($newStatus === 'pending' || $newStatus === 'approved') {
+            $shouldNotifyPIC = true;
+        }
+    }
+
+    if ($shouldNotifyPIC && isset($picMap[$type])) {
+        $usernames = $picMap[$type];
+        $placeholders = implode(',', array_fill(0, count($usernames), '?'));
+        $stmt = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.nip_nik IN ($placeholders)");
+        if ($stmt) {
+            $types = str_repeat('s', count($usernames));
+            $stmt->bind_param($types, ...$usernames);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                if (!empty($row['whatsapp_number'])) $targetNumbers[] = $row['whatsapp_number'];
+                if (!empty($row['telegram_chat_id'])) $targetTelegramIds[] = $row['telegram_chat_id'];
+            }
+            $stmt->close();
+        }
+    }
+
+    // Target Manajer Departemen untuk Item2 (tahap waiting_manager_unit / pending)
+    if ($type === 'Item2' && ($newStatus === 'waiting_manager_unit' || $newStatus === 'pending')) {
+        $stmtUnit = $conn->prepare("SELECT applicant_unit FROM item_requests WHERE id = ?");
+        if ($stmtUnit) {
+            $stmtUnit->bind_param("i", $id);
+            $stmtUnit->execute();
+            $resUnit = $stmtUnit->get_result()->fetch_assoc();
+            $stmtUnit->close();
+            $unit = trim($resUnit['applicant_unit'] ?? '');
+            if ($unit) {
+                $cleanUnit = trim(str_ireplace(['divisi', 'bagian', 'unit'], '', $unit));
+                if (strcasecmp($cleanUnit, 'hrd') === 0) $cleanUnit = 'hrad';
+
+                $sqlMgr = "
+                    SELECT u.whatsapp_number, u.telegram_chat_id 
+                    FROM employees e 
+                    INNER JOIN users u ON u.employee_id = e.id 
+                    WHERE (
+                        LOWER(e.department) = LOWER(?) 
+                        OR LOWER(?) LIKE CONCAT('%', LOWER(e.department), '%')
+                        OR LOWER(e.department) LIKE CONCAT('%', LOWER(?), '%')
+                        OR LOWER(e.department) LIKE CONCAT('%', LOWER(?), '%')
+                    )
+                    AND (
+                        LOWER(e.role_title) LIKE '%manajer%' 
+                        OR LOWER(e.role_title) LIKE '%manager%' 
+                        OR LOWER(e.role_title) LIKE '%direktur%'
+                        OR LOWER(e.role_title) LIKE '%pejabat%'
+                    )
+                ";
+                $stmtMgr = $conn->prepare($sqlMgr);
+                if ($stmtMgr) {
+                    $stmtMgr->bind_param("ssss", $unit, $unit, $cleanUnit, $unit);
+                    $stmtMgr->execute();
+                    $resMgr = $stmtMgr->get_result();
+                    while ($rowM = $resMgr->fetch_assoc()) {
+                        if (!empty($rowM['whatsapp_number'])) $targetNumbers[] = $rowM['whatsapp_number'];
+                        if (!empty($rowM['telegram_chat_id'])) $targetTelegramIds[] = $rowM['telegram_chat_id'];
+                    }
+                    $stmtMgr->close();
                 }
-                $stmt->close();
             }
         }
     }
@@ -365,8 +431,9 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
     // Kirim ke Group Admin (Telegram)
     sendTelegramPHP($msg);
     
-    // Kirim ke Approver PIC (WhatsApp)
-    notifyApprovers($conn, 'pending', $type, $id, $msg);
+    // Kirim ke Approver PIC / Manajer Unit (WhatsApp)
+    $initStatus = ($type === 'Item2') ? 'waiting_manager_unit' : 'pending';
+    notifyApprovers($conn, $initStatus, $type, $id, $msg);
 }
 
 /**
@@ -394,9 +461,11 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
 
         $statusLabelMap = [
             'pending'             => '⌛ MENUNGGU VERIFIKASI',
-            'approved'            => '✅ DISETUJUI',
+            'waiting_manager_unit'=> '⌛ MENUNGGU APPROVAL MGR UNIT',
+            'approved'            => ($table === 'item_requests') ? '✅ DISETUJUI MGR FMD (PENYIAPAN BARANG)' : '✅ DISETUJUI',
             'rejected'            => '❌ DITOLAK',
-            'verified'            => '🔍 DIVERIFIKASI',
+            'verified'            => ($table === 'item_requests') ? '🔍 DISETUJUI MGR UNIT (PROSES PIC GUDANG)' : '🔍 DIVERIFIKASI',
+            'ready_for_user'      => '📦 SIAP DIAMBIL DI GUDANG',
             'completed'           => '🏁 SELESAI',
             'returned'            => '📦 DIKEMBALIKAN',
             'in-progress'         => '🛠️ SEDANG DIKERJAKAN',
@@ -428,7 +497,7 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         }
         $msg .= "<b>Diproses Oleh:</b> " . htmlspecialchars($actorName) . "\n\n";
         
-        if ($newStatus === 'ready_for_user' || $newStatus === 'approved') {
+        if ($newStatus === 'ready_for_user' || ($newStatus === 'approved' && $table !== 'item_requests')) {
             $typeCodes = [
                 'vehicle_requests' => 'VEH',
                 'room_requests'    => 'ROM',
@@ -440,7 +509,14 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             ];
             $code = $typeCodes[$table] ?? 'REQ';
             
-            $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
+            if ($table === 'item_requests') {
+                $msg .= "📦 <b>Mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil:</b>\n";
+                $msg .= "1. Indra Septian 081212874982\n";
+                $msg .= "2. Moh. Wahyu Noorramdhany 085693459088\n\n";
+            } else {
+                $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
+            }
+            
             $msg .= "<i>Untuk konfirmasi pengajuan selesai, balas pesan ini dengan format:</i>\n";
             $msg .= "<b>SELESAI $code-$id</b>\n\n";
         }

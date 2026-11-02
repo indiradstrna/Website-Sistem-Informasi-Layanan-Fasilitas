@@ -273,7 +273,7 @@ function renderPageHead(string $title, string $basePath = '../'): void {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><?= htmlspecialchars($title) ?> — BIOTROP Facility System</title>
   <meta name="description" content="<?= htmlspecialchars($title) ?> - SEAMEO BIOTROP Facility Management System" />
-  <link rel="stylesheet" href="<?= $basePath ?>assets/css/style.css?v=1.1" />
+  <link rel="stylesheet" href="<?= $basePath ?>assets/css/style.css?v=1.3" />
   <link rel="icon" href="<?= $basePath ?>assets/img/logo.png" type="image/png" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -294,12 +294,45 @@ function renderPageHead(string $title, string $basePath = '../'): void {
         if ($resD) { while($row = $resD->fetch_assoc()) $masterDormitories[] = $row; }
         
         $invItems = [];
-        $resI = $conn->query("SELECT id, name, stock, unit, image, item_code FROM inv_items ORDER BY CASE WHEN stock > 0 THEN 0 ELSE 1 END ASC, name ASC");
+        $resI = $conn->query("
+            SELECT i.id, i.name, i.stock, i.unit, i.image, i.item_code, i.location_id, l.name as location_name 
+            FROM inv_items i 
+            LEFT JOIN inv_locations l ON i.location_id = l.id 
+            WHERE i.location_id IN (
+                SELECT id FROM inv_locations 
+                WHERE LOWER(name) LIKE '%atk lama%' 
+                   OR LOWER(name) LIKE '%kemdikdasmen%'
+                   OR id IN (2, 8)
+            ) 
+            ORDER BY CASE WHEN i.stock > 0 THEN 0 ELSE 1 END ASC, i.name ASC
+        ");
         if ($resI) { while($row = $resI->fetch_assoc()) $invItems[] = $row; }
 
         $invSkel = [];
-        $resS = $conn->query("SELECT kd_skelbrg as code, ur_skel as name FROM inv_bmn_skel ORDER BY kd_skelbrg ASC");
+        $resS = $conn->query("
+            SELECT DISTINCT s.kd_skelbrg as code, s.ur_skel as name 
+            FROM inv_bmn_skel s
+            INNER JOIN inv_items i ON i.item_code LIKE CONCAT(s.kd_skelbrg, '%')
+            WHERE i.location_id IN (
+                SELECT id FROM inv_locations 
+                WHERE LOWER(name) LIKE '%atk lama%' 
+                   OR LOWER(name) LIKE '%kemdikdasmen%'
+                   OR id IN (2, 8)
+            )
+            ORDER BY s.ur_skel ASC
+        ");
         if ($resS) { while($row = $resS->fetch_assoc()) $invSkel[] = $row; }
+
+        $invLocations = [];
+        $resL = $conn->query("
+            SELECT id, name 
+            FROM inv_locations 
+            WHERE LOWER(name) LIKE '%atk lama%' 
+               OR LOWER(name) LIKE '%kemdikdasmen%'
+               OR id IN (2, 8)
+            ORDER BY id ASC
+        ");
+        if ($resL) { while($row = $resL->fetch_assoc()) $invLocations[] = $row; }
     }
   ?>
   <script>
@@ -315,6 +348,7 @@ function renderPageHead(string $title, string $basePath = '../'): void {
     const ALL_INV_ITEMS = <?= json_encode($invItems ?? []) ?>;
     const INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
     const ALL_INV_SKEL = <?= json_encode($invSkel ?? []) ?>;
+    const ALL_INV_LOCATIONS = <?= json_encode($invLocations ?? []) ?>;
   </script>
 </head>
 <body>

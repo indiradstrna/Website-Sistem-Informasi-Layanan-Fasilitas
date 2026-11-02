@@ -48,17 +48,19 @@ if ($user['password'] !== $password) {
     jsonResponse(false, 'Password salah.');
 }
 
-// 3. Ambil department dari tabel employees jika ada employee_id
+// 3. Ambil department dan role_title dari tabel employees jika ada employee_id
 $department = '';
+$role_title = '';
 if ($user['employee_id']) {
-    $stmt2 = $conn->prepare("SELECT department FROM employees WHERE id = ?");
+    $stmt2 = $conn->prepare("SELECT department, role_title FROM employees WHERE id = ?");
     $stmt2->bind_param("i", $user['employee_id']);
     $stmt2->execute();
     $empResult = $stmt2->get_result();
     $empRow    = $empResult->fetch_assoc();
     $stmt2->close();
     if ($empRow) {
-        $department = $empRow['department'];
+        $department = $empRow['department'] ?? '';
+        $role_title = $empRow['role_title'] ?? '';
     }
 }
 
@@ -68,6 +70,7 @@ $_SESSION['username']   = $user['username'];
 $_SESSION['full_name']  = $user['full_name'];
 $_SESSION['role']       = $user['role'];
 $_SESSION['department'] = $department;
+$_SESSION['role_title'] = $role_title;
 $_SESSION['employee_id']= $user['employee_id'];
 $_SESSION['telegram_chat_id'] = $user['telegram_chat_id'];
 $_SESSION['whatsapp_number'] = $user['whatsapp_number'];

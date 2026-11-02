@@ -374,6 +374,7 @@ function renderNotifDropdown() {
 function getStatusColor(status) {
   const colors = {
     pending: '#f59e0b',
+    waiting_manager_unit: '#8b5cf6',
     approved: '#10b981',
     completed: '#3b82f6',
     returned: '#3b82f6',
@@ -525,7 +526,7 @@ async function loadMyData(silent = false) {
             }
         } else if (window._currentView === 'dashboard') {
             // Update dashboard counts silently if needed
-            const pending = currentRequests.filter(r=>['pending','waiting_manager_fmd'].includes(r.status)).length;
+            const pending = currentRequests.filter(r=>['pending','waiting_manager_unit','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','in-progress'].includes(r.status)).length;
             const approved = currentRequests.filter(r=>['approved', 'ready_for_user'].includes(r.status)).length;
             const done = currentRequests.filter(r=>['completed','returned'].includes(r.status)).length;
             
@@ -590,9 +591,9 @@ function renderCurrentView() {
 }
 
 function renderDashboard() {
-  const all = [...myVehicle,...myRoom,...myDormitory,...myZoom,...myRepair,...myItem];
+  const all = [...myVehicle,...myRoom,...myDormitory,...myZoom,...myRepair,...myItem,...myItem2];
   const total    = all.length;
-  const pending  = all.filter(r=>['pending','waiting_manager_fmd'].includes(r.status)).length;
+  const pending  = all.filter(r=>['pending','waiting_manager_unit','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','in-progress'].includes(r.status)).length;
   const approved = all.filter(r=>['approved', 'ready_for_user'].includes(r.status)).length;
   const done     = all.filter(r=>['completed','returned'].includes(r.status)).length;
   const recent   = all.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,4);
@@ -728,7 +729,13 @@ function renderServicePage(type) {
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:1rem; top:50%; transform:translateY(-50%); color:var(--color-slate-400);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input type="text" id="catalog-search" class="form-input" placeholder="Cari nama barang..." oninput="filterCatalog()" style="padding-left: 2.5rem;" />
             </div>
-            <div style="flex:1; min-width:200px; max-width:350px;">
+            <div style="flex:1; min-width:200px; max-width:320px;">
+              <select id="catalog-uakpb-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
+                <option value="">-- Semua UAKPB --</option>
+                ${(typeof ALL_INV_LOCATIONS !== 'undefined' ? ALL_INV_LOCATIONS : []).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
+              </select>
+            </div>
+            <div style="flex:1; min-width:200px; max-width:320px;">
               <select id="catalog-skel-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
                 <option value="">-- Semua Sub-Kelompok --</option>
                 ${(typeof ALL_INV_SKEL !== 'undefined' ? ALL_INV_SKEL : []).map(s => `<option value="${s.code}">${s.name}</option>`).join('')}
@@ -741,7 +748,8 @@ function renderServicePage(type) {
             <thead>
               <tr>
                 <th>Nama Barang</th>
-                <th style="width:100px;">Stok</th>
+                <th style="width:180px;">UAKPB</th>
+                <th style="width:90px;">Stok</th>
                 <th style="width:80px;">Satuan</th>
                 <th style="width:170px; text-align:center;">Aksi</th>
               </tr>
@@ -1114,13 +1122,17 @@ function renderMyReports() {
           <option value="Repair_Bangunan">&nbsp;&nbsp;↳ Perbaikan: Bangunan</option>
           <option value="Repair_Elektronik">&nbsp;&nbsp;↳ Perbaikan: Elektronik</option>
           <option value="Repair_Kelistrikan">&nbsp;&nbsp;↳ Perbaikan: Kelistrikan</option>
-          <option value="Item">Barang</option>
+          <option value="Item">Peminjaman Barang</option>
+          <option value="Item2">Permintaan Barang</option>
         </select>
         <select class="form-select" id="my-reports-status" onchange="filterMyReports()" style="width:160px;">
           <option value="all">Semua Status</option>
           <option value="pending">Pending PIC</option>
+          <option value="waiting_manager_unit">Waiting Manager Unit</option>
+          <option value="verified">Verified (Review)</option>
           <option value="waiting_manager_fmd">Waiting Manager FMD</option>
           <option value="approved">Approved</option>
+          <option value="ready_for_user">Ready for User</option>
           <option value="completed">Completed</option>
           <option value="rejected">Rejected</option>
         </select>
@@ -1146,13 +1158,21 @@ function renderMyReportsRows(data, page) {
   if (paged.length === 0) return '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--color-slate-400);">Data tidak ditemukan</td></tr>';
 
   return paged.map(r => {
-    const typeLabel = { Vehicle:'Mobil', Room:'Ruangan', Dormitory:'Dormitory', Zoom:'Zoom', Repair:'Perbaikan', Item:'Barang' }[r._type] || r._type;
+    const typeLabel = { Vehicle:'Mobil', Room:'Ruangan', Dormitory:'Dormitory', Zoom:'Zoom', Repair:'Perbaikan', Item:'Peminjaman Barang', Item2:'Permintaan Barang' }[r._type] || r._type;
     const detail = r._type === 'Vehicle' ? (VEHICLE_MAP[r.vehicle_id] || 'Menunggu Plotting') :
                    r._type === 'Room'    ? r.room_id :
                    r._type === 'Dormitory' ? r.dormitory_id :
                    r._type === 'Zoom'    ? r.zoom_account_id :
                    r._type === 'Repair'  ? r.location_detail :
-                   r._type === 'Item'    ? r.item_name : '-';
+                   r._type === 'Item'    ? r.item_name :
+                   r._type === 'Item2'   ? (function(){
+                     try {
+                       const items = JSON.parse(r.items_json || '[]');
+                       return `Permintaan Barang (${items.length} jenis)`;
+                     } catch(e) {
+                       return 'Permintaan Barang';
+                     }
+                   })() : '-';
     return `
     <tr>
       <td data-label="ID" style="font-size:.78rem;color:var(--color-slate-400);">#${r.id}</td>
@@ -1236,7 +1256,8 @@ function filterMyReports() {
                    r._type === 'Dormitory' ? r.dormitory_id : 
                      r._type === 'Zoom' ? r.zoom_account_id : 
                      r._type === 'Repair' ? r.location_detail : 
-                     r.item_name || '').toLowerCase();
+                     r._type === 'Item' ? r.item_name : 
+                     r._type === 'Item2' ? (r.items_json || 'Permintaan Barang') : '').toLowerCase();
       return detail.includes(search) || r._type.toLowerCase().includes(search);
     });
   }
@@ -1269,7 +1290,8 @@ function goReportsPage(page) {
                    r._type === 'Dormitory' ? r.dormitory_id : 
                      r._type === 'Zoom' ? r.zoom_account_id : 
                      r._type === 'Repair' ? r.location_detail : 
-                     r.item_name || '').toLowerCase();
+                     r._type === 'Item' ? r.item_name : 
+                     r._type === 'Item2' ? (r.items_json || 'Permintaan Barang') : '').toLowerCase();
       return detail.includes(search) || r._type.toLowerCase().includes(search);
     });
   }
@@ -1496,16 +1518,23 @@ function setupFormListeners(type) {
     const ts = timeStart.value;
     const de = dateEnd.value;
     const te = timeEnd.value;
+    let alertMsg = document.getElementById('form-availability-alert');
     
-    if (!ds || !ts || !de || !te) return;
+    if (!ds || !ts || !de || !te) {
+      if (alertMsg) alertMsg.style.display = 'none';
+      return;
+    }
 
     const startDT = new Date(`${ds}T${ts}`);
     const endDT   = new Date(`${de}T${te}`);
 
-    if (startDT >= endDT) return;
+    if (startDT >= endDT) {
+      if (alertMsg) alertMsg.style.display = 'none';
+      return;
+    }
 
     const dataList = type === 'room' ? allRoom : allZoom;
-    const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending'];
+    const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund','pending','waiting_manager_unit'];
 
     const overlappingIds = new Set();
     dataList.forEach(r => {
@@ -1536,12 +1565,33 @@ function setupFormListeners(type) {
     if (selectEl.options[selectEl.selectedIndex] && selectEl.options[selectEl.selectedIndex].disabled) {
       selectEl.value = '';
     }
+
+    // Tampilkan notifikasi jika semua opsi terpakai
+    const selectableOptions = Array.from(selectEl.options).filter(opt => opt.value);
+    const allDisabled = selectableOptions.length > 0 && selectableOptions.every(opt => opt.disabled);
+    if (allDisabled) {
+      if (!alertMsg) {
+        alertMsg = document.createElement('div');
+        alertMsg.id = 'form-availability-alert';
+        alertMsg.style.cssText = 'padding:0.5rem 0.75rem;margin-top:0.4rem;background-color:#fee2e2;border:1px solid #f87171;color:#b91c1c;border-radius:0.375rem;font-size:0.75rem;font-weight:600;line-height:1.4;';
+        selectEl.parentNode.appendChild(alertMsg);
+      }
+      alertMsg.textContent = type === 'zoom'
+        ? '⚠️ Semua akun Zoom sudah terpakai pada rentang jam ini. Silakan pilih tanggal atau jam yang lain.'
+        : '⚠️ Semua ruangan tidak tersedia pada rentang jam ini. Silakan pilih waktu yang lain.';
+      alertMsg.style.display = 'block';
+    } else if (alertMsg) {
+      alertMsg.style.display = 'none';
+    }
   };
 
-  dateStart.addEventListener('change', updateDropdown);
-  timeStart.addEventListener('change', updateDropdown);
-  dateEnd.addEventListener('change', updateDropdown);
-  timeEnd.addEventListener('change', updateDropdown);
+  ['change', 'input'].forEach(evt => {
+    dateStart.addEventListener(evt, updateDropdown);
+    timeStart.addEventListener(evt, updateDropdown);
+    dateEnd.addEventListener(evt, updateDropdown);
+    timeEnd.addEventListener(evt, updateDropdown);
+  });
+  updateDropdown();
 }
 
 function buildForm(type) {
@@ -1784,7 +1834,7 @@ function renderCatalogPage(page = 1) {
   const pageItems = filteredCatalogItems.slice(start, end);
 
   if (pageItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 2rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</td></tr>';
     if(pag) pag.innerHTML = '';
     return;
   }
@@ -1792,6 +1842,11 @@ function renderCatalogPage(page = 1) {
   tbody.innerHTML = pageItems.map(item => `
     <tr style="transition:background .15s;" onmouseover="this.style.background='var(--color-slate-50)'" onmouseout="this.style.background=''">
       <td style="font-weight:600; font-size:0.875rem; color:var(--color-slate-800);">${item.name}</td>
+      <td style="font-size:0.75rem; color:var(--color-slate-600);">
+        <span style="background:var(--color-slate-100); padding:3px 7px; border-radius:4px; font-weight:600; font-size:0.72rem; display:inline-block; border:1px solid var(--color-slate-200);">
+          ${item.location_name || '-'}
+        </span>
+      </td>
       <td>
         <span style="font-weight:700; color:${item.stock > 0 ? 'var(--color-emerald-600)' : 'var(--color-rose-600)'}">${item.stock}</span>
       </td>
@@ -1822,13 +1877,14 @@ function filterCatalog() {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     const searchVal = (document.getElementById('catalog-search')?.value || '').toLowerCase();
+    const uakpbFilter = document.getElementById('catalog-uakpb-filter')?.value || '';
     const skelFilter = document.getElementById('catalog-skel-filter')?.value || '';
     
     filteredCatalogItems = (ALL_INV_ITEMS || []).filter(item => {
       const matchSearch = !searchVal || (item.name || '').toLowerCase().includes(searchVal);
-      // skelFilter code is 7 chars (kd_skelbrg), item_code starts with 10-char sskel code which starts with skel code
+      const matchUakpb = !uakpbFilter || String(item.location_id) === String(uakpbFilter);
       const matchSkel = !skelFilter || (item.item_code || '').startsWith(skelFilter);
-      return matchSearch && matchSkel;
+      return matchSearch && matchUakpb && matchSkel;
     });
     renderCatalogPage(1);
   }, 200);
@@ -1893,7 +1949,28 @@ async function doSubmitForm() {
     data.cost_bearer     = document.getElementById('f-cost-bearer')?.value || '';
 
   } else if (currentFormType === 'room') {
-    data.room_id      = document.getElementById('f-room-id')?.value || '';
+    data.room_id = document.getElementById('f-room-id')?.value || '';
+    const roomSelect = document.getElementById('f-room-id');
+    if (!data.room_id) {
+      if (typeof Toast !== 'undefined') Toast.error('Silakan pilih Ruangan terlebih dahulu!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (roomSelect && roomSelect.options[roomSelect.selectedIndex]?.disabled) {
+      if (typeof Toast !== 'undefined') Toast.error('Ruangan yang dipilih tidak tersedia pada jam tersebut!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (!data.date_start || !data.time_start || !data.date_end || !data.time_end) {
+      if (typeof Toast !== 'undefined') Toast.error('Tanggal dan jam pelaksanaan wajib diisi!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (new Date(`${data.date_start}T${data.time_start}`) >= new Date(`${data.date_end}T${data.time_end}`)) {
+      if (typeof Toast !== 'undefined') Toast.error('Waktu selesai harus lebih besar dari waktu mulai!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
     data.participants = document.getElementById('f-participants')?.value || '1';
     data.special_needs= document.getElementById('f-special-needs')?.value || '';
   } else if (currentFormType === 'dormitory') {
@@ -1903,8 +1980,34 @@ async function doSubmitForm() {
     data.participants = document.getElementById('f-participants')?.value || occupantInputs.length || '1';
     data.special_needs= document.getElementById('f-special-needs')?.value || '';
   } else if (currentFormType === 'zoom') {
-    data.zoom_account_id= document.getElementById('f-zoom-id')?.value     || '';
-    data.request_type   = document.getElementById('f-request-type')?.value || '';
+    data.zoom_account_id = document.getElementById('f-zoom-id')?.value || '';
+    const zoomSelect = document.getElementById('f-zoom-id');
+    if (!data.zoom_account_id) {
+      if (typeof Toast !== 'undefined') Toast.error('Silakan pilih Akun Zoom yang masih tersedia!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (zoomSelect && zoomSelect.options[zoomSelect.selectedIndex]?.disabled) {
+      if (typeof Toast !== 'undefined') Toast.error('Akun Zoom yang dipilih tidak tersedia pada jam tersebut!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (!data.date_start || !data.time_start || !data.date_end || !data.time_end) {
+      if (typeof Toast !== 'undefined') Toast.error('Tanggal dan jam pelaksanaan wajib diisi!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    if (new Date(`${data.date_start}T${data.time_start}`) >= new Date(`${data.date_end}T${data.time_end}`)) {
+      if (typeof Toast !== 'undefined') Toast.error('Waktu selesai harus lebih besar dari waktu mulai!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
+    data.request_type = document.getElementById('f-request-type')?.value || '';
+    if (!data.request_type.trim()) {
+      if (typeof Toast !== 'undefined') Toast.error('Nama Kegiatan wajib diisi!');
+      btn.disabled = false; btnTxt.textContent = 'Kirim Pengajuan';
+      return;
+    }
     data.purpose        = data.request_type; // Use Nama Kegiatan as Purpose for Zoom
     data.participants   = document.getElementById('f-participants')?.value  || '1';
     const addReq = document.getElementById('f-add-reqs')?.value || '';
@@ -2161,9 +2264,9 @@ function buildDetailBody(req) {
         <div class="tv-label">Driver</div>
         <div class="tv-value" style="font-weight:600;color:#92400e;">🚗 ${req.driver_name === 'TANPA_SUPIR' ? 'Tanpa Driver' : req.driver_name}</div>
       </div>` : ''}
-      <div class="tv-row">
+      <div class="tv-row ${type === 'item2' ? 'tv-row-item2' : ''}">
         <div class="tv-label">Item / Lokasi</div>
-        <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600;">${detail || '-'}</div>
+        <div class="tv-value tv-item" style="color:#1d4ed8; font-weight:600; word-break:break-word; max-width:100%; box-sizing:border-box;">${detail || '-'}</div>
       </div>
       ${type === 'zoom' ? `
       <div class="tv-row">
@@ -2233,7 +2336,7 @@ function buildDetailFooter(req) {
 }
 
 async function completeRequest(id, type) {
-  const all = [...myVehicle, ...myRoom, ...myZoom, ...myRepair, ...myItem];
+  const all = [...myVehicle, ...myRoom, ...myDormitory, ...myZoom, ...myRepair, ...myItem, ...myItem2];
   const req = all.find(x => String(x.id) === String(id));
   if(!req) return;
 
@@ -2266,7 +2369,7 @@ async function completeRequest(id, type) {
       Modal.close('modal-complete');
       await loadMyData();
       
-      const latest = [...myVehicle, ...myRoom, ...myZoom, ...myRepair, ...myItem];
+      const latest = [...myVehicle, ...myRoom, ...myDormitory, ...myZoom, ...myRepair, ...myItem, ...myItem2];
       const r = latest.find(x => String(x.id) === String(id));
       if (r) {
         if (!r.type) r.type = type;
@@ -2288,7 +2391,7 @@ function getTimelineEvents(req) {
     id: 'start',
     title: 'Request Created',
     date: req.created_at || req.date_start,
-    desc: 'Permohonan berhasil dikirim dan menunggu verifikasi.',
+    desc: (req._type === 'Item2' || req.type === 'Item2') ? 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.' : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
     user: req.applicant_name,
     role: 'Applicant',
     icon: 'file-text',
@@ -2307,18 +2410,19 @@ function getTimelineEvents(req) {
         let color = '#3b82f6';
         let icon  = 'history';
 
-        if (status === 'approved') { title = 'Approved by FMD Manager'; color = '#16a34a'; icon = 'check-circle'; }
-        else if (status === 'ready_for_user') { title = 'Ready for User'; color = '#0891b2'; icon = 'check-circle'; }
-        else if (status === 'completed') { title = 'Completed'; color = '#2563eb'; icon = 'check-circle'; }
+        if (status === 'approved') { title = (req._type === 'Item2' || req.type === 'Item2') ? 'Approved by Manager FMD (Gudang Menyiapkan Barang)' : 'Approved by FMD Manager'; color = '#16a34a'; icon = 'check-circle'; }
+        else if (status === 'ready_for_user') { title = 'Ready for User (Siap Diambil di Gudang)'; color = '#0891b2'; icon = 'check-circle'; }
+        else if (status === 'completed') { title = 'Completed (Selesai)'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'returned') { title = 'Returned'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'rejected') { title = 'Rejected'; color = '#dc2626'; icon = 'x-circle'; }
-        else if (status === 'verified') { title = 'Verified by Admin'; color = '#6366f1'; icon = 'check-circle'; }
+        else if (status === 'waiting_manager_unit') { title = 'Menunggu Approval Manager Unit'; color = '#8b5cf6'; icon = 'clock'; }
+        else if (status === 'verified') { title = (req._type === 'Item2' || req.type === 'Item2') ? 'Disetujui Manager Unit (Proses PIC Gudang)' : 'Verified by Admin'; color = '#6366f1'; icon = 'check-circle'; }
         else if (status === 'in-progress') { title = 'Processed by PIC'; color = '#f97316'; icon = 'wrench'; }
-        else if (status === 'waiting_manager_fmd') { title = 'Waiting for FMD Manager'; color = '#6366f1'; }
-        else if (status === 'waiting_manager_fad') { title = 'Waiting for FAD Manager'; color = '#6366f1'; }
-        else if (status === 'waiting_ppk') { title = 'Waiting for PPK'; color = '#a855f7'; }
-        else if (status === 'waiting_bod') { title = 'Waiting for BOD'; color = '#db2777'; }
-        else if (status === 'approved_waiting_fund') { title = 'Approved - Waiting Fund'; color = '#d97706'; }
+        else if (status === 'waiting_manager_fmd') { title = 'Waiting for FMD Manager'; color = '#6366f1'; icon = 'clock'; }
+        else if (status === 'waiting_manager_fad') { title = 'Waiting for FAD Manager'; color = '#6366f1'; icon = 'clock'; }
+        else if (status === 'waiting_ppk') { title = 'Waiting for PPK'; color = '#a855f7'; icon = 'clock'; }
+        else if (status === 'waiting_bod') { title = 'Waiting for BOD'; color = '#db2777'; icon = 'clock'; }
+        else if (status === 'approved_waiting_fund') { title = 'Approved - Waiting Fund'; color = '#d97706'; icon = 'clock'; }
 
         events.push({
           id: 'note-' + idx,
@@ -2428,7 +2532,7 @@ window.renderVehicleCalGrid = function() {
   const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   title.textContent = `${BULAN[mo]} ${yr}`;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
 
@@ -2494,7 +2598,7 @@ window.showVehicleDayDetail = function(dateStr, updateGrid = true) {
   const det = document.getElementById('vehicle-cal-detail');
   if (!det) return;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const activeStatuses   = [...occupiedStatuses, 'pending'];
 
   // Requests on this date
@@ -2591,7 +2695,7 @@ window.renderZoomCalGrid = function() {
   const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   title.textContent = `${BULAN[mo]} ${yr}`;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
 
@@ -2663,7 +2767,7 @@ window.showZoomDayDetail = function(dateStr, updateGrid = true) {
   const det = document.getElementById('zoom-cal-detail');
   if (!det) return;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const activeStatuses = [...occupiedStatuses, 'pending'];
 
   const reqs = allZoom.filter(r => {
@@ -2738,7 +2842,7 @@ window.renderZoomAvail = function() {
 
   if(statusDate) statusDate.textContent = formattedDate;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress', 'verified', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
   
@@ -2847,7 +2951,7 @@ window.renderRoomCalGrid = function() {
   const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   title.textContent = `${BULAN[mo]} ${yr}`;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
 
@@ -2914,7 +3018,7 @@ window.showRoomDayDetail = function(dateStr, updateGrid = true) {
   const det = document.getElementById('room-cal-detail');
   if (!det) return;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const activeStatuses   = [...occupiedStatuses, 'pending'];
 
   const reqs = allRoom.filter(r => {
@@ -3006,7 +3110,7 @@ window.renderDormitoryCalGrid = function() {
   const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   title.textContent = `${BULAN[mo]} ${yr}`;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const pendingStatuses  = ['pending'];
   const activeStatuses   = [...occupiedStatuses, ...pendingStatuses];
 
@@ -3073,7 +3177,7 @@ window.showDormitoryDayDetail = function(dateStr, updateGrid = true) {
   const det = document.getElementById('dormitory-cal-detail');
   if (!det) return;
 
-  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
+  const occupiedStatuses = ['approved','ready_for_user','in-progress','verified','waiting_manager_fmd','waiting_manager_fad','waiting_ppk','waiting_bod','approved_waiting_fund'];
   const activeStatuses   = [...occupiedStatuses, 'pending'];
 
   const reqs = allDormitory.filter(r => {
