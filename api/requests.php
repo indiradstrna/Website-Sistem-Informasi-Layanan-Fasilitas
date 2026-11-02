@@ -1297,10 +1297,10 @@ switch ($action) {
             $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, dormitory_id=?, occupant_name=?, participants=? WHERE id=?");
             $stmt->bind_param("sssssssssisii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $did, $occ, $part, $id);
         } else if ($type === 'Zoom') {
-            $zid = empty($_POST['zoom_account_id']) ? null : (int)$_POST['zoom_account_id'];
+            $zid = !empty($_POST['zoom_account_id']) ? trim($_POST['zoom_account_id']) : null;
             $part = (int)($_POST['participants'] ?? 0);
             $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, zoom_account_id=?, participants=? WHERE id=?");
-            $stmt->bind_param("sssssssssiii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $zid, $part, $id);
+            $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $zid, $part, $id);
         } else if ($type === 'Repair') {
             $loc = $_POST['location_detail'] ?? '';
             $iss = $_POST['issue_description'] ?? '';

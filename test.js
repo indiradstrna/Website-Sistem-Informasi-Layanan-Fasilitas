@@ -2393,8 +2393,8 @@ window.showZoomDayDetail = function(dateStr, updateGrid = true) {
   const dayObj   = new Date(dateStr);
   const dayLabel = `${dayNames[dayObj.getDay()]}, ${parseInt(dy)} ${BULAN[parseInt(mo)-1]} ${yr}`;
 
-  // Akun zoom yang sudah terpakai pada tanggal ini
-  const bookedZoomIds = new Set(reqs.filter(r => occupiedStatuses.includes(r.status)).map(r => r.zoom_account_id));
+  // Akun zoom yang sudah terpakai pada tanggal ini (termasuk status pending agar slot terkunci)
+  const bookedZoomIds = new Set(reqs.filter(r => activeStatuses.includes(r.status)).map(r => r.zoom_account_id).filter(Boolean));
   const availableZoom = ZOOM_ACCOUNTS.filter(z => !bookedZoomIds.has(z.id));
 
   // -- Bagian TERSEDIA --
@@ -2411,7 +2411,7 @@ window.showZoomDayDetail = function(dateStr, updateGrid = true) {
     const tStr     = (r.time_start||'00:00').substring(0,5);
     const tEnd     = (r.time_end  ||'00:00').substring(0,5);
     const nama     = r.applicant_name || '-';
-    const acct     = ZOOM_ACCOUNTS.find(z => z.id === r.zoom_account_id)?.name || r.zoom_account_id;
+    const acct     = ZOOM_ACCOUNTS.find(z => z.id === r.zoom_account_id)?.name || (r.zoom_account_id ? r.zoom_account_id : '<span style="color:#ef4444;font-style:italic;">(Akun Belum Ditentukan)</span>');
     const kegiatan = r.request_type || r.purpose || '-';
     bookedHtml += `<div style="display:flex;align-items:baseline;gap:0.4rem;padding:0.25rem 0;border-bottom:1px solid var(--color-slate-100);font-size:0.75rem;color:var(--color-slate-600);line-height:1.5;">
       <span style="font-size:0.6rem;font-weight:700;color:${sColor};border:1px solid ${sColor};border-radius:0.2rem;padding:0.05rem 0.3rem;white-space:nowrap;flex-shrink:0;">${sLabel}</span>

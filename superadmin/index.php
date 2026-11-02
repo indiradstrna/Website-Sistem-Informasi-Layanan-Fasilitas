@@ -1596,7 +1596,13 @@ function renderCrudSpecificFields(req) {
     `;
   } else if (req.type === 'Zoom') {
     html += `
-      <div class="form-group"><label class="form-label">Zoom Account ID</label><input type="text" id="crud-sp-zoom_account_id" class="form-input" value="${req.zoom_account_id || ''}"></div>
+      <div class="form-group"><label class="form-label">Akun Zoom</label>
+        <select id="crud-sp-zoom_account_id" class="form-select">
+          <option value="">-- Pilih Akun Zoom --</option>
+          <option value="zoom_01"${req.zoom_account_id === 'zoom_01' ? ' selected' : ''}>Zoom 1 (Kap. 300)</option>
+          <option value="zoom_02"${req.zoom_account_id === 'zoom_02' ? ' selected' : ''}>Zoom 2 (Kap. 300)</option>
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Peserta</label><input type="number" id="crud-sp-participants" class="form-input" value="${req.participants || ''}"></div>
     `;
   } else if (req.type === 'Repair') {
