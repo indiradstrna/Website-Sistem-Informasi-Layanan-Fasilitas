@@ -394,8 +394,12 @@ switch ($action) {
         $purpose        = $_POST['purpose']        ?? '';
         $items_json     = $_POST['items_json']     ?? '[]';
 
-        $stmt = $conn->prepare("INSERT INTO item_requests (user_id, applicant_name, applicant_unit, purpose, items_json, status) VALUES (?,?,?,?,?,'waiting_manager_unit')");
-        $stmt->bind_param("issss", $userId, $applicant_name, $applicant_unit, $purpose, $items_json);
+        $cleanAppUnit = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit', 'departemen', 'department'], '', $applicant_unit)));
+        $isFmdUnit    = ($cleanAppUnit === 'fmd' || stripos($applicant_unit, 'fmd') !== false);
+        $initStatus   = $isFmdUnit ? 'verified' : 'waiting_manager_unit';
+
+        $stmt = $conn->prepare("INSERT INTO item_requests (user_id, applicant_name, applicant_unit, purpose, items_json, status) VALUES (?,?,?,?,?,?)");
+        $stmt->bind_param("isssss", $userId, $applicant_name, $applicant_unit, $purpose, $items_json, $initStatus);
         if ($stmt->execute()) {
             $newId = $conn->insert_id;
             
@@ -413,7 +417,7 @@ switch ($action) {
                 $stmtDet->close();
             }
 
-            // Notifikasi ke Group Admin Telegram & ke Manajer Unit
+            // Notifikasi ke Group Admin Telegram & ke PIC Gudang (jika FMD) / Manajer Unit (jika Non-FMD)
             notifyNewRequest('Item2', $newId, $applicant_name, $applicant_unit, $purpose);
 
             // Kirim notifikasi chat ke user pemohon konfirmasi pengajuan berhasil
@@ -429,7 +433,11 @@ switch ($action) {
                         $userMsg = "📦 *PENGAJUAN PERMINTAAN BARANG (#ITM-$newId)*\n\n";
                         $userMsg .= "Halo *$applicant_name*,\n";
                         $userMsg .= "Pengajuan permintaan barang Anda telah berhasil dikirim ke sistem.\n\n";
-                        $userMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (*$applicant_unit*).\n\n";
+                        if ($isFmdUnit) {
+                            $userMsg .= "Saat ini pengajuan sedang dalam proses pemeriksaan & verifikasi barang oleh *PIC Gudang* sebelum diteruskan ke *Manager FMD*.\n\n";
+                        } else {
+                            $userMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (*$applicant_unit*).\n\n";
+                        }
                         $userMsg .= "_Pantau status di Dashboard SILATAS:_ https://silatas.biotrop.org/";
                         sendWhatsAppFonnte($userMsg, $userWaRow['whatsapp_number']);
                     }
@@ -437,7 +445,11 @@ switch ($action) {
                         $userTgMsg = "📦 <b>PENGAJUAN PERMINTAAN BARANG (#ITM-$newId)</b>\n\n";
                         $userTgMsg .= "Halo <b>" . htmlspecialchars($applicant_name) . "</b>,\n";
                         $userTgMsg .= "Pengajuan permintaan barang Anda telah berhasil dikirim ke sistem.\n\n";
-                        $userTgMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (<b>" . htmlspecialchars($applicant_unit) . "</b>).\n\n";
+                        if ($isFmdUnit) {
+                            $userTgMsg .= "Saat ini pengajuan sedang dalam proses pemeriksaan & verifikasi barang oleh <b>PIC Gudang</b> sebelum diteruskan ke <b>Manager FMD</b>.\n\n";
+                        } else {
+                            $userTgMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (<b>" . htmlspecialchars($applicant_unit) . "</b>).\n\n";
+                        }
                         $userTgMsg .= "<i>Pantau status di Dashboard SILATAS:</i> https://silatas.biotrop.org/";
                         sendTelegramPHP($userTgMsg, $userWaRow['telegram_chat_id']);
                     }

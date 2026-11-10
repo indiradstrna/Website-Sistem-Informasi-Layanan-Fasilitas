@@ -48,7 +48,7 @@ if (strlen($cleanSender) < 8) {
 }
 
 // 1. Cari user di DB berdasarkan nomor WA
-$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, e.nip_nik as username FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ?");
+$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, u.employee_id, e.nip_nik as username, e.department, e.role_title FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ? ORDER BY u.employee_id IS NOT NULL DESC, u.id ASC LIMIT 1");
 $likeSender = "%$cleanSender%";
 $stmt->bind_param("s", $likeSender);
 $stmt->execute();
@@ -61,20 +61,68 @@ if (!$user) {
     exit;
 }
 
-// 2. Tentukan tabel
+// 2. Tentukan tabel & Cek Role Dasar untuk Resolusi Tabel
+$role = $user['role'];
+$username = $user['username'];
+$isManagerFMD = ($role === 'managerFMD' || $username === '197707072025211067');
+
 $tableMap = [
     'VEH' => 'vehicle_requests',
     'ROM' => 'room_requests',
+    'DRM' => 'dormitory_requests',
     'ZOM' => 'zoom_requests',
     'REP' => 'repair_requests',
-    'ITM' => 'item_loan_requests'
+    'ITM' => 'item_loan_requests',
+    'BRG' => 'item_requests'
 ];
 
 $table = $tableMap[$typeCode] ?? null;
 if ($typeCode === 'ITM') {
-    $chkItm = $conn->query("SELECT id FROM item_requests WHERE id = $reqId");
-    if ($chkItm && $chkItm->num_rows > 0) {
+    $resLoan = $conn->query("SELECT id, user_id, status FROM item_loan_requests WHERE id = $reqId");
+    $rowLoan = ($resLoan && $resLoan->num_rows > 0) ? $resLoan->fetch_assoc() : null;
+
+    $resReq  = $conn->query("SELECT id, user_id, applicant_unit, status FROM item_requests WHERE id = $reqId");
+    $rowReq  = ($resReq && $resReq->num_rows > 0) ? $resReq->fetch_assoc() : null;
+
+    if ($rowLoan && !$rowReq) {
+        $table = 'item_loan_requests';
+    } elseif (!$rowLoan && $rowReq) {
         $table = 'item_requests';
+    } elseif ($rowLoan && $rowReq) {
+        // Jika kedua tabel sama-sama memiliki ID tersebut (bentrok ID antara Peminjaman Barang & Permintaan Barang),
+        // pilih tabel yang statusnya sesuai dengan hak akses pengirim WA saat ini:
+        $loanStatus = $rowLoan['status'];
+        $reqStatus  = $rowReq['status'];
+
+        if ($isManagerFMD) {
+            if ($loanStatus === 'waiting_manager_fmd' && $reqStatus !== 'waiting_manager_fmd') {
+                $table = 'item_loan_requests';
+            } elseif ($reqStatus === 'waiting_manager_fmd' && $loanStatus !== 'waiting_manager_fmd') {
+                $table = 'item_requests';
+            } else {
+                // Jika Manager FMD adalah Manajer Dept FMD untuk item_requests
+                $isFmdUnit = stripos($rowReq['applicant_unit'] ?? '', 'fmd') !== false;
+                $table = ($isFmdUnit && $reqStatus === 'waiting_manager_unit') ? 'item_requests' : 'item_loan_requests';
+            }
+        } else {
+            // Cek apakah pengirim adalah PIC ITM
+            $isPicItm = in_array($username, ['198902222025211044', '198605082025211053']);
+            if ($isPicItm) {
+                if (in_array($loanStatus, ['pending', 'approved']) && !in_array($reqStatus, ['verified', 'approved', 'ready_for_user'])) {
+                    $table = 'item_loan_requests';
+                } elseif (in_array($reqStatus, ['verified', 'approved', 'ready_for_user'])) {
+                    $table = 'item_requests';
+                } else {
+                    $table = 'item_loan_requests';
+                }
+            } else {
+                // Selain Manager FMD & PIC (misal Manajer Departemen lain atau Pemohon)
+                $table = 'item_requests';
+                if ($rowLoan['user_id'] == $user['id'] && in_array($loanStatus, ['approved', 'ready_for_user'])) {
+                    $table = 'item_loan_requests';
+                }
+            }
+        }
     }
 }
 
@@ -148,6 +196,7 @@ $isManagerFMD = ($role === 'managerFMD' || $username === '197707072025211067');
 $picMap = [
     'VEH' => ['198605082025211053'], 
     'ITM' => ['198902222025211044', '198605082025211053'], 
+    'BRG' => ['198902222025211044', '198605082025211053'], 
     'ZOM' => ['198902222025211044'], 
     'ROM' => ['199008092025212052', '16268300055'], 
     'DRM' => ['199008092025212052', '16268300055'], 
@@ -163,28 +212,45 @@ if ($table === 'item_requests') {
         $resUnit = $conn->query("SELECT applicant_unit FROM item_requests WHERE id = $reqId");
         if ($resUnit && $rowU = $resUnit->fetch_assoc()) $appUnit = trim($rowU['applicant_unit']);
 
+        $cleanUnit = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit', 'departemen', 'department'], '', $appUnit)));
+        if ($cleanUnit === 'hrd') $cleanUnit = 'hrad';
+        $isFmdReq = ($cleanUnit === 'fmd' || stripos($appUnit, 'fmd') !== false);
+
         $isDeptMgr = false;
-        if (!empty($user['employee_id'])) {
+        $eDept  = strtolower(trim($user['department'] ?? ''));
+        $eTitle = strtolower(trim($user['role_title'] ?? ''));
+
+        if ((empty($eDept) || empty($eTitle)) && !empty($user['employee_id'])) {
             $stmtEmp = $conn->prepare("SELECT department, role_title FROM employees WHERE id = ?");
             $stmtEmp->bind_param("i", $user['employee_id']);
             $stmtEmp->execute();
             $empRow = $stmtEmp->get_result()->fetch_assoc();
             $stmtEmp->close();
             if ($empRow) {
-                $eDept = strtolower($empRow['department']);
-                $eTitle = strtolower($empRow['role_title']);
-                $cleanUnit = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit'], '', $appUnit)));
-                if ($cleanUnit === 'hrd') $cleanUnit = 'hrad';
-
-                $isMgrTitle = (strpos($eTitle, 'manajer') !== false || strpos($eTitle, 'manager') !== false || strpos($eTitle, 'direktur') !== false || strpos($eTitle, 'pejabat') !== false);
-                if ($isMgrTitle && (strpos($cleanUnit, $eDept) !== false || strpos($eDept, $cleanUnit) !== false || strpos(strtolower($appUnit), $eDept) !== false)) {
-                    $isDeptMgr = true;
-                }
+                $eDept  = strtolower(trim($empRow['department'] ?? ''));
+                $eTitle = strtolower(trim($empRow['role_title'] ?? ''));
             }
         }
-        if ($role === 'superadmin') $isDeptMgr = true;
 
-        if ($isDeptMgr) {
+        if ($eDept && $eTitle) {
+            $cleanMyDept = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit', 'departemen', 'department'], '', $eDept)));
+            if ($cleanMyDept === 'hrd') $cleanMyDept = 'hrad';
+
+            $isMgrTitle = (strpos($eTitle, 'manajer') !== false || strpos($eTitle, 'manager') !== false || strpos($eTitle, 'direktur') !== false || strpos($eTitle, 'pejabat') !== false);
+            if ($isMgrTitle && ($cleanUnit === $cleanMyDept || strpos($cleanUnit, $cleanMyDept) !== false || strpos($cleanMyDept, $cleanUnit) !== false || strpos(strtolower($appUnit), $eDept) !== false)) {
+                $isDeptMgr = true;
+            }
+        }
+
+        // Khusus pengajuan dari unit FMD yang masih berstatus waiting_manager_unit:
+        // Bisa diproses langsung oleh PIC Gudang (ke waiting_manager_fmd) atau Manager FMD (ke verified / PIC Gudang)
+        if ($isFmdReq && $isPIC) {
+            $canProcess = true;
+            $nextStatusApprove = 'waiting_manager_fmd';
+        } else if ($isFmdReq && $isManagerFMD) {
+            $canProcess = true;
+            $nextStatusApprove = 'verified';
+        } else if ($isDeptMgr || $role === 'superadmin') {
             $canProcess = true;
             $nextStatusApprove = 'verified'; // Masuk ke PIC Permintaan Barang
         } else {

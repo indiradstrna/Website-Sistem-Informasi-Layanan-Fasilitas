@@ -505,12 +505,13 @@ function isManagerForDept(applicantUnit) {
   const myDept = (ADMIN_DEPT || '').toLowerCase().trim();
   const myTitle = (ADMIN_ROLE_TITLE || '').toLowerCase().trim();
   const reqUnit = (applicantUnit || '').toLowerCase().trim();
+  let cleanReq = reqUnit.replace(/^(divisi|bagian|unit|departemen|department)\s+/i, '').trim();
+  if (cleanReq === 'fmd' && (CURRENT_ROLE === 'managerFMD' || ADMIN_USERNAME === '197707072025211067')) return true;
   
   const isManagerTitle = myTitle.includes('manajer') || myTitle.includes('manager') || myTitle.includes('direktur') || myTitle.includes('pejabat');
   
   if (isManagerTitle && myDept) {
-    let cleanReq = reqUnit.replace(/^(divisi|bagian|unit)\s+/i, '').trim();
-    let cleanMy = myDept.replace(/^(divisi|bagian|unit)\s+/i, '').trim();
+    let cleanMy = myDept.replace(/^(divisi|bagian|unit|departemen|department)\s+/i, '').trim();
     if (cleanReq === 'hrd') cleanReq = 'hrad';
     if (cleanMy === 'hrd') cleanMy = 'hrad';
     
@@ -684,6 +685,9 @@ async function loadAllData(silent = false) {
     const picPending = allRequests.filter(r => {
       if (r.type === 'Item2') {
         if (r.status === 'waiting_manager_unit' || r.status === 'pending') {
+          const isFmdUnit = (r.applicant_unit || '').toLowerCase().includes('fmd');
+          const allowed = PIC_MAP['Item2'] || [];
+          if (isFmdUnit) return isSuperAdmin || allowed.includes(ADMIN_USERNAME) || isManagerForDept(r.applicant_unit);
           return isManagerForDept(r.applicant_unit) || isSuperAdmin;
         }
         if (r.status === 'verified') {
@@ -2390,7 +2394,11 @@ function getTimelineEvents(req) {
     id: 'created',
     title: 'Request Created',
     date: req.created_at || req.date_start,
-    desc: (req.type === 'Item2') ? 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.' : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
+    desc: (req.type === 'Item2')
+      ? ((req.applicant_unit || '').toLowerCase().includes('fmd')
+          ? 'Permohonan berhasil dikirim dan diteruskan ke PIC Gudang untuk pemeriksaan barang.'
+          : 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.')
+      : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
     user: req.applicant_name,
     role: 'Applicant',
     icon: 'file-text',
@@ -2866,17 +2874,27 @@ function renderDetailPengajuanTinjau() {
   } else if (req.type === 'Item2') {
     // ══════════════════════════════════════════════════════════════
     // WORKFLOW ITEM2: PERMINTAAN BARANG
-    // 1. (pending / waiting_manager_unit) -> Manager Dept Approval
-    // 2. (verified) -> PIC Permintaan Barang (Edit/Review & Forward)
-    // 3. (waiting_manager_fmd) -> Manager FMD Approval
-    // 4. (approved) -> Dikembalikan ke PIC Gudang untuk siapkan barang -> Ready for User
-    // 5. (ready_for_user) -> Notif ke user dengan kontak gudang -> Selesai (Completed)
+    // - Non-FMD: (waiting_manager_unit) -> Manager Dept -> (verified) PIC Gudang -> (waiting_manager_fmd) Manager FMD
+    // - Unit FMD: Langsung (verified) PIC Gudang -> (waiting_manager_fmd) Manager FMD
+    // - Selanjutnya: (approved) PIC Gudang siapkan barang -> (ready_for_user) -> (completed)
     // ══════════════════════════════════════════════════════════════
     const isDeptManager = isManagerForDept(req.applicant_unit) || isSuperAdmin;
+    const isFmdUnitReq  = (req.applicant_unit || '').toLowerCase().includes('fmd');
 
     if (req.status === 'waiting_manager_unit' || req.status === 'pending') {
-      // ── TAHAP 1: Approval Manajer Departemen ──
-      if (isDeptManager) {
+      // ── TAHAP 1: Approval Manajer Departemen (atau PIC Gudang jika unit FMD lama) ──
+      if (isFmdUnitReq && (isPIC || isSuperAdmin)) {
+        actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
+            <strong>🔍 Pemeriksaan & Verifikasi PIC Gudang (Unit ${req.applicant_unit || 'FMD'}).</strong><br>
+            Silakan PIC Gudang memeriksa ketersediaan barang. Anda dapat mengedit, menambah, atau mengubah jumlah barang di tabel di atas sebelum meneruskan ke Manager FMD.
+          </div>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-primary" style="flex:1;" onclick="updateStatus(${req.id},'Item2','waiting_manager_fmd')">✓ Teruskan ke Manager FMD</button>
+            <button class="btn btn-danger" style="flex:1;" onclick="updateStatus(${req.id},'Item2','rejected')">✕ Tolak</button>
+          </div>
+        </div>`;
+      } else if (isDeptManager) {
         actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
           <div style="background:#f5f3ff;border:1px solid #ddd6fe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#5b21b6;margin-bottom:.5rem;">
             <strong>👔 Persetujuan Manajer Departemen (${req.applicant_unit || 'Unit'})</strong><br>
@@ -2897,7 +2915,7 @@ function renderDetailPengajuanTinjau() {
       if (isPIC || isSuperAdmin) {
         actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
           <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.85rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
-            <strong>🔍 Disetujui Manajer Departemen (${req.applicant_unit || 'Unit'}).</strong><br>
+            <strong>🔍 ${isFmdUnitReq ? `Pemeriksaan & Verifikasi PIC Gudang (Unit ${req.applicant_unit || 'FMD'})` : `Disetujui Manajer Departemen (${req.applicant_unit || 'Unit'})`}.</strong><br>
             Silakan PIC Gudang memeriksa ketersediaan barang. Anda dapat mengedit, menambah, atau mengubah jumlah barang di tabel di atas sebelum meneruskan ke Manager FMD.
           </div>
           <div style="display:flex;gap:.5rem;">
@@ -2907,7 +2925,9 @@ function renderDetailPengajuanTinjau() {
         </div>`;
       } else {
         picMessage = reminderBox('🔍', 'Proses Verifikasi PIC Gudang',
-          'Pengajuan telah disetujui oleh Manajer Departemen dan saat ini sedang dalam proses pemeriksaan ketersediaan barang oleh PIC Gudang sebelum diteruskan ke Manager FMD.');
+          isFmdUnitReq
+            ? 'Pengajuan dari unit FMD saat ini sedang dalam proses pemeriksaan ketersediaan barang oleh PIC Gudang sebelum diteruskan ke Manager FMD.'
+            : 'Pengajuan telah disetujui oleh Manajer Departemen dan saat ini sedang dalam proses pemeriksaan ketersediaan barang oleh PIC Gudang sebelum diteruskan ke Manager FMD.');
       }
 
     } else if (req.status === 'waiting_manager_fmd') {

@@ -2391,7 +2391,11 @@ function getTimelineEvents(req) {
     id: 'start',
     title: 'Request Created',
     date: req.created_at || req.date_start,
-    desc: (req._type === 'Item2' || req.type === 'Item2') ? 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.' : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
+    desc: (req._type === 'Item2' || req.type === 'Item2')
+      ? ((req.applicant_unit || '').toLowerCase().includes('fmd')
+          ? 'Permohonan berhasil dikirim dan diteruskan ke PIC Gudang untuk pemeriksaan barang.'
+          : 'Permohonan berhasil dikirim dan menunggu persetujuan Manajer Departemen.')
+      : 'Permohonan berhasil dikirim dan menunggu verifikasi.',
     user: req.applicant_name,
     role: 'Applicant',
     icon: 'file-text',

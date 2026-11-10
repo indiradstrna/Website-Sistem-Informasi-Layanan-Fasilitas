@@ -22,7 +22,7 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
         'Zoom'    => 'ZOM',
         'Repair'  => 'REP',
         'Item'    => 'ITM',
-        'Item2'   => 'ITM'
+        'Item2'   => 'BRG'
     ];
     $code = $typeCodes[$type] ?? 'REQ';
     $approvableStatuses = ['pending', 'waiting_manager_unit', 'verified', 'waiting_manager_fmd', 'waiting_manager_fad', 'waiting_ppk', 'waiting_bod', 'approved_waiting_fund', 'approved', 'ready_for_user'];
@@ -32,8 +32,8 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
             $promptWa = "\n*Untuk menyetujui pengajuan ini (Manajer Departemen), balas:*\nSETUJU {$code}-{$id}";
             $promptTg = "\n<b>Untuk menyetujui pengajuan ini (Manajer Departemen), balas:</b>\nSETUJU {$code}-{$id}";
         } else if ($newStatus === 'verified' && $type === 'Item2') {
-            $promptWa = "\n_Pengajuan telah disetujui Manajer Departemen. Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:_\nhttps://silatas.biotrop.org/";
-            $promptTg = "\n<i>Pengajuan telah disetujui Manajer Departemen. Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:</i>\nhttps://silatas.biotrop.org/";
+            $promptWa = "\n_Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:_\nhttps://silatas.biotrop.org/\n\n*Atau balas pesan ini untuk meneruskan ke Manager FMD:*\nSETUJU {$code}-{$id}";
+            $promptTg = "\n<i>Silakan PIC Gudang memeriksa daftar barang melalui Web SILATAS untuk diteruskan ke Manager FMD:</i>\nhttps://silatas.biotrop.org/\n\n<b>Atau balas pesan ini untuk meneruskan ke Manager FMD:</b>\nSETUJU {$code}-{$id}";
         } else if ($newStatus === 'pending') {
             if ($type === 'Repair') {
                 $promptWa = "\n_Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya._";
@@ -432,7 +432,13 @@ function notifyNewRequest($type, $id, $applicant, $unit, $purpose) {
     sendTelegramPHP($msg);
     
     // Kirim ke Approver PIC / Manajer Unit (WhatsApp)
-    $initStatus = ($type === 'Item2') ? 'waiting_manager_unit' : 'pending';
+    if ($type === 'Item2') {
+        $cleanAppUnit = strtolower(trim(str_ireplace(['divisi', 'bagian', 'unit', 'departemen', 'department'], '', $unit)));
+        $isFmdUnit    = ($cleanAppUnit === 'fmd' || stripos($unit, 'fmd') !== false);
+        $initStatus   = $isFmdUnit ? 'verified' : 'waiting_manager_unit';
+    } else {
+        $initStatus   = 'pending';
+    }
     notifyApprovers($conn, $initStatus, $type, $id, $msg);
 }
 
@@ -505,7 +511,7 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
                 'zoom_requests'    => 'ZOM',
                 'repair_requests'  => 'REP',
                 'item_loan_requests' => 'ITM',
-                'item_requests' => 'ITM'
+                'item_requests' => 'BRG'
             ];
             $code = $typeCodes[$table] ?? 'REQ';
             

@@ -55,24 +55,56 @@ $locId = $_GET['location_id'] ?? 'all';
 $whereLocation = '';
 $locationTitle = 'SEMUA UAKPB';
 $locationCode = '-';
-if ($locId !== 'all') {
+if ($locId !== 'all' && $locId !== '') {
     $whereLocation = "WHERE i.location_id = " . intval($locId);
     $stmtLoc = $conn->prepare("SELECT code, name FROM inv_locations WHERE id = ?");
-    $stmtLoc->bind_param("i", $locId);
-    $stmtLoc->execute();
-    $resLoc = $stmtLoc->get_result()->fetch_assoc();
-    if ($resLoc) {
-        $locationTitle = strtoupper($resLoc['name']);
-        $locationCode = $resLoc['code'];
+    if ($stmtLoc) {
+        $locIdInt = intval($locId);
+        $stmtLoc->bind_param("i", $locIdInt);
+        $stmtLoc->execute();
+        $resLoc = $stmtLoc->get_result()->fetch_assoc();
+        if ($resLoc) {
+            $locationTitle = strtoupper($resLoc['name']);
+            $locationCode = $resLoc['code'];
+        }
+        $stmtLoc->close();
+    }
+}
+
+// Pastikan kompatibel dengan MySQL Hosting (nonaktifkan ONLY_FULL_GROUP_BY pada session ini jika aktif)
+try {
+    $conn->query("SET SESSION sql_mode = (SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))");
+} catch (\Throwable $e) {
+    // Abaikan jika tidak diizinkan mengubah sql_mode, karena query di bawah sudah kompatibel dengan ONLY_FULL_GROUP_BY
+}
+
+// Ambil kamus kategori Sub-Sub-Kelompok (mendukung tabel inv_bmn_sskel maupun inv_sskel tanpa risiko error tabel/collation)
+$sskelMap = [];
+$sskelTables = ['inv_bmn_sskel', 'inv_sskel'];
+foreach ($sskelTables as $tblName) {
+    try {
+        $chkTbl = $conn->query("SHOW TABLES LIKE '$tblName'");
+        if ($chkTbl && $chkTbl->num_rows > 0) {
+            $resSskel = $conn->query("SELECT kd_brg, ur_sskel FROM `$tblName`");
+            if ($resSskel) {
+                while ($rS = $resSskel->fetch_assoc()) {
+                    $sskelMap[trim($rS['kd_brg'])] = $rS['ur_sskel'];
+                }
+            }
+            break;
+        }
+    } catch (\Throwable $e) {
+        // Lanjut ke kandidat tabel berikutnya jika gagal
     }
 }
 
 $sql = "
 SELECT 
+    i.id,
     LEFT(i.item_code, 10) AS kd_brg,
-    COALESCE(s.ur_sskel, 'LAIN-LAIN') AS category_name,
     i.item_code,
     i.name AS item_name,
+    MAX(c.name) AS fallback_category_name,
     COALESCE(SUM(CASE WHEN t.doc_date < ? AND t.type = 'in' THEN t.quantity 
                       WHEN t.doc_date < ? AND t.type = 'out' THEN -t.quantity ELSE 0 END), 0) AS saldo_awal_qty,
     COALESCE(SUM(CASE WHEN t.doc_date < ? AND t.type = 'in' THEN t.total_price 
@@ -85,26 +117,33 @@ SELECT
     COALESCE(SUM(CASE WHEN t.doc_date >= ? AND t.doc_date <= ? AND t.type = 'out' THEN t.total_price ELSE 0 END), 0) AS mutasi_kurang_rp
 FROM inv_items i
 LEFT JOIN inv_transactions t ON i.id = t.item_id
-LEFT JOIN inv_sskel s ON LEFT(i.item_code, 10) = s.kd_brg
+LEFT JOIN inv_categories c ON i.category_id = c.id
 $whereLocation
-GROUP BY i.id
+GROUP BY i.id, i.item_code, i.name
 HAVING saldo_awal_qty != 0 OR mutasi_tambah_qty != 0 OR mutasi_kurang_qty != 0
 ORDER BY i.item_code ASC
 ";
 
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("ssssssssssss", $startDate, $startDate, $startDate, $startDate, 
-                                $startDate, $endDate, $startDate, $endDate,
-                                $startDate, $endDate, $startDate, $endDate);
-$stmt->execute();
-$result = $stmt->get_result();
+try {
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssssssssssss", $startDate, $startDate, $startDate, $startDate, 
+                                    $startDate, $endDate, $startDate, $endDate,
+                                    $startDate, $endDate, $startDate, $endDate);
+    $stmt->execute();
+    $result = $stmt->get_result();
+} catch (\Throwable $e) {
+    die("Gagal memuat Laporan Rincian Persediaan: " . htmlspecialchars($e->getMessage()));
+}
 
 $data = [];
 $totalAwalRp = 0;
 $totalAkhirRp = 0;
 
 while ($row = $result->fetch_assoc()) {
-    $cat = $row['kd_brg'] . " - " . strtoupper($row['category_name']);
+    $kdBrg = trim($row['kd_brg'] ?? '');
+    $catNameResolved = $sskelMap[$kdBrg] ?? ($row['fallback_category_name'] ?: 'LAIN-LAIN');
+    $row['category_name'] = $catNameResolved;
+    $cat = $kdBrg . " - " . strtoupper($catNameResolved);
     if (!isset($data[$cat])) {
         $data[$cat] = [
             'items' => [],
@@ -257,7 +296,7 @@ while ($row = $result->fetch_assoc()) {
         <div style="text-align: center; width: 30%;">
         </div>
         <div style="text-align: center; width: 30%;">
-            Bogor, <?php echo $_GET['tanggal_isi'] ? date('d-m-Y', strtotime($_GET['tanggal_isi'])) : date('d-m-Y'); ?><br>
+            Bogor, <?php echo !empty($_GET['tanggal_isi']) ? date('d-m-Y', strtotime($_GET['tanggal_isi'])) : date('d-m-Y'); ?><br>
             Penanggung Jawab UAKPB<br><br><br><br>
             ( ......................................... )<br>
             NIP: 
