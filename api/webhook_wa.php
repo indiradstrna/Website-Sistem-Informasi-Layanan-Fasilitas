@@ -458,6 +458,11 @@ if (count($params) === 4) {
 }
 
 if ($stmt->execute()) {
+    // Jika Permintaan Barang (item_requests) selesai (completed), otomatis potong stok gudang
+    if ($table === 'item_requests' && $finalStatus === 'completed') {
+        deductItem2InventoryStock($conn, $reqId, (int)$user['id']);
+    }
+
     $reply = "✅ Berhasil!\nPengajuan *$typeCode-$reqId* telah diubah statusnya menjadi *$finalStatus*.";
     sendWhatsAppFonnte($reply, $sender);
     

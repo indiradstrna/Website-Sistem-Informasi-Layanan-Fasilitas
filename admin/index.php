@@ -583,7 +583,7 @@ window._adminCalSelected = null;
 // ===== LOAD ALL DATA =====
 async function loadAllData(silent = false) {
   try {
-    const [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees] = await Promise.all([
+    const [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees, invItemsFresh] = await Promise.all([
       api(API_BASE + 'requests.php?action=get_vehicle').catch(e => []),
       api(API_BASE + 'requests.php?action=get_room').catch(e => []),
       api(API_BASE + 'requests.php?action=get_dormitory').catch(e => []),
@@ -593,7 +593,13 @@ async function loadAllData(silent = false) {
       api(API_BASE + 'requests.php?action=get_item2').catch(e => []),
       api(API_BASE + 'users.php?action=get_all').catch(e => []),
       api(API_BASE + 'users.php?action=get_employees').catch(e => []),
+      api(API_BASE + 'requests.php?action=get_inv_items').catch(e => null),
     ]);
+
+    if (Array.isArray(invItemsFresh)) {
+      ALL_INV_ITEMS = invItemsFresh;
+      INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
+    }
 
     // Check if session has expired or returned error
     const rawResponses = [vehicles, rooms, dormitories, zooms, repairs, items, items2, users, employees];

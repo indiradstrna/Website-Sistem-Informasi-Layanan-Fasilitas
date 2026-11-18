@@ -449,12 +449,20 @@ async function loadMyData(silent = false) {
       api(API_BASE + 'requests.php?action=get_dormitory'),
       api(API_BASE + 'requests.php?action=get_zoom'),
       api(API_BASE + 'requests.php?action=get_repair'),
+      api(API_BASE + 'requests.php?action=get_inv_items').catch(e => null),
     ];
     if (typeof IS_DRIVER !== 'undefined' && IS_DRIVER) {
       fetchPromises.push(api(API_BASE + 'requests.php?action=get_driver_tasks'));
     }
     const resArray = await Promise.all(fetchPromises);
-    const [v,r,d,z,rep,itm,itm2, av, ar, ad, az, arep] = resArray;
+    const [v,r,d,z,rep,itm,itm2, av, ar, ad, az, arep, invItemsFresh] = resArray;
+    if (Array.isArray(invItemsFresh)) {
+      ALL_INV_ITEMS = invItemsFresh;
+      INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
+      if (window._currentView === 'item2' && typeof filterItem2Catalog === 'function') {
+        filterItem2Catalog();
+      }
+    }
     myVehicle = Array.isArray(v)   ? v   : [];
     myRoom    = Array.isArray(r)   ? r   : [];
     myDormitory = Array.isArray(d) ? d : [];
@@ -467,8 +475,8 @@ async function loadMyData(silent = false) {
     allDormitory = Array.isArray(ad) ? ad : [];
     allZoom   = Array.isArray(az)  ? az  : [];
     allRepair = Array.isArray(arep)? arep: [];
-    if (typeof IS_DRIVER !== 'undefined' && IS_DRIVER && resArray.length >= 13) {
-      myDriverTasks = Array.isArray(resArray[12]) ? resArray[12] : [];
+    if (typeof IS_DRIVER !== 'undefined' && IS_DRIVER && resArray.length >= 14) {
+      myDriverTasks = Array.isArray(resArray[13]) ? resArray[13] : [];
       
       // --- DUMMY DATA SEMENTARA ---
       const dNow = new Date();

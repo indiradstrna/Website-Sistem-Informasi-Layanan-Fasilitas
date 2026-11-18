@@ -681,3 +681,155 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         notifyApprovers($conn, $newStatus, $type, $id, $msgApprover);
     }
 }
+
+/**
+ * Fungsi terpusat untuk memotong stok inventaris gudang (inv_items) & mencatat transaksi keluar (inv_transactions)
+ * saat pengajuan Permintaan Barang (Item2 / item_requests) berstatus 'completed'.
+ * Dilengkapi proteksi anti-double-deduction dan fallback pencocokan nama barang.
+ */
+function deductItem2InventoryStock($conn, int $id, int $actorUserId = 1): bool {
+    if ($id <= 0) return false;
+    if ($actorUserId <= 0) $actorUserId = 1;
+
+    $refDoc = "REQ-ITM-" . str_pad((string)$id, 4, '0', STR_PAD_LEFT);
+
+    // 1. Cek apakah pengajuan ini sudah pernah memotong stok sebelumnya (cegah pemotongan ganda)
+    $stmtChk = $conn->prepare("SELECT id FROM inv_transactions WHERE reference_doc = ? LIMIT 1");
+    if ($stmtChk) {
+        $stmtChk->bind_param("s", $refDoc);
+        $stmtChk->execute();
+        $alreadyDeducted = $stmtChk->get_result()->num_rows > 0;
+        $stmtChk->close();
+        if ($alreadyDeducted) {
+            return false;
+        }
+    }
+
+    // 2. Ambil daftar barang dari item_requests
+    $stmtReq = $conn->prepare("SELECT items_json, applicant_name, applicant_unit FROM item_requests WHERE id = ?");
+    if (!$stmtReq) return false;
+    $stmtReq->bind_param("i", $id);
+    $stmtReq->execute();
+    $rowItem = $stmtReq->get_result()->fetch_assoc();
+    $stmtReq->close();
+
+    if (!$rowItem) return false;
+
+    $items = json_decode($rowItem['items_json'] ?? '[]', true);
+    if (!is_array($items) || empty($items)) return false;
+
+    $docDate  = date('Y-m-d');
+    $bookDate = date('Y-m-d H:i:s');
+    $notes    = "Otomatis dari Permintaan Barang #" . $id . " (" . ($rowItem['applicant_name'] ?? '-') . " - " . ($rowItem['applicant_unit'] ?? '-') . ")";
+
+    // 3. Kelompokkan item berdasarkan location_id (UAKPB), resolusi itemId berdasarkan nama jika id kosong/0
+    $groupedItems = [];
+    foreach ($items as $itm) {
+        $itemId   = (int)($itm['id'] ?? 0);
+        $itemName = trim($itm['name'] ?? '');
+        $qty      = (int)($itm['quantity'] ?? 0);
+        if ($qty <= 0) continue;
+
+        $locId = 0;
+        $foundItem = false;
+
+        if ($itemId > 0) {
+            $stmtLoc = $conn->prepare("SELECT id, location_id FROM inv_items WHERE id = ? LIMIT 1");
+            if ($stmtLoc) {
+                $stmtLoc->bind_param("i", $itemId);
+                $stmtLoc->execute();
+                if ($rLoc = $stmtLoc->get_result()->fetch_assoc()) {
+                    $itemId    = (int)$rLoc['id'];
+                    $locId     = (int)$rLoc['location_id'];
+                    $foundItem = true;
+                }
+                $stmtLoc->close();
+            }
+        }
+
+        // Fallback: jika id=0 / tidak ditemukan, cari berdasarkan nama barang di inv_items
+        if (!$foundItem && $itemName !== '') {
+            $stmtByName = $conn->prepare("
+                SELECT id, location_id 
+                FROM inv_items 
+                WHERE LOWER(TRIM(name)) = LOWER(?) 
+                ORDER BY CASE WHEN stock > 0 THEN 0 ELSE 1 END ASC, id ASC 
+                LIMIT 1
+            ");
+            if ($stmtByName) {
+                $stmtByName->bind_param("s", $itemName);
+                $stmtByName->execute();
+                if ($rName = $stmtByName->get_result()->fetch_assoc()) {
+                    $itemId    = (int)$rName['id'];
+                    $locId     = (int)$rName['location_id'];
+                    $foundItem = true;
+                }
+                $stmtByName->close();
+            }
+        }
+
+        if ($foundItem && $itemId > 0) {
+            if (!isset($groupedItems[$locId])) $groupedItems[$locId] = [];
+            $groupedItems[$locId][] = ['id' => $itemId, 'qty' => $qty];
+        }
+    }
+
+    if (empty($groupedItems)) return false;
+
+    $stmtInsert = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)");
+    $stmtUpdate = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
+
+    $year   = date('Y');
+    $suffix = 'K';
+
+    foreach ($groupedItems as $locId => $grpItems) {
+        $prefix = 'INV-';
+        if ($locId > 0) {
+            $resLocCode = $conn->query("SELECT code FROM inv_locations WHERE id = " . (int)$locId);
+            if ($resLocCode && $rowLocCode = $resLocCode->fetch_assoc()) {
+                $prefix = $rowLocCode['code'];
+            }
+        }
+
+        $likePattern = $prefix . $year . '%' . $suffix;
+        $stmtDoc = $conn->prepare("SELECT doc_number FROM inv_transactions WHERE doc_number LIKE ? ORDER BY id DESC LIMIT 1");
+        $resDocNum = null;
+        if ($stmtDoc) {
+            $stmtDoc->bind_param("s", $likePattern);
+            $stmtDoc->execute();
+            $resDocNum = $stmtDoc->get_result()->fetch_assoc();
+            $stmtDoc->close();
+        }
+
+        $nextNum = 1;
+        if ($resDocNum && preg_match('/' . $year . '(\d{5})' . $suffix . '$/', $resDocNum['doc_number'], $matches)) {
+            $nextNum = (int)$matches[1] + 1;
+        }
+        $docNum = $prefix . $year . str_pad((string)$nextNum, 5, '0', STR_PAD_LEFT) . $suffix;
+
+        foreach ($grpItems as $gItm) {
+            $itemId = (int)$gItm['id'];
+            $qty    = (int)$gItm['qty'];
+
+            $unitPrice = 0.0;
+            $resPrice = $conn->query("SELECT unit_price FROM inv_transactions WHERE item_id = $itemId AND type='in' ORDER BY id DESC LIMIT 1");
+            if ($resPrice && $rowPrice = $resPrice->fetch_assoc()) {
+                $unitPrice = (float)$rowPrice['unit_price'];
+            }
+            $totalPrice = $unitPrice * $qty;
+
+            if ($stmtInsert) {
+                $stmtInsert->bind_param("isssssiddi", $itemId, $docNum, $docDate, $bookDate, $refDoc, $notes, $qty, $unitPrice, $totalPrice, $actorUserId);
+                $stmtInsert->execute();
+            }
+            if ($stmtUpdate) {
+                $stmtUpdate->bind_param("ii", $qty, $itemId);
+                $stmtUpdate->execute();
+            }
+        }
+    }
+
+    if ($stmtInsert) $stmtInsert->close();
+    if ($stmtUpdate) $stmtUpdate->close();
+    return true;
+}

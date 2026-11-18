@@ -345,8 +345,8 @@ function renderPageHead(string $title, string $basePath = '../'): void {
     const ALL_DORMITORIES = <?= json_encode($masterDormitories) ?>;
     const DORMITORY_MAP = Object.fromEntries(ALL_DORMITORIES.map(r => [r.id, r.name]));
     
-    const ALL_INV_ITEMS = <?= json_encode($invItems ?? []) ?>;
-    const INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
+    let ALL_INV_ITEMS = <?= json_encode($invItems ?? []) ?>;
+    let INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
     const ALL_INV_SKEL = <?= json_encode($invSkel ?? []) ?>;
     const ALL_INV_LOCATIONS = <?= json_encode($invLocations ?? []) ?>;
   </script>

@@ -127,6 +127,22 @@ switch ($action) {
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
         break;
 
+    case 'get_inv_items':
+        $resI = $conn->query("
+            SELECT i.id, i.name, i.stock, i.unit, i.image, i.item_code, i.location_id, l.name as location_name 
+            FROM inv_items i 
+            LEFT JOIN inv_locations l ON i.location_id = l.id 
+            WHERE i.location_id IN (
+                SELECT id FROM inv_locations 
+                WHERE LOWER(name) LIKE '%atk lama%' 
+                   OR LOWER(name) LIKE '%kemdikdasmen%'
+                   OR id IN (2, 8)
+            ) 
+            ORDER BY CASE WHEN i.stock > 0 THEN 0 ELSE 1 END ASC, i.name ASC
+        ");
+        echo json_encode($resI ? $resI->fetch_all(MYSQLI_ASSOC) : []);
+        break;
+
     // ============================================================
     // 1b. GET REQUESTS BY USER
     // ============================================================
@@ -723,82 +739,7 @@ switch ($action) {
 
             // JIKA ITEM2 (Permintaan Barang) DAN COMPLETED, OTOMATIS POTONG STOK GUDANG
             if ($type === 'Item2' && $newStatus === 'completed') {
-                $resItem = $conn->query("SELECT items_json, applicant_name, applicant_unit FROM item_requests WHERE id = $id");
-                if ($resItem && $rowItem = $resItem->fetch_assoc()) {
-                    $items = json_decode($rowItem['items_json'], true);
-                    if (is_array($items)) {
-                        $docDate = date('Y-m-d');
-                        $bookDate = date('Y-m-d H:i:s');
-                        $notes = "Otomatis dari Permintaan Barang #" . $id . " (" . $rowItem['applicant_name'] . " - " . $rowItem['applicant_unit'] . ")";
-                        $refDoc = "REQ-ITM-" . str_pad($id, 4, '0', STR_PAD_LEFT);
-                        
-                        $stmtInsert = $conn->prepare("INSERT INTO inv_transactions (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) VALUES (?, 'out', 'Pemakaian', ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, 1)");
-                        $stmtUpdate = $conn->prepare("UPDATE inv_items SET stock = stock - ? WHERE id = ?");
-                        
-                        // Group items by location_id (UAKPB)
-                        $groupedItems = [];
-                        foreach ($items as $itm) {
-                            $itemId = (int)($itm['id'] ?? 0);
-                            $qty = (int)($itm['quantity'] ?? 0);
-                            if ($itemId > 0 && $qty > 0) {
-                                $locId = 0;
-                                $resLoc = $conn->query("SELECT location_id FROM inv_items WHERE id = $itemId");
-                                if ($resLoc && $rowLoc = $resLoc->fetch_assoc()) {
-                                    $locId = (int)$rowLoc['location_id'];
-                                }
-                                if (!isset($groupedItems[$locId])) $groupedItems[$locId] = [];
-                                $groupedItems[$locId][] = ['id' => $itemId, 'qty' => $qty];
-                            }
-                        }
-
-                        $year = date('Y');
-                        $suffix = 'K';
-
-                        foreach ($groupedItems as $locId => $grpItems) {
-                            // Generate doc_number for this UAKPB
-                            $prefix = 'INV-';
-                            if ($locId > 0) {
-                                $resLocCode = $conn->query("SELECT code FROM inv_locations WHERE id = $locId");
-                                if ($resLocCode && $rowLocCode = $resLocCode->fetch_assoc()) {
-                                    $prefix = $rowLocCode['code'];
-                                }
-                            }
-                            
-                            $likePattern = $prefix . $year . '%' . $suffix;
-                            $stmtDoc = $conn->prepare("SELECT doc_number FROM inv_transactions WHERE doc_number LIKE ? ORDER BY id DESC LIMIT 1");
-                            $stmtDoc->bind_param("s", $likePattern);
-                            $stmtDoc->execute();
-                            $resDocNum = $stmtDoc->get_result()->fetch_assoc();
-                            $stmtDoc->close();
-                            
-                            $nextNum = 1;
-                            if ($resDocNum && preg_match('/' . $year . '(\d{5})' . $suffix . '$/', $resDocNum['doc_number'], $matches)) {
-                                $nextNum = (int)$matches[1] + 1;
-                            }
-                            $docNum = $prefix . $year . str_pad($nextNum, 5, '0', STR_PAD_LEFT) . $suffix;
-
-                            foreach ($grpItems as $gItm) {
-                                $itemId = $gItm['id'];
-                                $qty = $gItm['qty'];
-
-                                // Get last unit_price
-                                $unitPrice = 0.0;
-                                $resPrice = $conn->query("SELECT unit_price FROM inv_transactions WHERE item_id = $itemId AND type='in' ORDER BY id DESC LIMIT 1");
-                                if ($resPrice && $rowPrice = $resPrice->fetch_assoc()) {
-                                    $unitPrice = (float)$rowPrice['unit_price'];
-                                }
-                                $totalPrice = $unitPrice * $qty;
-
-                                // insert transaction
-                                $stmtInsert->bind_param("isssssidd", $itemId, $docNum, $docDate, $bookDate, $refDoc, $notes, $qty, $unitPrice, $totalPrice);
-                                $stmtInsert->execute();
-                                // update stock
-                                $stmtUpdate->bind_param("ii", $qty, $itemId);
-                                $stmtUpdate->execute();
-                            }
-                        }
-                    }
-                }
+                deductItem2InventoryStock($conn, $id, $userId);
             }
 
             jsonResponse(true, 'Status berhasil diupdate.', ['finalNote' => $finalNote]);
