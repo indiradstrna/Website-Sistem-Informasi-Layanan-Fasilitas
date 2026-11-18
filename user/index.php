@@ -570,19 +570,6 @@ function renderDashboard() {
   const approved = all.filter(r=>['approved', 'ready_for_user'].includes(r.status)).length;
   const done     = all.filter(r=>['completed','returned'].includes(r.status)).length;
   const recent   = all.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,4);
-  const driverReadyTasks = (typeof IS_DRIVER !== 'undefined' && IS_DRIVER && Array.isArray(myDriverTasks))
-    ? myDriverTasks.filter(t => t.status === 'approved')
-    : [];
-  const driverAlertBanner = driverReadyTasks.length > 0 ? `
-  <div class="card" style="margin-bottom:1.5rem; border-left:4px solid #0891b2; background:#ecfeff;">
-    <div class="card-body" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding:1rem 1.25rem;">
-      <div>
-        <div style="font-weight:700; color:#155e75; font-size:0.95rem;">🚗 ${driverReadyTasks.length} Tugas Driver Menunggu Konfirmasi Kesiapan Mobil</div>
-        <div style="font-size:0.83rem; color:#0e7490; margin-top:0.2rem;">Pengajuan kendaraan sudah disetujui. Silakan periksa kendaraan dan laporkan jika mobil sudah siap (<b>Ready for User</b>).</div>
-      </div>
-      <button class="btn btn-primary" onclick="switchView('driver_tasks')">Buka Jadwal Tugas</button>
-    </div>
-  </div>` : '';
 
   return `
   <div class="page-header">
@@ -603,7 +590,6 @@ function renderDashboard() {
       <div class="stat-value" style="color:var(--color-primary-600);">${approved}</div>
     </div>
   </div>
-  ${driverAlertBanner}
 
   <div class="grid-2" style="gap:1.5rem;">
     <div class="card">
@@ -3570,31 +3556,6 @@ window.showDriverTaskInfo = function(id) {
   const dest = (t.destination && t.destination !== 'null') ? t.destination : '-';
   const statusBadgeHtml = (typeof getStatusBadge === 'function') ? getStatusBadge(t.status) : `<strong>${t.status}</strong>`;
 
-  let statusInfoHtml = '';
-  if (t.status === 'approved') {
-    statusInfoHtml = `
-      <div style="margin-top:1rem; padding:0.85rem; background:#ecfeff; border:1px solid #a5f3fc; border-radius:0.5rem; font-size:0.85rem; color:#155e75;">
-        <strong>🚗 Pengajuan Telah Disetujui</strong><br>
-        Silakan periksa kesiapan kendaraan dan klik tombol <b>"Laporkan Mobil Sudah Siap"</b> di bawah jika mobil siap digunakan pemohon (status akan berubah menjadi <b>Ready for User</b>).
-      </div>
-      <div style="margin-top:0.75rem;">
-        <label style="display:block; font-size:0.8rem; font-weight:600; color:#475569; margin-bottom:0.35rem;">Catatan Driver (Opsional)</label>
-        <textarea id="driver-ready-note" class="form-input" rows="2" placeholder="Contoh: Mobil sudah dicek, BBM terisi, menunggu di lobi..."></textarea>
-      </div>`;
-  } else if (t.status === 'ready_for_user' || t.status === 'in-progress') {
-    statusInfoHtml = `
-      <div style="margin-top:1rem; padding:0.85rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:0.5rem; font-size:0.85rem; color:#1e40af;">
-        <strong>✅ Mobil Sudah Dilaporkan Siap (Ready for User)</strong><br>
-        Jika seluruh tugas pengantaran sudah selesai dilaksanakan, silakan klik tombol <b>"Selesaikan Tugas"</b>.
-      </div>`;
-  } else if (t.status === 'pending' || t.status === 'waiting_manager_fmd') {
-    statusInfoHtml = `
-      <div style="margin-top:1rem; padding:0.85rem; background:#fffbeb; border:1px solid #fde68a; border-radius:0.5rem; font-size:0.85rem; color:#92400e;">
-        <strong>⏳ Menunggu Persetujuan</strong><br>
-        Pelaporan mobil siap dapat dilakukan setelah pengajuan berstatus <b>Approved</b> oleh Manager FMD.
-      </div>`;
-  }
-
   c.innerHTML = `
     <div style="margin-bottom:0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
       <span style="font-weight:700; color:#334155;">VEH-${t.id}</span>
@@ -3610,16 +3571,10 @@ Berikut detail penugasan pengemudi Anda:
 <strong>Tanggal:</strong> ${dateStr}
 <strong>Jam Berangkat:</strong> ${t.time_start || '-'}
 <strong>Keperluan:</strong> ${t.purpose || '-'}</div>
-    ${statusInfoHtml}
   `;
   
   const act = document.getElementById('driver-task-info-action');
-  if (t.status === 'approved') {
-    act.innerHTML = `
-      <button class="btn btn-outline modal-close-btn" onclick="Modal.close('driver-task-info-modal')">Tutup</button>
-      <button class="btn btn-primary" onclick="markVehicleReadyByDriver(${t.id})">🚗 Laporkan Mobil Sudah Siap</button>
-    `;
-  } else if (t.status === 'ready_for_user' || t.status === 'in-progress') {
+  if (['approved', 'ready_for_user', 'in-progress'].includes(t.status)) {
     act.innerHTML = `
       <button class="btn btn-outline modal-close-btn" onclick="Modal.close('driver-task-info-modal')">Tutup</button>
       <button class="btn btn-primary" onclick="Modal.close('driver-task-info-modal'); completeDriverTask(${t.id})">✓ Selesaikan Tugas</button>
@@ -3635,57 +3590,7 @@ Berikut detail penugasan pengemudi Anda:
 
 function renderDriverTasks() {
   setTimeout(() => { renderDriverCalGrid(); }, 50);
-  const tasks = Array.isArray(myDriverTasks) ? myDriverTasks : [];
-  const needReadyTasks = tasks.filter(t => t.status === 'approved');
-  const activeReadyTasks = tasks.filter(t => t.status === 'ready_for_user' || t.status === 'in-progress');
-  const actionList = [...needReadyTasks, ...activeReadyTasks];
-
-  const actionCardHtml = `
-    <div class="card" style="padding:1.25rem 1.5rem; border-radius:0.75rem; margin-bottom:1.25rem; box-shadow:0 1px 3px rgba(0,0,0,0.08); border-left:4px solid ${needReadyTasks.length ? '#0891b2' : '#cbd5e1'};">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.85rem;">
-        <div>
-          <h3 style="margin:0; font-size:1.05rem; color:var(--color-slate-800);">🚗 Konfirmasi Kesiapan Mobil & Tugas Aktif</h3>
-          <div style="font-size:0.8rem; color:var(--color-slate-500); margin-top:0.15rem;">Laporkan kendaraan siap digunakan (<b>Ready for User</b>) setelah status disetujui (<b>Approved</b>), atau konfirmasi selesai setelah pengantaran.</div>
-        </div>
-        ${needReadyTasks.length ? `<span style="background:#cffafe; color:#155e75; font-weight:700; font-size:0.78rem; padding:0.25rem 0.7rem; border-radius:999px;">${needReadyTasks.length} Perlu Konfirmasi Siap</span>` : ''}
-      </div>
-      ${actionList.length === 0 ? `
-        <div style="padding:0.9rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:0.5rem; font-size:0.85rem; color:#64748b;">
-          Saat ini tidak ada tugas driver berstatus Approved atau Ready for User yang menunggu tindakan.
-        </div>
-      ` : `
-        <div style="display:flex; flex-direction:column; gap:0.75rem;">
-          ${actionList.map(t => {
-            const kend = formatDriverVehicleName(t.vehicle_id);
-            const isApproved = t.status === 'approved';
-            const badge = (typeof getStatusBadge === 'function') ? getStatusBadge(t.status) : `<span>${t.status}</span>`;
-            return `
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.9rem 1rem; border:1px solid ${isApproved ? '#a5f3fc' : '#e2e8f0'}; background:${isApproved ? '#ecfeff' : '#ffffff'}; border-radius:0.6rem;">
-              <div style="min-width:220px; flex:1;">
-                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
-                  <strong style="color:#0f172a;">VEH-${t.id}</strong>
-                  ${badge}
-                </div>
-                <div style="font-size:0.86rem; color:#1e293b; font-weight:600;">${t.applicant_name || '-'} (${t.applicant_unit || '-'}) &rarr; ${t.destination || '-'}</div>
-                <div style="font-size:0.78rem; color:#475569; margin-top:0.2rem;">
-                  ${t.date_start || '-'} ${(t.time_start || '').substring(0,5)} | ${kend}
-                </div>
-              </div>
-              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                <button class="btn btn-outline" onclick="showDriverTaskInfo(${t.id})">Detail</button>
-                ${isApproved
-                  ? `<button class="btn btn-primary" onclick="markVehicleReadyByDriver(${t.id}, false)">🚗 Mobil Sudah Siap</button>`
-                  : `<button class="btn btn-primary" onclick="completeDriverTask(${t.id})">✓ Selesaikan Tugas</button>`
-                }
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-      `}
-    </div>`;
-
   return `
-    ${actionCardHtml}
     <div class="card" style="padding:1.5rem; border-radius:0.75rem; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
         <h3 style="margin:0; font-size:1.2rem; color:var(--color-slate-800);">Kalender Jadwal Tugas Driver</h3>
@@ -3715,35 +3620,6 @@ function renderDriverTasks() {
       </div>
     </div>
   `;
-}
-
-async function markVehicleReadyByDriver(id, fromModal = true) {
-  const noteInputEl = fromModal ? document.getElementById('driver-ready-note') : null;
-  const customNote = noteInputEl ? noteInputEl.value.trim() : '';
-  if (!confirm('Apakah Anda yakin kendaraan sudah dicek dan siap digunakan? Status akan diubah menjadi Ready for User.')) return;
-  try {
-    const formData = new FormData();
-    formData.append('action', 'update_status');
-    formData.append('type', 'Vehicle');
-    formData.append('id', id);
-    formData.append('status', 'ready_for_user');
-    formData.append('note', customNote);
-    const res = await fetch(API_BASE + 'requests.php', { method: 'POST', body: formData });
-    const text = await res.text();
-    const data = JSON.parse(text);
-    if (data.success) {
-      if (typeof Modal !== 'undefined') {
-        Modal.close('driver-task-info-modal');
-      }
-      Toast.success('Kendaraan berhasil dilaporkan siap (Ready for User).');
-      await loadMyData(true);
-      renderCurrentView();
-    } else {
-      Toast.error(data.message || 'Gagal melaporkan kesiapan kendaraan.');
-    }
-  } catch(e) {
-    Toast.error('Terjadi kesalahan saat memproses data.');
-  }
 }
 
 async function completeDriverTask(id) {

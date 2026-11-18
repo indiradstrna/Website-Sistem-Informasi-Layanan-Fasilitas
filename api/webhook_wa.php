@@ -365,10 +365,17 @@ if ($table === 'item_requests') {
     $callerEmpName    = trim((string)($user['emp_full_name'] ?? $user['full_name'] ?? ''));
     $isAssignedDriver = ($typeCode === 'VEH') && isVehicleDriverMatch($requestData['driver_name'] ?? '', $callerEmpName);
 
-    if ($isSiapCmd && ($typeCode !== 'VEH' || $currentStatus !== 'approved')) {
-        sendWhatsAppFonnte("Perintah SIAP hanya dapat digunakan untuk melaporkan kesiapan kendaraan (VEH) yang berstatus Approved.", $sender);
-        http_response_code(200);
-        exit;
+    if ($isSiapCmd) {
+        if ($typeCode !== 'VEH' || $currentStatus !== 'approved') {
+            sendWhatsAppFonnte("Perintah SIAP hanya dapat digunakan untuk kendaraan (VEH) yang berstatus Approved.", $sender);
+            http_response_code(200);
+            exit;
+        }
+        if (!$isPIC && $role !== 'superadmin') {
+            sendWhatsAppFonnte("Perintah SIAP VEH-$reqId hanya dapat diproses oleh PIC Kendaraan.", $sender);
+            http_response_code(200);
+            exit;
+        }
     }
 
     if ($typeCode === 'REP') {
@@ -387,33 +394,13 @@ if ($table === 'item_requests') {
             }
         }
     } else if ($typeCode === 'VEH') {
-        $hasDriver = hasAssignedVehicleDriver($requestData['driver_name'] ?? '');
         if ($currentStatus === 'approved') {
-            if ($hasDriver) {
-                if ($isAssignedDriver || $role === 'superadmin') {
-                    if ($actionType === 'TOLAK' && $role !== 'superadmin') {
-                        sendWhatsAppFonnte("Maaf, Driver hanya dapat melaporkan kesiapan kendaraan (balas: *SIAP VEH-$reqId*).", $sender);
-                        http_response_code(200);
-                        exit;
-                    }
-                    $canProcess = true;
-                    $nextStatusApprove = 'ready_for_user';
-                } else if ($isPIC) {
-                    sendWhatsAppFonnte("Pengajuan kendaraan *VEH-$reqId* sudah berstatus *Approved*. Pelaporan mobil siap (Ready for User) menjadi tanggung jawab Driver (" . ($requestData['driver_name'] ?? '-') . "), bukan lagi PIC.", $sender);
-                    http_response_code(200);
-                    exit;
-                } else if ($isApplicant && in_array($actionTypeRaw, ['SELESAI', 'COMPLETED'], true)) {
-                    $canProcess = true;
-                    $nextStatusApprove = 'completed';
-                }
-            } else {
-                if ($isPIC || $role === 'superadmin') {
-                    $canProcess = true;
-                    $nextStatusApprove = 'ready_for_user';
-                } else if ($isApplicant) {
-                    $canProcess = true;
-                    $nextStatusApprove = 'completed';
-                }
+            if ($isPIC || $role === 'superadmin') {
+                $canProcess = true;
+                $nextStatusApprove = 'ready_for_user';
+            } else if ($isApplicant && in_array($actionTypeRaw, ['SELESAI', 'COMPLETED'], true)) {
+                $canProcess = true;
+                $nextStatusApprove = 'completed';
             }
         } else {
             // ready_for_user atau in-progress pada VEH
@@ -474,11 +461,7 @@ if ($actionType === 'SETUJU') {
         }
     } else if ($currentStatus === 'waiting_manager_fmd' && $nextStatusApprove === 'approved') {
         if ($typeCode === 'VEH') {
-            if (hasAssignedVehicleDriver($requestData['driver_name'] ?? '')) {
-                $actionNote = "Disetujui oleh Manager FMD. Tugas diteruskan kepada Driver (" . $requestData['driver_name'] . ") untuk persiapan dan konfirmasi kesiapan kendaraan.";
-            } else {
-                $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Kendaraan (Unit & Driver) menyiapkan permintaan dan memberikan laporan Check & Recheck.";
-            }
+            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Kendaraan (Unit & Driver) menyiapkan permintaan dan memberikan laporan Check & Recheck.";
         } else if ($typeCode === 'ROM') {
             $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Ruangan & Fasilitas menyiapkan permintaan dan memberikan laporan Check & Recheck.";
         } else if ($typeCode === 'ZOM') {
@@ -494,11 +477,7 @@ if ($actionType === 'SETUJU') {
         $actionNote = "PIC/Teknisi mengkonfirmasi: perbaikan telah selesai dilaksanakan.";
     } else if ($currentStatus === 'approved' && $nextStatusApprove === 'ready_for_user') {
         if ($typeCode === 'VEH') {
-            if (hasAssignedVehicleDriver($requestData['driver_name'] ?? '')) {
-                $actionNote = "Driver (" . $requestData['driver_name'] . ") mengkonfirmasi: kendaraan telah dicek, dalam kondisi baik, dan siap digunakan oleh pemohon.";
-            } else {
-                $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Kendaraan telah siap untuk diserahkan/dilaksanakan.";
-            }
+            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Kendaraan telah siap untuk diserahkan/dilaksanakan.";
         } else if ($typeCode === 'ROM') {
             $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Ruangan telah siap untuk diserahkan/dilaksanakan.";
         } else if ($typeCode === 'ZOM') {
@@ -563,13 +542,9 @@ if ($stmt->execute()) {
     $reply = "✅ Berhasil!\nPengajuan *$typeCode-$reqId* telah diubah statusnya menjadi *$finalStatus*.";
     sendWhatsAppFonnte($reply, $sender);
     
-    // Notifikasi ke Supir:
-    // - saat status masuk waiting_manager_fmd -> Chat #1 (info ada tugas baru, menunggu Manager FMD)
-    // - saat status masuk approved            -> Chat #2 (disetujui Manager FMD, balas SIAP VEH-xxx)
-    if ($typeCode === 'VEH' && $finalStatus === 'approved') {
-        notifyAssignedDriverVehicleApproved($conn, $reqId);
-    } else if ($typeCode === 'VEH' && $finalStatus === 'waiting_manager_fmd' && hasAssignedVehicleDriver($selectedDriverName)) {
-        notifyAssignedDriverNewTaskPendingApproval($conn, $reqId);
+    // Notifikasi ke Supir sebagai info tugas baru saat status masuk waiting_manager_fmd
+    if ($typeCode === 'VEH' && $finalStatus === 'waiting_manager_fmd' && hasAssignedVehicleDriver($selectedDriverName)) {
+        notifyAssignedDriverNewTaskPendingApproval($conn, $reqId, true);
     }
     
     // Panggil fungsi notifikasi agar dikirim ke Manager FMD / User / Approver berikutnya

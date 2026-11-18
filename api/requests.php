@@ -656,19 +656,9 @@ switch ($action) {
         $callerEmpName    = getCallerEmployeeFullName($conn);
         $isAssignedDriver = ($type === 'Vehicle') && isVehicleDriverMatch($dbDriverName, $callerEmpName);
 
-        // Enforce aturan pelaporan kesiapan kendaraan (approved -> ready_for_user):
-        // jika driver ditugaskan (bukan TANPA_SUPIR), pelaporan adalah tanggung jawab Driver (bukan PIC).
-        if ($type === 'Vehicle' && $newStatus === 'ready_for_user') {
-            if (hasAssignedVehicleDriver($dbDriverName)) {
-                if (!$isAssignedDriver && !$isSuperAdminUser) {
-                    jsonResponse(false, 'Pelaporan mobil siap (Ready for User) merupakan tanggung jawab Driver yang ditugaskan (' . $dbDriverName . '), bukan oleh PIC.');
-                }
-                if ($prevStatusBeforeUpdate !== 'approved' && !$isSuperAdminUser) {
-                    jsonResponse(false, 'Laporan kesiapan mobil hanya dapat dikirim saat status pengajuan sudah Approved.');
-                }
-            } else if ($callerRole === 'user' && !$isSuperAdminUser) {
-                jsonResponse(false, 'Anda tidak memiliki akses untuk memproses status ini.');
-            }
+        // Hanya PIC/Admin/SuperAdmin (bukan user/driver biasa) yang dapat mengubah status ke ready_for_user
+        if ($newStatus === 'ready_for_user' && $callerRole === 'user' && !$isSuperAdminUser) {
+            jsonResponse(false, 'Pelaporan kesiapan (Ready for User) dilakukan oleh PIC/Admin.');
         }
 
         // Otomatisasi teks ketika Manajer Departemen Approve Item2 (waiting_manager_unit -> verified)
@@ -701,8 +691,6 @@ switch ($action) {
             if ($prevStatusBeforeUpdate === 'waiting_manager_fmd') {
                 if ($type === 'Item2') {
                     $noteInput = "Disetujui oleh Manager FMD. Pengajuan dikembalikan ke PIC Gudang untuk penyiapan barang.";
-                } else if ($type === 'Vehicle' && hasAssignedVehicleDriver($dbDriverName)) {
-                    $noteInput = "Disetujui oleh Manager FMD. Tugas diteruskan kepada Driver ($dbDriverName) untuk persiapan dan konfirmasi kesiapan kendaraan.";
                 } else if ($type === 'Repair') {
                     $noteInput = "Disetujui oleh Manager FMD. Pengajuan perbaikan siap diproses oleh PIC/Teknisi (In-Progress).";
                 } else {
@@ -730,8 +718,6 @@ switch ($action) {
         if ($newStatus === 'ready_for_user' && empty($noteInput)) {
             if ($type === 'Item2') {
                 $noteInput = "Barang telah siap di gudang. Mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil: 1. Indra Septian 081212874982, 2. Moh. Wahyu Noorramdhany 085693459088";
-            } else if ($type === 'Vehicle' && hasAssignedVehicleDriver($dbDriverName)) {
-                $noteInput = "Driver ($dbDriverName) mengkonfirmasi: kendaraan telah dicek, dalam kondisi baik, dan siap digunakan oleh pemohon.";
             } else {
                 $typeLabels = [
                     'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
@@ -846,12 +832,7 @@ switch ($action) {
             
             // JIKA VEHICLE DAN BARU MASUK KE WAITING_MANAGER_FMD, KIRIM INFO TUGAS BARU KE DRIVER
             if ($type === 'Vehicle' && $newStatus === 'waiting_manager_fmd' && $prevStatusBeforeUpdate !== 'waiting_manager_fmd') {
-                notifyAssignedDriverNewTaskPendingApproval($conn, $id);
-            }
-
-            // JIKA VEHICLE DAN BARU BERUBAH KE APPROVED, KIRIM INSTRUKSI SIAP VEH-xxx KE DRIVER YANG DITUGASKAN
-            if ($type === 'Vehicle' && $newStatus === 'approved' && $prevStatusBeforeUpdate !== 'approved') {
-                notifyAssignedDriverVehicleApproved($conn, $id);
+                notifyAssignedDriverNewTaskPendingApproval($conn, $id, true);
             }
 
             // JIKA ITEM2 DAN READY_FOR_USER, PASTIKAN NOTIFIKASI AMBIL BARANG TERKIRIM KE USER
@@ -952,14 +933,10 @@ switch ($action) {
             $reqRow = $stmtStatus->get_result()->fetch_assoc();
             $stmtStatus->close();
 
-            // Jika update penugasan dilakukan tanpa transisi status oleh pemanggil, beritahu driver sesuai tahap saat ini
+            // Jika update penugasan dilakukan tanpa transisi status oleh pemanggil, beritahu driver sebagai info tugas baru
             $willTransitionNow = ($targetStatus !== '' && $targetStatus !== ($reqRow['status'] ?? ''));
-            if ($reqRow && !$willTransitionNow && hasAssignedVehicleDriver($driverName) && $assignmentChanged) {
-                if ($reqRow['status'] === 'waiting_manager_fmd') {
-                    notifyAssignedDriverNewTaskPendingApproval($conn, $id);
-                } elseif (in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user'])) {
-                    notifyAssignedDriverVehicleApproved($conn, $id);
-                }
+            if ($reqRow && !$willTransitionNow && hasAssignedVehicleDriver($driverName) && $assignmentChanged && in_array($reqRow['status'], ['waiting_manager_fmd', 'approved', 'in-progress', 'ready_for_user'])) {
+                notifyAssignedDriverNewTaskPendingApproval($conn, $id, $reqRow['status'] === 'waiting_manager_fmd');
             }
 
             jsonResponse(true, 'Kendaraan dan Driver berhasil ditetapkan.');

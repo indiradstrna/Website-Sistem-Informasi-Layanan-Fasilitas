@@ -787,10 +787,6 @@ async function loadAllData(silent = false) {
         return false;
       }
       if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
-        if (r.type === 'Vehicle' && r.status === 'approved') {
-          const hasDrv = r.driver_name && String(r.driver_name).trim() !== '' && String(r.driver_name).trim().toUpperCase() !== 'TANPA_SUPIR';
-          if (hasDrv) return isSuperAdmin;
-        }
         const allowed = PIC_MAP[r.type] || [];
         return allowed.length === 0 || allowed.includes(ADMIN_USERNAME) || isSuperAdmin;
       }
@@ -3439,20 +3435,8 @@ function renderDetailPengajuanTinjau() {
     }
 
   } else if (req.status === 'approved') {
-    // ── STAGE 3: Approved → Driver (untuk Vehicle ber-driver) atau PIC Check & Recheck ──
-    const hasVehicleDriver = req.type === 'Vehicle' && req.driver_name && String(req.driver_name).trim() !== '' && String(req.driver_name).trim().toUpperCase() !== 'TANPA_SUPIR';
-    if (hasVehicleDriver && !isSuperAdmin) {
-      picMessage = reminderBox('🚗', 'Menunggu Konfirmasi Kesiapan Driver',
-        `Pengajuan kendaraan ini telah disetujui dan ditugaskan kepada driver <b>${req.driver_name}</b>.<br>Pelaporan bahwa mobil sudah siap (<b>Ready for User</b>) merupakan tanggung jawab Driver melalui Dashboard Driver / WhatsApp (<code>SIAP VEH-${req.id}</code>).`);
-    } else if (hasVehicleDriver && isSuperAdmin) {
-      actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.9rem 1rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
-          <strong>🚗 Pengajuan Kendaraan Approved (Tugas Driver: ${req.driver_name}).</strong><br>Pelaporan mobil siap merupakan tanggung jawab Driver melalui Dashboard Driver / WhatsApp (<code>SIAP VEH-${req.id}</code>). SuperAdmin tetap dapat melakukan override bila diperlukan.
-        </div>
-        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Vehicle','ready_for_user')">🚗 Override (SuperAdmin): Tandai Mobil Siap</button>
-        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Tolak / Batalkan (Decline)</button>
-      </div>`;
-    } else if (isPIC || isSuperAdmin) {
+    // ── STAGE 3: Approved → PIC Check & Recheck ──
+    if (isPIC || isSuperAdmin) {
       const checkLabel = req.type === 'Item' ? 'Laporan Check: Barang Siap Diserahkan' : 'Buat Laporan Pengecekan';
       let btnAction = `onclick="updateStatus(${req.id},'${req.type}','ready_for_user')"`;
       if (req.type === 'Room') {
