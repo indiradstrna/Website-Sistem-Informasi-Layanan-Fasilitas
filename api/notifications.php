@@ -58,6 +58,9 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
             if ($type === 'Item2') {
                 $promptWa = "\n_Pengajuan disetujui Manager FMD. Silakan PIC Gudang menyiapkan barang dan mengubah status menjadi READY FOR USER di Web SILATAS:_\nhttps://silatas.biotrop.org/";
                 $promptTg = "\n<i>Pengajuan disetujui Manager FMD. Silakan PIC Gudang menyiapkan barang dan mengubah status menjadi READY FOR USER di Web SILATAS:</i>\nhttps://silatas.biotrop.org/";
+            } else if ($type === 'Repair') {
+                $promptWa = "\n_Pengajuan Perbaikan telah disetujui. Silakan PIC memproses pelaksanaan perbaikan (In-Progress) melalui Web SILATAS:_\nhttps://silatas.biotrop.org/\n\n*Atau balas pesan ini untuk memulai pengerjaan:*\nSETUJU {$code}-{$id}";
+                $promptTg = "\n<i>Pengajuan Perbaikan telah disetujui. Silakan PIC memproses pelaksanaan perbaikan (In-Progress) melalui Web SILATAS:</i>\nhttps://silatas.biotrop.org/\n\n<b>Atau balas pesan ini untuk memulai pengerjaan:</b>\nSETUJU {$code}-{$id}";
             } else {
                 $promptWa = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
                 $promptTg = "\nuntuk memproses pengecekan kesiapan dan mengubah status menjadi \"READY FOR USER\", silakan proses melalui Web: https://silatas.biotrop.org/";
@@ -148,6 +151,20 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     } else {
         if ($newStatus === 'pending' || $newStatus === 'approved') {
             $shouldNotifyPIC = true;
+        }
+        // Jika Vehicle sudah approved dan memiliki driver ditugaskan (bukan TANPA_SUPIR),
+        // pelaporan kesiapan mobil menjadi tanggung jawab Driver, bukan PIC.
+        if ($type === 'Vehicle' && $newStatus === 'approved') {
+            $stmtChkDrv = $conn->prepare("SELECT driver_name FROM vehicle_requests WHERE id = ? LIMIT 1");
+            if ($stmtChkDrv) {
+                $stmtChkDrv->bind_param("i", $id);
+                $stmtChkDrv->execute();
+                $rowChkDrv = $stmtChkDrv->get_result()->fetch_assoc();
+                $stmtChkDrv->close();
+                if (hasAssignedVehicleDriver($rowChkDrv['driver_name'] ?? '')) {
+                    $shouldNotifyPIC = false;
+                }
+            }
         }
     }
 
@@ -468,10 +485,18 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         $statusLabelMap = [
             'pending'             => '⌛ MENUNGGU VERIFIKASI',
             'waiting_manager_unit'=> '⌛ MENUNGGU APPROVAL MGR UNIT',
-            'approved'            => ($table === 'item_requests') ? '✅ DISETUJUI MGR FMD (PENYIAPAN BARANG)' : '✅ DISETUJUI',
+            'approved'            => ($table === 'item_requests')
+                ? '✅ DISETUJUI MGR FMD (PENYIAPAN BARANG)'
+                : (($table === 'repair_requests')
+                    ? '✅ DISETUJUI (SIAP DIKERJAKAN)'
+                    : '✅ DISETUJUI'),
             'rejected'            => '❌ DITOLAK',
             'verified'            => ($table === 'item_requests') ? '🔍 DISETUJUI MGR UNIT (PROSES PIC GUDANG)' : '🔍 DIVERIFIKASI',
-            'ready_for_user'      => '📦 SIAP DIAMBIL DI GUDANG',
+            'ready_for_user'      => ($table === 'item_requests')
+                ? '📦 SIAP DIAMBIL DI GUDANG'
+                : (($table === 'vehicle_requests')
+                    ? '🚗 KENDARAAN SIAP DIGUNAKAN'
+                    : '✅ SIAP DIGUNAKAN'),
             'completed'           => '🏁 SELESAI',
             'returned'            => '📦 DIKEMBALIKAN',
             'in-progress'         => '🛠️ SEDANG DIKERJAKAN',
@@ -503,7 +528,16 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
         }
         $msg .= "<b>Diproses Oleh:</b> " . htmlspecialchars($actorName) . "\n\n";
         
-        if ($newStatus === 'ready_for_user' || ($newStatus === 'approved' && $table !== 'item_requests')) {
+        if ($table === 'vehicle_requests' && $newStatus === 'approved') {
+            $drvAssigned = trim((string)($request['driver_name'] ?? ''));
+            if (hasAssignedVehicleDriver($drvAssigned)) {
+                $msg .= "🚗 <b>Pengajuan kendaraan telah disetujui.</b> Saat ini menunggu konfirmasi kesiapan mobil oleh driver (<b>" . htmlspecialchars($drvAssigned) . "</b>) sebelum siap digunakan.\n\n";
+            } else {
+                $msg .= "🚗 <b>Pengajuan kendaraan (Tanpa Supir) telah disetujui.</b> Menunggu PIC melakukan pengecekan kesiapan unit.\n\n";
+            }
+        } else if ($table === 'repair_requests' && $newStatus === 'approved') {
+            $msg .= "🛠️ <b>Pengajuan perbaikan telah disetujui</b> dan siap ditindaklanjuti oleh PIC/Teknisi ke tahap pengerjaan (In-Progress).\n\n";
+        } else if ($newStatus === 'ready_for_user' || ($newStatus === 'approved' && !in_array($table, ['item_requests', 'vehicle_requests', 'repair_requests'], true))) {
             $typeCodes = [
                 'vehicle_requests' => 'VEH',
                 'room_requests'    => 'ROM',
@@ -519,6 +553,13 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
                 $msg .= "📦 <b>Mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil:</b>\n";
                 $msg .= "1. Indra Septian 081212874982\n";
                 $msg .= "2. Moh. Wahyu Noorramdhany 085693459088\n\n";
+            } else if ($table === 'vehicle_requests') {
+                $drvAssigned = trim((string)($request['driver_name'] ?? ''));
+                $msg .= "🚗 <b>Kendaraan Anda sudah siap digunakan!</b>\n";
+                if (hasAssignedVehicleDriver($drvAssigned)) {
+                    $msg .= "<b>Driver:</b> " . htmlspecialchars($drvAssigned) . "\n";
+                }
+                $msg .= "\n";
             } else {
                 $msg .= "<b>Permintaan Anda sudah siap digunakan.</b>\n\n";
             }
@@ -832,4 +873,193 @@ function deductItem2InventoryStock($conn, int $id, int $actorUserId = 1): bool {
     if ($stmtInsert) $stmtInsert->close();
     if ($stmtUpdate) $stmtUpdate->close();
     return true;
+}
+
+/**
+ * Cek apakah nama driver valid (bukan kosong atau TANPA_SUPIR).
+ */
+function hasAssignedVehicleDriver(?string $driverName): bool {
+    $d = strtoupper(trim((string)$driverName));
+    return $d !== '' && $d !== 'TANPA_SUPIR';
+}
+
+/**
+ * Cocokkan nama pegawai driver dengan driver_name pada vehicle_requests
+ * (mendukung nama persis maupun format lama seperti "Nama (DRIVER)" / "Nama (Pengemudi)").
+ */
+function isVehicleDriverMatch(?string $assignedDriverName, string $employeeFullName): bool {
+    if (!hasAssignedVehicleDriver($assignedDriverName)) {
+        return false;
+    }
+    $assigned = strtoupper(trim((string)$assignedDriverName));
+    $empName  = strtoupper(trim($employeeFullName));
+    if ($empName === '') {
+        return false;
+    }
+    $baseAssigned = trim((string)preg_replace('/\s*\([^)]*\)\s*$/', '', $assigned));
+    return $assigned === $empName || $baseAssigned === $empName;
+}
+
+/**
+ * Ambil data kendaraan, jadwal, dan kontak driver untuk notifikasi pengemudi.
+ */
+function fetchVehicleDriverNotificationData(mysqli $conn, int $id): ?array {
+    $stmtDrv = $conn->prepare("
+        SELECT v.vehicle_id, v.driver_name, v.applicant_name, v.passenger_name,
+               DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de,
+               v.time_start, v.time_end, v.purpose, v.destination,
+               u.whatsapp_number, u.telegram_chat_id
+        FROM vehicle_requests v
+        LEFT JOIN employees e ON (
+            UPPER(TRIM(e.full_name)) = UPPER(TRIM(v.driver_name))
+            OR UPPER(TRIM(v.driver_name)) LIKE CONCAT(UPPER(TRIM(e.full_name)), ' (%')
+        )
+        LEFT JOIN users u ON e.id = u.employee_id
+        WHERE v.id = ?
+        ORDER BY u.id ASC
+        LIMIT 1
+    ");
+    if (!$stmtDrv) return null;
+    $stmtDrv->bind_param("i", $id);
+    $stmtDrv->execute();
+    $drv = $stmtDrv->get_result()->fetch_assoc();
+    $stmtDrv->close();
+
+    if (!$drv || !hasAssignedVehicleDriver($drv['driver_name'] ?? '')) {
+        return null;
+    }
+
+    $vName = 'Kendaraan Dinas';
+    if (!empty($drv['vehicle_id'])) {
+        if ($drv['vehicle_id'] === 'TANPA_KENDARAAN') {
+            $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
+        } elseif ($drv['vehicle_id'] === 'PENDING_ASSIGNMENT') {
+            $vName = '(Menunggu Plotting Kendaraan)';
+        } else {
+            $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
+            if ($stmtV) {
+                $stmtV->bind_param("s", $drv['vehicle_id']);
+                $stmtV->execute();
+                if ($rv = $stmtV->get_result()->fetch_assoc()) $vName = $rv['name'];
+                $stmtV->close();
+            }
+        }
+    }
+
+    $drv['vehicle_name_resolved'] = $vName;
+    $drv['waktu_tanggal'] = ($drv['ds'] === $drv['de'] || empty($drv['de'])) ? $drv['ds'] : ($drv['ds'] . ' s/d ' . $drv['de']);
+    $drv['waktu_jam']     = substr((string)$drv['time_start'], 0, 5) . ($drv['time_end'] ? ' - ' . substr((string)$drv['time_end'], 0, 5) : '');
+    return $drv;
+}
+
+/**
+ * Helper internal mengirim WA & Telegram ke driver.
+ */
+function dispatchVehicleDriverMessages(array $drv, string $waMsg, string $tgMsg): bool {
+    $sent = false;
+    if (!empty($drv['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
+        sendWhatsAppFonnte($waMsg, $drv['whatsapp_number']);
+        $sent = true;
+    }
+    if (!empty($drv['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
+        sendTelegramPHP($tgMsg, $drv['telegram_chat_id']);
+        $sent = true;
+    }
+    return $sent;
+}
+
+/**
+ * Chat #1 ke Driver saat PIC memilih driver & meneruskan pengajuan ke waiting_manager_fmd
+ * (sebagai info ada tugas baru yang sedang menunggu persetujuan Manager FMD).
+ */
+function notifyAssignedDriverNewTaskPendingApproval(mysqli $conn, int $id): bool {
+    $drv = fetchVehicleDriverNotificationData($conn, $id);
+    if (!$drv) return false;
+
+    $drvName      = $drv['driver_name'];
+    $appName      = $drv['applicant_name'];
+    $passName     = $drv['passenger_name'] ?: $appName;
+    $vName        = $drv['vehicle_name_resolved'];
+    $dest         = $drv['destination'] ?: '-';
+    $purp         = $drv['purpose'] ?: '-';
+    $waktuTanggal = $drv['waktu_tanggal'];
+    $waktuJam     = $drv['waktu_jam'];
+
+    $waMsg = "🚗 *INFO TUGAS BARU (DRIVER)*\n\n"
+        . "Halo *$drvName*,\n"
+        . "Anda telah dijadwalkan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n"
+        . "Saat ini pengajuan masih *menunggu persetujuan Manager FMD*.\n\n"
+        . "*Pemohon:* $appName\n"
+        . "*Penumpang:* $passName\n"
+        . "*Kendaraan:* $vName\n"
+        . "*Lokasi Tujuan:* $dest\n"
+        . "*Tanggal:* $waktuTanggal\n"
+        . "*Jam Berangkat:* $waktuJam\n"
+        . "*Keperluan:* $purp\n\n"
+        . "Anda akan menerima pesan instruksi lanjutan untuk konfirmasi kesiapan mobil (*SIAP VEH-$id*) setelah disetujui Manager FMD.";
+
+    $tgMsg = "🚗 <b>INFO TUGAS BARU (DRIVER)</b>\n\n"
+        . "Halo <b>" . htmlspecialchars($drvName) . "</b>,\n"
+        . "Anda telah dijadwalkan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n"
+        . "Saat ini pengajuan masih <b>menunggu persetujuan Manager FMD</b>.\n\n"
+        . "<b>Pemohon:</b> " . htmlspecialchars($appName) . "\n"
+        . "<b>Penumpang:</b> " . htmlspecialchars($passName) . "\n"
+        . "<b>Kendaraan:</b> " . htmlspecialchars($vName) . "\n"
+        . "<b>Lokasi Tujuan:</b> " . htmlspecialchars($dest) . "\n"
+        . "<b>Tanggal:</b> " . htmlspecialchars($waktuTanggal) . "\n"
+        . "<b>Jam Berangkat:</b> " . htmlspecialchars($waktuJam) . "\n"
+        . "<b>Keperluan:</b> " . htmlspecialchars($purp) . "\n\n"
+        . "Anda akan menerima pesan instruksi lanjutan untuk konfirmasi kesiapan mobil (<b>SIAP VEH-$id</b>) setelah disetujui Manager FMD.";
+
+    return dispatchVehicleDriverMessages($drv, $waMsg, $tgMsg);
+}
+
+/**
+ * Chat #2 ke Driver saat Manager FMD menyetujui (approved)
+ * agar Driver menyiapkan kendaraan dan membalas SIAP VEH-xxx / konfirmasi di Dashboard.
+ */
+function notifyAssignedDriverVehicleApproved(mysqli $conn, int $id): bool {
+    $drv = fetchVehicleDriverNotificationData($conn, $id);
+    if (!$drv) return false;
+
+    $drvName      = $drv['driver_name'];
+    $appName      = $drv['applicant_name'];
+    $passName     = $drv['passenger_name'] ?: $appName;
+    $vName        = $drv['vehicle_name_resolved'];
+    $dest         = $drv['destination'] ?: '-';
+    $purp         = $drv['purpose'] ?: '-';
+    $waktuTanggal = $drv['waktu_tanggal'];
+    $waktuJam     = $drv['waktu_jam'];
+
+    $waMsg = "✅ *TUGAS DISETUJUI MANAGER FMD (DRIVER)*\n\n"
+        . "Halo *$drvName*,\n"
+        . "Pengajuan kendaraan *VEH-$id* yang ditugaskan kepada Anda telah *DISETUJUI* oleh Manager FMD.\n\n"
+        . "*Pemohon:* $appName\n"
+        . "*Penumpang:* $passName\n"
+        . "*Kendaraan:* $vName\n"
+        . "*Lokasi Tujuan:* $dest\n"
+        . "*Tanggal:* $waktuTanggal\n"
+        . "*Jam Berangkat:* $waktuJam\n"
+        . "*Keperluan:* $purp\n\n"
+        . "Silakan siapkan kendaraan. Jika mobil sudah siap digunakan agar status menjadi *READY FOR USER*, *balas pesan WhatsApp ini dengan format:*\n"
+        . "*SIAP VEH-$id*\n\n"
+        . "_Atau laporkan melalui Dashboard SILATAS menu Jadwal Tugas:_\n"
+        . "https://silatas.biotrop.org/";
+
+    $tgMsg = "✅ <b>TUGAS DISETUJUI MANAGER FMD (DRIVER)</b>\n\n"
+        . "Halo <b>" . htmlspecialchars($drvName) . "</b>,\n"
+        . "Pengajuan kendaraan <b>VEH-$id</b> yang ditugaskan kepada Anda telah <b>DISETUJUI</b> oleh Manager FMD.\n\n"
+        . "<b>Pemohon:</b> " . htmlspecialchars($appName) . "\n"
+        . "<b>Penumpang:</b> " . htmlspecialchars($passName) . "\n"
+        . "<b>Kendaraan:</b> " . htmlspecialchars($vName) . "\n"
+        . "<b>Lokasi Tujuan:</b> " . htmlspecialchars($dest) . "\n"
+        . "<b>Tanggal:</b> " . htmlspecialchars($waktuTanggal) . "\n"
+        . "<b>Jam Berangkat:</b> " . htmlspecialchars($waktuJam) . "\n"
+        . "<b>Keperluan:</b> " . htmlspecialchars($purp) . "\n\n"
+        . "Silakan siapkan kendaraan. Jika mobil sudah siap digunakan agar status menjadi <b>READY FOR USER</b>, <b>balas WhatsApp dengan format:</b>\n"
+        . "<b>SIAP VEH-$id</b>\n\n"
+        . "<i>Atau laporkan melalui Dashboard SILATAS menu Jadwal Tugas:</i>\n"
+        . "https://silatas.biotrop.org/";
+
+    return dispatchVehicleDriverMessages($drv, $waMsg, $tgMsg);
 }

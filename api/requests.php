@@ -25,6 +25,134 @@ $action  = $_GET['action']  ?? $_POST['action'] ?? '';
 $userId  = (int)$_SESSION['user_id'];
 $actorName = $_SESSION['full_name'] ?? 'Admin';
 
+/**
+ * Ambil full_name pegawai untuk user yang sedang login dari tabel employees
+ * agar pencocokan nama driver/teknisi konsisten dengan data master.
+ */
+function getCallerEmployeeFullName(mysqli $conn): string {
+    $fallback = trim((string)($_SESSION['full_name'] ?? ''));
+    $empId    = (int)($_SESSION['employee_id'] ?? 0);
+    if ($empId > 0) {
+        $stmtEmp = $conn->prepare("SELECT full_name FROM employees WHERE id = ? LIMIT 1");
+        if ($stmtEmp) {
+            $stmtEmp->bind_param("i", $empId);
+            $stmtEmp->execute();
+            if ($rowEmp = $stmtEmp->get_result()->fetch_assoc()) {
+                $dbName = trim((string)($rowEmp['full_name'] ?? ''));
+                if ($dbName !== '') {
+                    $stmtEmp->close();
+                    return $dbName;
+                }
+            }
+            $stmtEmp->close();
+        }
+    }
+    return $fallback;
+}
+
+/**
+ * Parse string nama teknisi perbaikan (delimiter baru '; ' maupun koma lama,
+ * termasuk nama bergelar yang mengandung koma seperti "Alfi Dwi Nugroho, A.Md").
+ */
+function parseRepairTechnicianNames(mysqli $conn, string $technicianName): array {
+    $raw = trim($technicianName);
+    if ($raw === '' || strtoupper($raw) === 'TANPA_TEKNISI') {
+        return [];
+    }
+
+    $knownNames = [];
+    $resEmp = $conn->query("SELECT full_name FROM employees ORDER BY CHAR_LENGTH(full_name) DESC");
+    if ($resEmp) {
+        while ($rowEmp = $resEmp->fetch_assoc()) {
+            $nm = trim((string)($rowEmp['full_name'] ?? ''));
+            if ($nm !== '') {
+                $knownNames[] = $nm;
+            }
+        }
+    }
+
+    $fallbackNames = [
+        'Alfi Dwi Nugroho, A.Md',
+        'Indra Septian, A.Md',
+        'Agus Sujadi',
+        'Saripudin',
+    ];
+    foreach ($fallbackNames as $fn) {
+        $exists = false;
+        foreach ($knownNames as $kn) {
+            if (strcasecmp($kn, $fn) === 0) {
+                $exists = true;
+                break;
+            }
+        }
+        if (!$exists) {
+            $knownNames[] = $fn;
+        }
+    }
+
+    usort($knownNames, static function ($a, $b) {
+        return strlen($b) <=> strlen($a);
+    });
+
+    $degreePattern = '/^(?:a\.?md(?:\.[a-z]+)?|s\.?(?:kom|e|t|pd|si|sos|h|p|pi|pt|hut|tp|gz|farm)|m\.?(?:kom|m|t|si|pd|sc)|ph\.?d|dr|ir)\.?$/i';
+    $chunks = preg_split('/[;|]+/', $raw);
+    $result = [];
+    $seenLower = [];
+
+    $addUnique = static function (string $name) use (&$result, &$seenLower) {
+        $clean = trim($name);
+        if ($clean === '' || strtoupper($clean) === 'TANPA_TEKNISI') {
+            return;
+        }
+        $key = strtolower($clean);
+        if (!isset($seenLower[$key])) {
+            $seenLower[$key] = true;
+            $result[] = $clean;
+        }
+    };
+
+    foreach ($chunks as $chunk) {
+        $chunk = trim((string)$chunk);
+        if ($chunk === '' || strtoupper($chunk) === 'TANPA_TEKNISI') {
+            continue;
+        }
+
+        $matchedExact = null;
+        foreach ($knownNames as $kn) {
+            if (strcasecmp($chunk, $kn) === 0) {
+                $matchedExact = $kn;
+                break;
+            }
+        }
+        if ($matchedExact !== null) {
+            $addUnique($matchedExact);
+            continue;
+        }
+
+        $remaining = $chunk;
+        foreach ($knownNames as $kn) {
+            $pattern = '/(^|[\s,;]+)' . preg_quote($kn, '/') . '(?=$|[\s,;]+)/i';
+            if (preg_match($pattern, $remaining)) {
+                $addUnique($kn);
+                $remaining = (string)preg_replace($pattern, '$1,', $remaining);
+            }
+        }
+
+        foreach (explode(',', $remaining) as $part) {
+            $part = trim($part);
+            if ($part === '' || strtoupper($part) === 'TANPA_TEKNISI') {
+                continue;
+            }
+            if (preg_match($degreePattern, $part)) {
+                continue;
+            }
+            $addUnique($part);
+        }
+    }
+
+    return $result;
+}
+
 // ============================================================
 // Mencegah Double Submit (Debounce 3 detik) untuk semua submit
 // ============================================================
@@ -209,9 +337,13 @@ switch ($action) {
         break;
 
     case 'get_driver_tasks':
-        $driverName = $_SESSION['full_name'] ?? '';
-        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE driver_name LIKE CONCAT('%', ?, '%') ORDER BY created_at DESC LIMIT 100");
-        $stmt->bind_param("s", $driverName);
+        $driverName = getCallerEmployeeFullName($conn);
+        if ($driverName === '') {
+            echo json_encode([]);
+            break;
+        }
+        $stmt = $conn->prepare("SELECT id, user_id, vehicle_id, applicant_name, applicant_unit, destination, passenger_name, departure, cost_bearer, DATE_FORMAT(date_start,'%Y-%m-%d') as date_start, time_start, DATE_FORMAT(date_end,'%Y-%m-%d') as date_end, time_end, purpose, status, note, driver_name, created_at FROM vehicle_requests WHERE UPPER(TRIM(driver_name)) = UPPER(?) OR UPPER(TRIM(driver_name)) LIKE CONCAT(UPPER(?), ' (%') ORDER BY created_at DESC LIMIT 100");
+        $stmt->bind_param("ss", $driverName, $driverName);
         $stmt->execute();
         $res = $stmt->get_result();
         echo json_encode($res ? $res->fetch_all(MYSQLI_ASSOC) : []);
@@ -498,6 +630,47 @@ switch ($action) {
             jsonResponse(false, 'Tipe request tidak valid.');
         }
 
+        // Ambil status, catatan, dan driver saat ini SEBELUM UPDATE dilakukan
+        $prevStatusBeforeUpdate = '';
+        $dbPrevNote             = '';
+        $dbDriverName           = '';
+        $colsToSelect = ($type === 'Vehicle') ? 'status, note, driver_name' : 'status, note';
+        $stmtPrev = $conn->prepare("SELECT $colsToSelect FROM `$table` WHERE id = ? LIMIT 1");
+        if ($stmtPrev) {
+            $stmtPrev->bind_param("i", $id);
+            $stmtPrev->execute();
+            if ($rowPrev = $stmtPrev->get_result()->fetch_assoc()) {
+                $prevStatusBeforeUpdate = (string)($rowPrev['status'] ?? '');
+                $dbPrevNote             = (string)($rowPrev['note'] ?? '');
+                $dbDriverName           = (string)($rowPrev['driver_name'] ?? '');
+            } else {
+                $stmtPrev->close();
+                jsonResponse(false, 'Data pengajuan tidak ditemukan.');
+            }
+            $stmtPrev->close();
+        }
+
+        $callerRole       = strtolower(trim((string)($_SESSION['role'] ?? '')));
+        $callerUsername   = strtolower(trim((string)($_SESSION['username'] ?? '')));
+        $isSuperAdminUser = in_array($callerRole, ['superadmin', 'super admin'], true) || $callerUsername === 'admin';
+        $callerEmpName    = getCallerEmployeeFullName($conn);
+        $isAssignedDriver = ($type === 'Vehicle') && isVehicleDriverMatch($dbDriverName, $callerEmpName);
+
+        // Enforce aturan pelaporan kesiapan kendaraan (approved -> ready_for_user):
+        // jika driver ditugaskan (bukan TANPA_SUPIR), pelaporan adalah tanggung jawab Driver (bukan PIC).
+        if ($type === 'Vehicle' && $newStatus === 'ready_for_user') {
+            if (hasAssignedVehicleDriver($dbDriverName)) {
+                if (!$isAssignedDriver && !$isSuperAdminUser) {
+                    jsonResponse(false, 'Pelaporan mobil siap (Ready for User) merupakan tanggung jawab Driver yang ditugaskan (' . $dbDriverName . '), bukan oleh PIC.');
+                }
+                if ($prevStatusBeforeUpdate !== 'approved' && !$isSuperAdminUser) {
+                    jsonResponse(false, 'Laporan kesiapan mobil hanya dapat dikirim saat status pengajuan sudah Approved.');
+                }
+            } else if ($callerRole === 'user' && !$isSuperAdminUser) {
+                jsonResponse(false, 'Anda tidak memiliki akses untuk memproses status ini.');
+            }
+        }
+
         // Otomatisasi teks ketika Manajer Departemen Approve Item2 (waiting_manager_unit -> verified)
         if ($newStatus === 'verified' && empty($noteInput) && $type === 'Item2') {
             $noteInput = "Disetujui oleh Manajer Departemen. Diteruskan ke PIC Gudang untuk pemeriksaan & verifikasi barang.";
@@ -525,11 +698,13 @@ switch ($action) {
 
         // Otomatisasi teks ketika Manager FMD Approve
         if ($newStatus === 'approved' && empty($noteInput)) {
-            $resReq = $conn->query("SELECT status FROM `$table` WHERE id = $id");
-            $row = $resReq->fetch_assoc();
-            if ($row && $row['status'] === 'waiting_manager_fmd') {
+            if ($prevStatusBeforeUpdate === 'waiting_manager_fmd') {
                 if ($type === 'Item2') {
                     $noteInput = "Disetujui oleh Manager FMD. Pengajuan dikembalikan ke PIC Gudang untuk penyiapan barang.";
+                } else if ($type === 'Vehicle' && hasAssignedVehicleDriver($dbDriverName)) {
+                    $noteInput = "Disetujui oleh Manager FMD. Tugas diteruskan kepada Driver ($dbDriverName) untuk persiapan dan konfirmasi kesiapan kendaraan.";
+                } else if ($type === 'Repair') {
+                    $noteInput = "Disetujui oleh Manager FMD. Pengajuan perbaikan siap diproses oleh PIC/Teknisi (In-Progress).";
                 } else {
                     $typeLabels = [
                         'Vehicle' => 'Kendaraan (Unit & Driver)',
@@ -546,10 +721,17 @@ switch ($action) {
             }
         }
 
-        // Otomatisasi teks ketika PIC melakukan Check & Recheck (approved → ready_for_user)
+        // Otomatisasi teks ketika Repair masuk tahap pengerjaan (in-progress)
+        if ($type === 'Repair' && $newStatus === 'in-progress' && empty($noteInput)) {
+            $noteInput = "PIC/Teknisi memulai proses pengerjaan perbaikan.";
+        }
+
+        // Otomatisasi teks ketika melakukan konfirmasi kesiapan (approved -> ready_for_user)
         if ($newStatus === 'ready_for_user' && empty($noteInput)) {
             if ($type === 'Item2') {
                 $noteInput = "Barang telah siap di gudang. Mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil: 1. Indra Septian 081212874982, 2. Moh. Wahyu Noorramdhany 085693459088";
+            } else if ($type === 'Vehicle' && hasAssignedVehicleDriver($dbDriverName)) {
+                $noteInput = "Driver ($dbDriverName) mengkonfirmasi: kendaraan telah dicek, dalam kondisi baik, dan siap digunakan oleh pemohon.";
             } else {
                 $typeLabels = [
                     'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
@@ -561,17 +743,21 @@ switch ($action) {
             }
         }
 
-        // Otomatisasi teks ketika PIC menandai selesai (ready_for_user → completed/returned)
+        // Otomatisasi teks ketika menandai selesai (ready_for_user/in-progress -> completed/returned)
         if (in_array($newStatus, ['completed','returned']) && empty($noteInput)) {
-            $typeLabels = [
-                'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
-                'Dormitory' => 'Dormitory',
-                'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
-            ];
-            $label = $typeLabels[$type] ?? $type;
-            $noteInput = $newStatus === 'returned'
-                ? "PIC mengkonfirmasi: $label telah dikembalikan/diselesaikan. Permintaan tuntas."
-                : "PIC mengkonfirmasi: seluruh kebutuhan $label telah terpenuhi. Permintaan selesai dilaksanakan.";
+            if ($type === 'Vehicle' && $isAssignedDriver && $callerRole === 'user') {
+                $noteInput = "Driver ($dbDriverName) mengkonfirmasi: tugas pengantaran kendaraan telah selesai dilaksanakan.";
+            } else {
+                $typeLabels = [
+                    'Vehicle' => 'Kendaraan', 'Room' => 'Ruangan',
+                    'Dormitory' => 'Dormitory',
+                    'Zoom' => 'Zoom/Virtual', 'Item' => 'Barang Pinjaman', 'Repair' => 'Perbaikan'
+                ];
+                $label = $typeLabels[$type] ?? $type;
+                $noteInput = $newStatus === 'returned'
+                    ? "PIC mengkonfirmasi: $label telah dikembalikan/diselesaikan. Permintaan tuntas."
+                    : "PIC mengkonfirmasi: seluruh kebutuhan $label telah terpenuhi. Permintaan selesai dilaksanakan.";
+            }
         }
 
         // Otomatisasi teks ketika PIC membatalkan pengajuan (canceled)
@@ -658,62 +844,14 @@ switch ($action) {
             // KIRIM NOTIFIKASI KE TELEGRAM USER
             notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorName);
             
-            // JIKA VEHICLE DAN APPROVED, KIRIM NOTIF KE DRIVER HANYA SAAT ASSIGNMENT BARU/BERUBAH
-            if ($type === 'Vehicle' && $newStatus === 'approved') {
-                $previousReqStmt = $conn->prepare("SELECT driver_name, vehicle_id, status FROM vehicle_requests WHERE id = ?");
-                $previousReqStmt->bind_param("i", $id);
-                $previousReqStmt->execute();
-                $previousReq = $previousReqStmt->get_result()->fetch_assoc();
-                $previousReqStmt->close();
+            // JIKA VEHICLE DAN BARU MASUK KE WAITING_MANAGER_FMD, KIRIM INFO TUGAS BARU KE DRIVER
+            if ($type === 'Vehicle' && $newStatus === 'waiting_manager_fmd' && $prevStatusBeforeUpdate !== 'waiting_manager_fmd') {
+                notifyAssignedDriverNewTaskPendingApproval($conn, $id);
+            }
 
-                $shouldNotifyDriver = false;
-                if (!$previousReq || $previousReq['status'] !== 'approved') {
-                    $shouldNotifyDriver = true;
-                } elseif (trim((string)($previousReq['driver_name'] ?? '')) === '' || trim((string)($previousReq['driver_name'] ?? '')) !== trim((string)($previousReq['driver_name'] ?? ''))) {
-                    $shouldNotifyDriver = true;
-                }
-
-                if ($shouldNotifyDriver) {
-                    $stmtDrv = $conn->prepare("SELECT v.vehicle_id, v.driver_name, v.applicant_name, v.passenger_name, DATE_FORMAT(v.date_start,'%d %b %Y') as ds, DATE_FORMAT(v.date_end,'%d %b %Y') as de, v.time_start, v.time_end, v.purpose, v.destination, u.whatsapp_number, u.telegram_chat_id FROM vehicle_requests v LEFT JOIN employees e ON v.driver_name = e.full_name LEFT JOIN users u ON e.id = u.employee_id WHERE v.id = ?");
-                    $stmtDrv->bind_param("i", $id);
-                    $stmtDrv->execute();
-                    $reqRow = $stmtDrv->get_result()->fetch_assoc();
-                    $stmtDrv->close();
-
-                    if ($reqRow && $reqRow['driver_name'] && trim($reqRow['driver_name']) !== '') {
-                        $vName = $reqRow['vehicle_id'];
-                        if ($vName === 'TANPA_KENDARAAN') {
-                            $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
-                        } else {
-                            $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
-                            $stmtV->bind_param("s", $reqRow['vehicle_id']);
-                            $stmtV->execute();
-                            if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
-                            $stmtV->close();
-                        }
-
-                        $drvName  = $reqRow['driver_name'];
-                        $appName  = $reqRow['applicant_name'];
-                        $passName = $reqRow['passenger_name'] ?: '-';
-                        $dest     = $reqRow['destination'] ?: '-';
-                        
-                        $waktuTanggal = $reqRow['ds'];
-                        if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
-                            $waktuTanggal .= " - " . $reqRow['de'];
-                        }
-                        $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
-                        $purp     = $reqRow['purpose'] ?: '-';
-
-                        if (!empty($reqRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                            $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$drvName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                            sendWhatsAppFonnte($msgDriver, $reqRow['whatsapp_number']);
-                        }
-                        if (!empty($reqRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
-                            $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$drvName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                            sendTelegramPHP($msgDriverTg, $reqRow['telegram_chat_id']);
-                        }
-                    }
-                }
+            // JIKA VEHICLE DAN BARU BERUBAH KE APPROVED, KIRIM INSTRUKSI SIAP VEH-xxx KE DRIVER YANG DITUGASKAN
+            if ($type === 'Vehicle' && $newStatus === 'approved' && $prevStatusBeforeUpdate !== 'approved') {
+                notifyAssignedDriverVehicleApproved($conn, $id);
             }
 
             // JIKA ITEM2 DAN READY_FOR_USER, PASTIKAN NOTIFIKASI AMBIL BARANG TERKIRIM KE USER
@@ -753,9 +891,10 @@ switch ($action) {
     // 4. UPDATE VEHICLE ASSIGNMENT — setara updateVehicleAssignment()
     // ============================================================
     case 'update_vehicle_assignment':
-        $id          = (int)($_POST['id']          ?? 0);
-        $vehicleId   = $_POST['vehicle_id']        ?? '';
-        $driverName  = $_POST['driver_name']       ?? '';
+        $id           = (int)($_POST['id']          ?? 0);
+        $vehicleId    = $_POST['vehicle_id']        ?? '';
+        $driverName   = $_POST['driver_name']       ?? '';
+        $targetStatus = trim((string)($_POST['target_status'] ?? ''));
 
         $prevAssignmentStmt = $conn->prepare("SELECT driver_name, vehicle_id, status FROM vehicle_requests WHERE id = ?");
         $prevAssignmentStmt->bind_param("i", $id);
@@ -813,43 +952,13 @@ switch ($action) {
             $reqRow = $stmtStatus->get_result()->fetch_assoc();
             $stmtStatus->close();
 
-            if ($reqRow && in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user']) && $driverName && $driverName !== 'TANPA_SUPIR' && $assignmentChanged) {
-                $stmtDrv = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
-                $stmtDrv->bind_param("s", $driverName);
-                $stmtDrv->execute();
-                $drvRow = $stmtDrv->get_result()->fetch_assoc();
-                $stmtDrv->close();
-
-                if ($drvRow) {
-                    $vName = $vehicleId;
-                    if ($vName === 'TANPA_KENDARAAN') {
-                        $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
-                    } else {
-                        $stmtV = $conn->prepare("SELECT name FROM master_vehicles WHERE id = ?");
-                        $stmtV->bind_param("s", $vehicleId);
-                        $stmtV->execute();
-                        if ($resV = $stmtV->get_result()->fetch_assoc()) $vName = $resV['name'];
-                        $stmtV->close();
-                    }
-
-                    $appName  = $reqRow['applicant_name'];
-                    $passName = $reqRow['passenger_name'] ?: '-';
-                    $dest     = $reqRow['destination'] ?: '-';
-                    $waktuTanggal = $reqRow['ds'];
-                    if (!empty($reqRow['de']) && $reqRow['de'] !== $reqRow['ds']) {
-                        $waktuTanggal .= " - " . $reqRow['de'];
-                    }
-                    $waktuJam = substr($reqRow['time_start'] ?? '00:00:00', 0, 5);
-                    $purp     = $reqRow['purpose'] ?: '-';
-
-                    if (!empty($drvRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                        $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$driverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$id*.\n\n*Pemohon:* $appName\n*Penumpang:* $passName\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $waktuTanggal\n*Jam Berangkat:* $waktuJam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                        sendWhatsAppFonnte($msgDriver, $drvRow['whatsapp_number']);
-                    }
-                    if (!empty($drvRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
-                        $msgDriverTg = "🚗 <b>TUGAS BARU (DRIVER)</b>\n\nHalo <b>$driverName</b>,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan <b>VEH-$id</b>.\n\n<b>Pemohon:</b> $appName\n<b>Penumpang:</b> $passName\n<b>Kendaraan:</b> $vName\n<b>Lokasi Tujuan:</b> $dest\n<b>Tanggal:</b> $waktuTanggal\n<b>Jam Berangkat:</b> $waktuJam\n<b>Keperluan:</b> $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-                        sendTelegramPHP($msgDriverTg, $drvRow['telegram_chat_id']);
-                    }
+            // Jika update penugasan dilakukan tanpa transisi status oleh pemanggil, beritahu driver sesuai tahap saat ini
+            $willTransitionNow = ($targetStatus !== '' && $targetStatus !== ($reqRow['status'] ?? ''));
+            if ($reqRow && !$willTransitionNow && hasAssignedVehicleDriver($driverName) && $assignmentChanged) {
+                if ($reqRow['status'] === 'waiting_manager_fmd') {
+                    notifyAssignedDriverNewTaskPendingApproval($conn, $id);
+                } elseif (in_array($reqRow['status'], ['approved', 'in-progress', 'ready_for_user'])) {
+                    notifyAssignedDriverVehicleApproved($conn, $id);
                 }
             }
 
@@ -970,7 +1079,7 @@ switch ($action) {
                     $pri     = strtoupper($reqRow['priority'] ?? 'MEDIUM');
                     $app     = $reqRow['applicant_name'] . ' (' . $reqRow['applicant_unit'] . ')';
 
-                    $techList = array_filter(array_map('trim', explode(',', $technicianName)));
+                    $techList = parseRepairTechnicianNames($conn, (string)$technicianName);
 
                     foreach ($techList as $singleTech) {
                         if (!$singleTech || $singleTech === 'TANPA_TEKNISI') continue;

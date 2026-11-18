@@ -27,14 +27,15 @@ if (!$sender || !$message) {
     exit;
 }
 
-// Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, atau COMPLETED
-if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z0])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+// Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, COMPLETED, atau SIAP
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED|SIAP)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z0])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
     http_response_code(200); // Ignore non-command messages
     exit;
 }
 
 $actionTypeRaw = strtoupper($matches[1]);
-$actionType = ($actionTypeRaw === 'SELESAI' || $actionTypeRaw === 'COMPLETED') ? 'SETUJU' : $actionTypeRaw; // SETUJU / TOLAK / (SELESAI -> SETUJU)
+$isSiapCmd     = ($actionTypeRaw === 'SIAP');
+$actionType    = in_array($actionTypeRaw, ['SELESAI', 'COMPLETED', 'SIAP'], true) ? 'SETUJU' : $actionTypeRaw; // SETUJU / TOLAK / (SELESAI|SIAP -> SETUJU)
 $typeCode   = strtoupper($matches[2]); // VEH
 $reqId      = (int)$matches[3]; // 15
 $optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
@@ -48,7 +49,7 @@ if (strlen($cleanSender) < 8) {
 }
 
 // 1. Cari user di DB berdasarkan nomor WA
-$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, u.employee_id, e.nip_nik as username, e.department, e.role_title FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ? ORDER BY u.employee_id IS NOT NULL DESC, u.id ASC LIMIT 1");
+$stmt = $conn->prepare("SELECT u.id, u.full_name, u.role, u.employee_id, COALESCE(e.full_name, u.full_name) as emp_full_name, e.nip_nik as username, e.department, e.role_title FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.whatsapp_number LIKE ? ORDER BY u.employee_id IS NOT NULL DESC, u.id ASC LIMIT 1");
 $likeSender = "%$cleanSender%";
 $stmt->bind_param("s", $likeSender);
 $stmt->execute();
@@ -133,7 +134,7 @@ if (!$table) {
 }
 
 // 3. Ambil data pengajuan
-$resReq = $conn->query("SELECT status, note FROM `$table` WHERE id = $reqId");
+$resReq = $conn->query("SELECT * FROM `$table` WHERE id = $reqId");
 $requestData = $resReq ? $resReq->fetch_assoc() : null;
 
 if (!$requestData) {
@@ -307,31 +308,46 @@ if ($table === 'item_requests') {
         $nextStatusApprove = 'waiting_manager_fmd'; // Default PIC forward
     }
 } else if ($currentStatus === 'waiting_manager_fmd') {
-    if ($isManagerFMD) {
+    if ($isManagerFMD || $role === 'superadmin') {
         $canProcess = true;
-        $nextStatusApprove = 'approved'; 
+        if ($typeCode === 'REP') {
+            $resBgt = $conn->query("SELECT COALESCE(SUM(total_price), 0) AS total FROM repair_budgets WHERE repair_request_id = $reqId");
+            $rowBgt = $resBgt ? $resBgt->fetch_assoc() : null;
+            $budgetTotal = (float)($rowBgt['total'] ?? 0);
+            if ($budgetTotal > 50000000) {
+                $nextStatusApprove = 'waiting_bod';
+            } else if ($budgetTotal > 20000000) {
+                $nextStatusApprove = 'waiting_ppk';
+            } else if ($budgetTotal > 0) {
+                $nextStatusApprove = 'waiting_manager_fad';
+            } else {
+                $nextStatusApprove = 'approved';
+            }
+        } else {
+            $nextStatusApprove = 'approved';
+        }
     }
 } else if ($currentStatus === 'waiting_manager_fad') {
-    if ($role === 'managerFAD') {
+    if ($role === 'managerFAD' || $role === 'superadmin') {
         $canProcess = true;
-        $nextStatusApprove = 'approved';
+        $nextStatusApprove = ($typeCode === 'REP') ? 'approved_waiting_fund' : 'approved';
     }
 } else if ($currentStatus === 'waiting_ppk') {
-    if ($role === 'ppk') {
+    if ($role === 'ppk' || $role === 'superadmin') {
         $canProcess = true;
-        $nextStatusApprove = 'approved_waiting_fund';
+        $nextStatusApprove = ($typeCode === 'REP') ? 'waiting_manager_fad' : 'approved_waiting_fund';
     }
 } else if ($currentStatus === 'waiting_bod') {
-    if ($role === 'bod') {
+    if ($role === 'bod' || $role === 'superadmin') {
         $canProcess = true;
-        $nextStatusApprove = 'approved';
+        $nextStatusApprove = ($typeCode === 'REP') ? 'waiting_ppk' : 'approved';
     }
 } else if ($currentStatus === 'approved_waiting_fund') {
-    if ($role === 'bendahara') {
+    if ($role === 'bendahara' || $role === 'superadmin') {
         $canProcess = true;
-        $nextStatusApprove = 'approved';
+        $nextStatusApprove = ($typeCode === 'REP') ? 'in-progress' : 'approved';
     }
-} else if ($currentStatus === 'approved' || $currentStatus === 'ready_for_user') {
+} else if ($currentStatus === 'approved' || $currentStatus === 'ready_for_user' || $currentStatus === 'in-progress') {
     $isApplicant = false;
     if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
         $isApplicant = true;
@@ -346,12 +362,79 @@ if ($table === 'item_requests') {
         }
     }
 
-    if ($isApplicant) {
-        $canProcess = true;
-        $nextStatusApprove = 'completed';
-    } else if ($currentStatus === 'approved' && $isPIC) {
-        $canProcess = true;
-        $nextStatusApprove = 'ready_for_user'; // PIC marks as ready
+    $callerEmpName    = trim((string)($user['emp_full_name'] ?? $user['full_name'] ?? ''));
+    $isAssignedDriver = ($typeCode === 'VEH') && isVehicleDriverMatch($requestData['driver_name'] ?? '', $callerEmpName);
+
+    if ($isSiapCmd && ($typeCode !== 'VEH' || $currentStatus !== 'approved')) {
+        sendWhatsAppFonnte("Perintah SIAP hanya dapat digunakan untuk melaporkan kesiapan kendaraan (VEH) yang berstatus Approved.", $sender);
+        http_response_code(200);
+        exit;
+    }
+
+    if ($typeCode === 'REP') {
+        if ($currentStatus === 'approved') {
+            if ($isPIC || $role === 'superadmin') {
+                $canProcess = true;
+                $nextStatusApprove = 'in-progress';
+            } else if ($isApplicant && in_array($actionTypeRaw, ['SELESAI', 'COMPLETED'], true)) {
+                $canProcess = true;
+                $nextStatusApprove = 'completed';
+            }
+        } else if (in_array($currentStatus, ['in-progress', 'ready_for_user'], true)) {
+            if ($isPIC || $role === 'superadmin' || $isApplicant) {
+                $canProcess = true;
+                $nextStatusApprove = 'completed';
+            }
+        }
+    } else if ($typeCode === 'VEH') {
+        $hasDriver = hasAssignedVehicleDriver($requestData['driver_name'] ?? '');
+        if ($currentStatus === 'approved') {
+            if ($hasDriver) {
+                if ($isAssignedDriver || $role === 'superadmin') {
+                    if ($actionType === 'TOLAK' && $role !== 'superadmin') {
+                        sendWhatsAppFonnte("Maaf, Driver hanya dapat melaporkan kesiapan kendaraan (balas: *SIAP VEH-$reqId*).", $sender);
+                        http_response_code(200);
+                        exit;
+                    }
+                    $canProcess = true;
+                    $nextStatusApprove = 'ready_for_user';
+                } else if ($isPIC) {
+                    sendWhatsAppFonnte("Pengajuan kendaraan *VEH-$reqId* sudah berstatus *Approved*. Pelaporan mobil siap (Ready for User) menjadi tanggung jawab Driver (" . ($requestData['driver_name'] ?? '-') . "), bukan lagi PIC.", $sender);
+                    http_response_code(200);
+                    exit;
+                } else if ($isApplicant && in_array($actionTypeRaw, ['SELESAI', 'COMPLETED'], true)) {
+                    $canProcess = true;
+                    $nextStatusApprove = 'completed';
+                }
+            } else {
+                if ($isPIC || $role === 'superadmin') {
+                    $canProcess = true;
+                    $nextStatusApprove = 'ready_for_user';
+                } else if ($isApplicant) {
+                    $canProcess = true;
+                    $nextStatusApprove = 'completed';
+                }
+            }
+        } else {
+            // ready_for_user atau in-progress pada VEH
+            if ($isApplicant || $isAssignedDriver || $isPIC || $role === 'superadmin') {
+                if ($actionType === 'TOLAK' && $isAssignedDriver && $role !== 'superadmin') {
+                    sendWhatsAppFonnte("Maaf, Driver hanya dapat mengkonfirmasi penyelesaian tugas (balas: *SELESAI VEH-$reqId*).", $sender);
+                    http_response_code(200);
+                    exit;
+                }
+                $canProcess = true;
+                $nextStatusApprove = 'completed';
+            }
+        }
+    } else if ($currentStatus !== 'in-progress') {
+        if ($isApplicant) {
+            $canProcess = true;
+            $nextStatusApprove = 'completed';
+        } else if ($currentStatus === 'approved' && ($isPIC || $role === 'superadmin')) {
+            $canProcess = true;
+            $nextStatusApprove = 'ready_for_user'; // PIC marks as ready
+        }
     }
 }
 
@@ -391,7 +474,11 @@ if ($actionType === 'SETUJU') {
         }
     } else if ($currentStatus === 'waiting_manager_fmd' && $nextStatusApprove === 'approved') {
         if ($typeCode === 'VEH') {
-            $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Kendaraan (Unit & Driver) menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+            if (hasAssignedVehicleDriver($requestData['driver_name'] ?? '')) {
+                $actionNote = "Disetujui oleh Manager FMD. Tugas diteruskan kepada Driver (" . $requestData['driver_name'] . ") untuk persiapan dan konfirmasi kesiapan kendaraan.";
+            } else {
+                $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Kendaraan (Unit & Driver) menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+            }
         } else if ($typeCode === 'ROM') {
             $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Ruangan & Fasilitas menyiapkan permintaan dan memberikan laporan Check & Recheck.";
         } else if ($typeCode === 'ZOM') {
@@ -399,11 +486,19 @@ if ($actionType === 'SETUJU') {
         } else if ($typeCode === 'ITM') {
             $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Peminjaman Barang menyiapkan permintaan dan memberikan laporan Check & Recheck.";
         } else if ($typeCode === 'REP') {
-             $actionNote = "Disetujui oleh Manager FMD. Silakan PIC Perbaikan menyiapkan permintaan dan memberikan laporan Check & Recheck.";
+            $actionNote = "Disetujui oleh Manager FMD. Pengajuan perbaikan siap diproses oleh PIC/Teknisi (In-Progress).";
         }
+    } else if ($typeCode === 'REP' && $nextStatusApprove === 'in-progress') {
+        $actionNote = "PIC/Teknisi memulai proses pengerjaan perbaikan.";
+    } else if ($typeCode === 'REP' && $nextStatusApprove === 'completed') {
+        $actionNote = "PIC/Teknisi mengkonfirmasi: perbaikan telah selesai dilaksanakan.";
     } else if ($currentStatus === 'approved' && $nextStatusApprove === 'ready_for_user') {
         if ($typeCode === 'VEH') {
-            $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Kendaraan telah siap untuk diserahkan/dilaksanakan.";
+            if (hasAssignedVehicleDriver($requestData['driver_name'] ?? '')) {
+                $actionNote = "Driver (" . $requestData['driver_name'] . ") mengkonfirmasi: kendaraan telah dicek, dalam kondisi baik, dan siap digunakan oleh pemohon.";
+            } else {
+                $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Kendaraan telah siap untuk diserahkan/dilaksanakan.";
+            }
         } else if ($typeCode === 'ROM') {
             $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Ruangan telah siap untuk diserahkan/dilaksanakan.";
         } else if ($typeCode === 'ZOM') {
@@ -413,10 +508,12 @@ if ($actionType === 'SETUJU') {
         } else if ($typeCode === 'REP') {
              $actionNote = "PIC sedang melakukan Check & Recheck: mempersiapkan dan memastikan kebutuhan Perbaikan telah siap untuk diserahkan/dilaksanakan.";
         }
-    } else if ($currentStatus === 'ready_for_user' && $nextStatusApprove === 'completed') {
+    } else if (in_array($currentStatus, ['ready_for_user', 'in-progress'], true) && $nextStatusApprove === 'completed') {
         $actionNote = "PIC mengkonfirmasi: seluruh kebutuhan telah terpenuhi. Permintaan selesai dilaksanakan.";
         if (isset($requestData['user_id']) && $requestData['user_id'] == $user['id']) {
             $actionNote = "Pengajuan diselesaikan oleh Pemohon.";
+        } else if ($typeCode === 'VEH' && !empty($isAssignedDriver)) {
+            $actionNote = "Driver (" . ($requestData['driver_name'] ?? $user['full_name']) . ") mengkonfirmasi: tugas pengantaran kendaraan telah selesai dilaksanakan.";
         }
     }
 } else if ($actionType === 'TOLAK') {
@@ -466,40 +563,13 @@ if ($stmt->execute()) {
     $reply = "✅ Berhasil!\nPengajuan *$typeCode-$reqId* telah diubah statusnya menjadi *$finalStatus*.";
     sendWhatsAppFonnte($reply, $sender);
     
-    // Notifikasi ke Supir (jika Vehicle dan ada supir yang ditugaskan)
-    if ($typeCode === 'VEH' && $selectedDriverName) {
-        $stmtDriver = $conn->prepare("SELECT u.whatsapp_number FROM users u INNER JOIN employees e ON u.employee_id = e.id WHERE e.full_name = ?");
-        $stmtDriver->bind_param("s", $selectedDriverName);
-        $stmtDriver->execute();
-        $drv = $stmtDriver->get_result()->fetch_assoc();
-        $stmtDriver->close();
-
-        if ($drv && !empty($drv['whatsapp_number'])) {
-            // Ambil detail jadwal dari requestData (kita perlu query ulang untuk date_start)
-            $resDetails = $conn->query("SELECT applicant_name, passenger_name, destination, purpose, DATE_FORMAT(date_start,'%d %b %Y') as ds, time_start FROM vehicle_requests WHERE id = $reqId");
-            $dtl = $resDetails ? $resDetails->fetch_assoc() : null;
-            
-            // Ambil nama kendaraan
-            $vName = $selectedVehicleId;
-            if ($vName === 'TANPA_KENDARAAN') {
-                $vName = 'Tanpa Kendaraan (Hanya Jasa Driver)';
-            } else if ($vName === 'PENDING_ASSIGNMENT') {
-                $vName = '(Menunggu Plotting Kendaraan)';
-            } else {
-                $resV = $conn->query("SELECT name FROM master_vehicles WHERE id = '$selectedVehicleId'");
-                if ($resV && $v = $resV->fetch_assoc()) $vName = $v['name'];
-            }
-
-            $app_name = $dtl ? $dtl['applicant_name'] : '-';
-            $pass_name = $dtl ? ($dtl['passenger_name'] ?: '-') : '-';
-            $dest = $dtl ? ($dtl['destination'] ?: '-') : '-';
-            $purp = $dtl ? ($dtl['purpose'] ?: '-') : '-';
-            $tgl = $dtl ? $dtl['ds'] : '-';
-            $jam = $dtl ? substr($dtl['time_start'], 0, 5) : '-';
-
-            $msgDriver = "🚗 *TUGAS BARU (DRIVER)*\n\nHalo *$selectedDriverName*,\nAnda telah ditugaskan sebagai pengemudi untuk pengajuan kendaraan *VEH-$reqId*.\n\n*Pemohon:* $app_name\n*Penumpang:* $pass_name\n*Kendaraan:* $vName\n*Lokasi Tujuan:* $dest\n*Tanggal:* $tgl\n*Jam Berangkat:* $jam\n*Keperluan:* $purp\n\nMohon cek Dashboard Anda untuk detail lengkap.";
-            sendWhatsAppFonnte($msgDriver, $drv['whatsapp_number']);
-        }
+    // Notifikasi ke Supir:
+    // - saat status masuk waiting_manager_fmd -> Chat #1 (info ada tugas baru, menunggu Manager FMD)
+    // - saat status masuk approved            -> Chat #2 (disetujui Manager FMD, balas SIAP VEH-xxx)
+    if ($typeCode === 'VEH' && $finalStatus === 'approved') {
+        notifyAssignedDriverVehicleApproved($conn, $reqId);
+    } else if ($typeCode === 'VEH' && $finalStatus === 'waiting_manager_fmd' && hasAssignedVehicleDriver($selectedDriverName)) {
+        notifyAssignedDriverNewTaskPendingApproval($conn, $reqId);
     }
     
     // Panggil fungsi notifikasi agar dikirim ke Manager FMD / User / Approver berikutnya

@@ -580,6 +580,80 @@ function getRepairTechnicians(employees) {
   });
 }
 
+function parseRepairTechnicians(techStr, employees = allEmployees) {
+  const raw = String(techStr || '').trim();
+  if (!raw || raw.toUpperCase() === 'TANPA_TEKNISI') return [];
+
+  const knownSet = new Map();
+  getRepairTechnicians(employees).forEach(t => {
+    const nm = String(t.full_name || '').trim();
+    if (nm) knownSet.set(nm.toLowerCase(), nm);
+  });
+  REPAIR_TECHNICIAN_CONFIG.forEach(c => {
+    if (c.name && !knownSet.has(c.name.toLowerCase())) knownSet.set(c.name.toLowerCase(), c.name);
+  });
+  (Array.isArray(employees) ? employees : []).forEach(e => {
+    const nm = String(e.full_name || '').trim();
+    if (nm && !knownSet.has(nm.toLowerCase())) knownSet.set(nm.toLowerCase(), nm);
+  });
+
+  const knownNames = Array.from(knownSet.values()).sort((a, b) => b.length - a.length);
+  const escapeRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const degreeRegex = /^(?:a\.?md(?:\.[a-z]+)?|s\.?(?:kom|e|t|pd|si|sos|h|p|pi|pt|hut|tp|gz|farm)|m\.?(?:kom|m|t|si|pd|sc)|ph\.?d|dr|ir)\.?$/i;
+
+  const result = [];
+  const seen = new Set();
+  const addUnique = name => {
+    const clean = String(name || '').trim();
+    if (!clean || clean.toUpperCase() === 'TANPA_TEKNISI') return;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(clean);
+    }
+  };
+
+  raw.split(/[;|]+/).forEach(chunkRaw => {
+    const chunk = chunkRaw.trim();
+    if (!chunk || chunk.toUpperCase() === 'TANPA_TEKNISI') return;
+
+    const exactKnown = knownNames.find(kn => kn.toLowerCase() === chunk.toLowerCase());
+    if (exactKnown) {
+      addUnique(exactKnown);
+      return;
+    }
+
+    let remaining = chunk;
+    const matchedWithIndex = [];
+    knownNames.forEach(kn => {
+      const rx = new RegExp(`(^|[\\s,;]+)(${escapeRegex(kn)})(?=$|[\\s,;]+)`, 'gi');
+      const m = rx.exec(remaining);
+      if (m) {
+        matchedWithIndex.push({ idx: m.index + (m[1] ? m[1].length : 0), name: kn });
+        remaining = remaining.replace(new RegExp(`(^|[\\s,;]+)${escapeRegex(kn)}(?=$|[\\s,;]+)`, 'gi'), '$1,');
+      }
+    });
+    matchedWithIndex.sort((a, b) => a.idx - b.idx).forEach(m => addUnique(m.name));
+
+    remaining.split(',').forEach(partRaw => {
+      const part = partRaw.trim();
+      if (!part || part.toUpperCase() === 'TANPA_TEKNISI') return;
+      if (degreeRegex.test(part)) return;
+      addUnique(part);
+    });
+  });
+
+  return result;
+}
+
+function isTechnicianSelected(reqTechName, empOrName, employees = allEmployees) {
+  const raw = String(reqTechName || '').trim();
+  if (!raw || raw.toUpperCase() === 'TANPA_TEKNISI') return false;
+  const empName = (typeof empOrName === 'string' ? empOrName : (empOrName && empOrName.full_name) || '').trim().toLowerCase();
+  if (!empName) return false;
+  return parseRepairTechnicians(raw, employees).some(t => t.toLowerCase() === empName);
+}
+
 // Admin Calendar State
 window._adminCalYear     = new Date().getFullYear();
 window._adminCalMonth    = new Date().getMonth();
@@ -713,6 +787,10 @@ async function loadAllData(silent = false) {
         return false;
       }
       if (['pending', 'approved', 'ready_for_user', 'in-progress'].includes(r.status)) {
+        if (r.type === 'Vehicle' && r.status === 'approved') {
+          const hasDrv = r.driver_name && String(r.driver_name).trim() !== '' && String(r.driver_name).trim().toUpperCase() !== 'TANPA_SUPIR';
+          if (hasDrv) return isSuperAdmin;
+        }
         const allowed = PIC_MAP[r.type] || [];
         return allowed.length === 0 || allowed.includes(ADMIN_USERNAME) || isSuperAdmin;
       }
@@ -1620,11 +1698,7 @@ function renderCrudSpecificFields(req) {
         <label class="form-label" style="font-weight:700;">Teknisi / Pelaksana (Bisa Pilih > 1):</label>
         <div style="display:flex; flex-direction:column; gap:0.35rem; max-height:170px; overflow-y:auto; border:1px solid #cbd5e1; padding:0.5rem; border-radius:6px; background:#f8fafc;">
           ${getRepairTechnicians(allEmployees).map(emp => {
-            const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
-            const isSelected = req.technician_name !== 'TANPA_TEKNISI' && (
-              curTechs.includes(emp.full_name.toLowerCase()) || 
-              curTechs.some(t => t && (t.includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(t)))
-            );
+            const isSelected = isTechnicianSelected(req.technician_name, emp, allEmployees);
             return `
             <label style="display:flex; align-items:center; gap:0.5rem; background:#fff; padding:0.4rem 0.6rem; border:1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}; border-radius:4px; font-size:0.85rem; cursor:pointer; margin:0;">
               <input type="checkbox" name="crud_sp_technician_checkbox" value="${emp.full_name}" ${isSelected ? 'checked' : ''} style="accent-color:#0d9488;" />
@@ -1695,7 +1769,7 @@ async function doCrudSave() {
   } else if (type === 'Repair') {
     payload.repair_type = document.getElementById('crud-sp-repair_type')?.value || 'TIK';
     const spChecked = Array.from(document.querySelectorAll('input[name="crud_sp_technician_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
-    payload.technician_name = spChecked.length > 0 ? (spChecked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : spChecked.join(', ')) : (document.getElementById('crud-sp-technician_name')?.value || null);
+    payload.technician_name = spChecked.length > 0 ? (spChecked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : spChecked.join('; ')) : (document.getElementById('crud-sp-technician_name')?.value || null);
     payload.location_detail = document.getElementById('crud-sp-location_detail').value;
     payload.issue_description = document.getElementById('crud-sp-issue_description').value;
   } else if (type === 'Item') {
@@ -1761,8 +1835,8 @@ function renderAnalytics() {
   // Distinct Technicians list
   const techSet = new Set();
   (allRequests || []).forEach(r => {
-    if (r.type === 'Repair' && r.technician_name && r.technician_name.trim() !== '') {
-      techSet.add(r.technician_name.trim());
+    if (r.type === 'Repair' && r.technician_name && r.technician_name.trim() !== '' && r.technician_name !== 'TANPA_TEKNISI') {
+      parseRepairTechnicians(r.technician_name, allEmployees).forEach(t => techSet.add(t));
     }
   });
   (allEmployees || []).forEach(e => {
@@ -2046,9 +2120,7 @@ window.exportPDF = function(subTypeParam = null, specificCategoryParam = null) {
     // Filter Technician
     if (selectedTechnician !== 'all') {
       if (r.type !== 'Repair') return false;
-      const rTech = (r.technician_name || '').toLowerCase();
-      const tVal = selectedTechnician.toLowerCase();
-      if (!rTech.includes(tVal) && !tVal.includes(rTech)) return false;
+      if (!isTechnicianSelected(r.technician_name, selectedTechnician, allEmployees)) return false;
     }
 
     // Filter Type
@@ -2343,9 +2415,7 @@ function updateAnalyticsDashboard() {
     // Technician filter
     if (technician !== 'all') {
       if (r.type !== 'Repair') return false;
-      const rTech = (r.technician_name || '').toLowerCase();
-      const tVal = technician.toLowerCase();
-      if (!rTech.includes(tVal) && !tVal.includes(rTech)) return false;
+      if (!isTechnicianSelected(r.technician_name, technician, allEmployees)) return false;
     }
 
     const dStr = r.created_at || r.date_start;
@@ -2752,7 +2822,7 @@ function getTimelineEvents(req) {
         let icon  = 'history';
 
         if (status === 'approved') { title = (req.type === 'Item2') ? 'Approved by Manager FMD (Gudang Menyiapkan Barang)' : 'Approved by FMD Manager'; color = '#16a34a'; icon = 'check-circle'; }
-        else if (status === 'ready_for_user') { title = 'Ready for User (Siap Diambil di Gudang)'; color = '#0891b2'; icon = 'check-circle'; }
+        else if (status === 'ready_for_user') { title = (req.type === 'Vehicle') ? 'Ready for User (Mobil Siap Digunakan)' : (req.type === 'Item2' ? 'Ready for User (Siap Diambil di Gudang)' : 'Ready for User (Siap Digunakan)'); color = '#0891b2'; icon = 'check-circle'; }
         else if (status === 'completed') { title = 'Completed'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'returned') { title = 'Returned'; color = '#2563eb'; icon = 'check-circle'; }
         else if (status === 'rejected') { title = 'Rejected'; color = '#dc2626'; icon = 'x-circle'; }
@@ -2903,8 +2973,7 @@ function checkResourceConflict(currentReq, resourceType, resourceId) {
     if (resourceType === 'Vehicle' && r.type === 'Vehicle' && String(r.vehicle_id) === String(resourceId)) match = true;
     if (resourceType === 'driver' && r.type === 'Vehicle' && String(r.driver_name) === String(resourceId)) match = true;
     if (resourceType === 'technician' && r.type === 'Repair' && r.technician_name) {
-      const assigned = r.technician_name.split(',').map(s => s.trim().toLowerCase());
-      if (assigned.includes(String(resourceId).toLowerCase())) match = true;
+      if (isTechnicianSelected(r.technician_name, String(resourceId), allEmployees)) match = true;
     }
     if (resourceType === 'Room' && r.type === 'Room' && String(r.room_id) === String(resourceId)) match = true;
     if (resourceType === 'Dormitory' && r.type === 'Dormitory' && String(r.dormitory_id) === String(resourceId)) match = true;
@@ -3087,7 +3156,7 @@ function renderDetailPengajuanTinjau() {
         </span>
         <span id="assign-tech-count-badge" style="font-size:0.72rem; font-weight:700; color:#0f766e; background:#ccfbf1; padding:2px 8px; border-radius:12px;">
           ${(function(){
-            const curTechs = (req.technician_name && req.technician_name !== 'TANPA_TEKNISI') ? req.technician_name.split(',').map(s=>s.trim()).filter(Boolean) : [];
+            const curTechs = parseRepairTechnicians(req.technician_name, allEmployees);
             return curTechs.length ? `${curTechs.length} Teknisi Terpilih` : (req.technician_name === 'TANPA_TEKNISI' ? 'Tanpa Teknisi' : 'Belum Dipilih');
           })()}
         </span>
@@ -3095,11 +3164,7 @@ function renderDetailPengajuanTinjau() {
       <div style="display:flex; flex-direction:column; gap:0.45rem;">
         ${getRepairTechnicians(allEmployees).map((emp) => {
           const conflict = checkResourceConflict(req, 'technician', emp.full_name);
-          const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
-          const isSelected = req.technician_name !== 'TANPA_TEKNISI' && (
-            curTechs.includes(emp.full_name.toLowerCase()) || 
-            curTechs.some(t => t && (t.includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(t)))
-          );
+          const isSelected = isTechnicianSelected(req.technician_name, emp, allEmployees);
           return `
           <label style="display:flex; align-items:center; gap:0.65rem; padding:0.6rem 0.75rem; background:${isSelected ? '#f0fdf4' : '#fff'}; border:1px solid ${isSelected ? '#0d9488' : '#e2e8f0'}; border-radius:6px; cursor:pointer; transition:all 0.15s; margin:0;" class="tech-checkbox-row">
             <input type="checkbox" name="assign_technician_checkbox" value="${emp.full_name}" 
@@ -3166,7 +3231,7 @@ function renderDetailPengajuanTinjau() {
           <button class="btn btn-primary btn-full" onclick="openRABModal('Tidak memungkinkan dikerjakan sendiri (pihak ketiga/vendor)')" style="background:#4f46e5;">&#x1F3ED; Teruskan ke Vendor / Pihak Ketiga</button>
         </div>
       </div>`;
-    } else if (req.status === 'waiting_manager_fmd' && (isManagerFMD || isSuperAdmin)) {
+    } else if ((req.status === 'waiting_manager_fmd' || req.status === 'verified') && (isManagerFMD || isSuperAdmin)) {
       actionBtns = `<div style="display:flex;gap:.5rem;flex-direction:column;">
         <button class="btn btn-success btn-full" onclick="handleApproveRAB(${req.id})">✓ Approve RAB / Internal</button>
         <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'Repair','rejected')">✕ Tolak</button>
@@ -3182,8 +3247,7 @@ function renderDetailPengajuanTinjau() {
         <div style="font-weight:700;color:#92400e;margin-bottom:0.5rem;">Pilih Pekerja / Staff (Bisa Pilih > 1):</div>
         <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:1rem;">
           ${getRepairTechnicians(allEmployees).map(e => {
-            const curTechs = (req.technician_name || '').split(',').map(s => s.trim().toLowerCase());
-            const isSelected = curTechs.includes(e.full_name.toLowerCase()) || curTechs.some(t => t && t.includes(e.full_name.toLowerCase()));
+            const isSelected = isTechnicianSelected(req.technician_name, e, allEmployees);
             return `
             <label style="display:flex; align-items:center; gap:0.5rem; background:#fff; padding:0.45rem 0.65rem; border:1px solid #fde68a; border-radius:6px; font-size:0.85rem; cursor:pointer; margin:0;">
               <input type="checkbox" name="assign_worker_checkbox" value="${e.full_name}" ${isSelected ? 'checked' : ''} style="accent-color:#d97706;" />
@@ -3194,7 +3258,16 @@ function renderDetailPengajuanTinjau() {
         <button class="btn btn-warning btn-full" onclick="doDisburseRepair(${req.id})" style="margin-bottom:1rem;">💰 Cairkan Dana & Mulai Kerja</button>
         <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;">🖨️ Cetak PUM (PDF)</a>
       </div>`;
-    } else if (req.status === 'in-progress' && (isPIC || isSuperAdmin)) {
+    } else if (req.status === 'approved' && (isPIC || isSuperAdmin)) {
+      actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+        <div style="background:#ecfdf5;border:1px solid #a7f3d0;padding:.9rem 1rem;border-radius:.5rem;font-size:.82rem;color:#065f46;">
+          <strong>✅ Pengajuan Perbaikan Telah Disetujui.</strong><br>Silakan PIC/Teknisi memulai proses pengerjaan perbaikan (<b>In-Progress</b>) atau tandai selesai jika pekerjaan sudah tuntas.
+        </div>
+        <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;">🖨️ Cetak PUM (PDF)</a>
+        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','in-progress')">🛠️ Mulai Pengerjaan Perbaikan</button>
+        <button class="btn btn-success btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>
+      </div>`;
+    } else if ((req.status === 'in-progress' || req.status === 'ready_for_user') && (isPIC || isSuperAdmin)) {
       actionBtns = `
         <a href="${BASE_URL}api/print_pum.php?id=${req.id}" target="_blank" class="btn btn-outline btn-full" style="display:block;text-align:center;margin-bottom:1rem;">🖨️ Cetak PUM (PDF)</a>
         <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Repair','completed')">✓ Tandai Selesai</button>
@@ -3366,8 +3439,20 @@ function renderDetailPengajuanTinjau() {
     }
 
   } else if (req.status === 'approved') {
-    // ── STAGE 3: Approved → PIC Check & Recheck ──
-    if (isPIC || isSuperAdmin) {
+    // ── STAGE 3: Approved → Driver (untuk Vehicle ber-driver) atau PIC Check & Recheck ──
+    const hasVehicleDriver = req.type === 'Vehicle' && req.driver_name && String(req.driver_name).trim() !== '' && String(req.driver_name).trim().toUpperCase() !== 'TANPA_SUPIR';
+    if (hasVehicleDriver && !isSuperAdmin) {
+      picMessage = reminderBox('🚗', 'Menunggu Konfirmasi Kesiapan Driver',
+        `Pengajuan kendaraan ini telah disetujui dan ditugaskan kepada driver <b>${req.driver_name}</b>.<br>Pelaporan bahwa mobil sudah siap (<b>Ready for User</b>) merupakan tanggung jawab Driver melalui Dashboard Driver / WhatsApp (<code>SIAP VEH-${req.id}</code>).`);
+    } else if (hasVehicleDriver && isSuperAdmin) {
+      actionBtns = `<div style="display:flex;flex-direction:column;gap:.75rem;">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:.9rem 1rem;border-radius:.5rem;font-size:.82rem;color:#1e40af;">
+          <strong>🚗 Pengajuan Kendaraan Approved (Tugas Driver: ${req.driver_name}).</strong><br>Pelaporan mobil siap merupakan tanggung jawab Driver melalui Dashboard Driver / WhatsApp (<code>SIAP VEH-${req.id}</code>). SuperAdmin tetap dapat melakukan override bila diperlukan.
+        </div>
+        <button class="btn btn-primary btn-full" onclick="updateStatus(${req.id},'Vehicle','ready_for_user')">🚗 Override (SuperAdmin): Tandai Mobil Siap</button>
+        <button class="btn btn-danger btn-full" onclick="updateStatus(${req.id},'${req.type}','canceled')">✕ Tolak / Batalkan (Decline)</button>
+      </div>`;
+    } else if (isPIC || isSuperAdmin) {
       const checkLabel = req.type === 'Item' ? 'Laporan Check: Barang Siap Diserahkan' : 'Buat Laporan Pengecekan';
       let btnAction = `onclick="updateStatus(${req.id},'${req.type}','ready_for_user')"`;
       if (req.type === 'Room') {
@@ -3837,7 +3922,7 @@ async function handleApproveRAB(id) {
   if (total > 50000000) nextStatus = 'waiting_bod';
   else if (total > 20000000) nextStatus = 'waiting_ppk';
   else if (total > 0) nextStatus = 'waiting_manager_fad';
-  else nextStatus = 'in-progress'; // Jika 0, berarti form gudang / tanpa biaya
+  else nextStatus = 'approved'; // Jika 0, form gudang / tanpa biaya -> approved agar diproses PIC (in-progress)
 
   const noteEl = document.getElementById('admin-note');
   if (noteEl) {
@@ -3853,7 +3938,7 @@ async function handleApproveRAB(id) {
 
 async function doDisburseRepair(id) {
   const checked = Array.from(document.querySelectorAll('input[name="assign_worker_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
-  let worker = checked.length > 0 ? checked.join(', ') : ((document.getElementById('assign-worker') || {}).value || '');
+  let worker = checked.length > 0 ? checked.join('; ') : ((document.getElementById('assign-worker') || {}).value || '');
   if (!worker) {
     Toast.error('Pilih minimal satu pekerja/staff perbaikan!');
     return;
@@ -3923,7 +4008,7 @@ async function doRepairAssign(id) {
   const checked = Array.from(document.querySelectorAll('input[name="assign_technician_checkbox"]:checked')).map(cb => cb.value.trim()).filter(Boolean);
   let techName = '';
   if (checked.length > 0) {
-    techName = checked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : checked.join(', ');
+    techName = checked.includes('TANPA_TEKNISI') ? 'TANPA_TEKNISI' : checked.join('; ');
   } else {
     techName = (document.getElementById('assign-technician') || {}).value || '';
   }
@@ -4639,7 +4724,7 @@ async function doVehicleAssign(id, targetStatus = 'approved') {
   }
 
   const res = await apiPost(API_BASE + 'requests.php', {
-    action: 'update_vehicle_assignment', id, vehicle_id: vehicleId, driver_name: driverName
+    action: 'update_vehicle_assignment', id, vehicle_id: vehicleId, driver_name: driverName, target_status: targetStatus
   });
   if (!res.success) { Toast.error(res.message); return; }
 
