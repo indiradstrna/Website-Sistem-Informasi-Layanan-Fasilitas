@@ -643,6 +643,101 @@ $employeeId = $_SESSION['employee_id'];
       letter-spacing: -0.02em;
     }
 
+    /* ================= Laporan UAKPB Multi-Select ================= */
+    .uakpb-picker-box {
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .uakpb-picker-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+    }
+    .uakpb-select-all-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--text);
+      margin: 0;
+    }
+    .uakpb-select-all-label input,
+    .uakpb-check-item input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      flex-shrink: 0;
+      margin: 0;
+    }
+    .uakpb-search-input {
+      padding: 0.35rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      font-family: inherit;
+      font-size: 0.8rem;
+      min-width: 170px;
+      background: var(--surface);
+    }
+    .uakpb-search-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.12);
+    }
+    .uakpb-picker-list {
+      max-height: 210px;
+      overflow-y: auto;
+      padding: 0.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .uakpb-check-item {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 0.4rem;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .uakpb-check-item:hover {
+      background: #f8fafc;
+    }
+    .uakpb-check-item.is-selected {
+      background: #f0fdf4;
+    }
+    .uakpb-check-text {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+      font-size: 0.875rem;
+    }
+    .uakpb-check-name {
+      font-weight: 500;
+      color: var(--text);
+    }
+    .uakpb-check-code {
+      font-size: 0.75rem;
+      color: var(--text-light);
+      background: #f1f5f9;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.25rem;
+      font-family: monospace;
+      white-space: nowrap;
+    }
+
     /* ================= Responsive ================= */
     @media (max-width: 1100px) {
       .uakpb-filter { display: none; }
@@ -1121,10 +1216,30 @@ $employeeId = $_SESSION['employee_id'];
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
         <h2 class="page-title" style="margin-bottom:0;">Laporan Rincian Persediaan UAKPB</h2>
       </div>
-      <div class="card" style="max-width: 600px; margin: 0 auto; padding: 2rem;">
-        <form id="form-cetak-laporan" target="_blank" action="print_laporan.php" method="GET" onsubmit="return appendGlobalLocationId(this)">
-          <input type="hidden" name="location_id" id="print-laporan-loc">
+      <div class="card" style="max-width: 640px; margin: 0 auto; padding: 2rem;">
+        <form id="form-cetak-laporan" target="_blank" action="print_laporan.php" method="GET" onsubmit="return validateLaporanForm(this)">
           
+          <!-- Pilih UAKPB -->
+          <div class="form-group" style="margin-bottom: 1.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <label class="form-label" style="margin-bottom: 0;">Pilih UAKPB</label>
+              <span id="lap-uakpb-count" style="font-size: 0.8rem; color: var(--text-light); font-weight: 500;">0 dipilih</span>
+            </div>
+            <div class="uakpb-picker-box">
+              <div class="uakpb-picker-toolbar">
+                <label class="uakpb-select-all-label">
+                  <input type="checkbox" id="lap-uakpb-select-all" onchange="toggleAllLaporanUakpb(this.checked)">
+                  <span>Pilih Semua UAKPB</span>
+                </label>
+                <input type="text" id="lap-uakpb-search" class="uakpb-search-input" placeholder="Cari UAKPB..." oninput="filterLaporanUakpb()" onkeydown="if(event.key==='Enter'){event.preventDefault();}">
+              </div>
+              <div id="lap-uakpb-list" class="uakpb-picker-list">
+                <div style="padding: 0.75rem; text-align: center; color: var(--text-light); font-size: 0.85rem;">Memuat daftar UAKPB...</div>
+              </div>
+            </div>
+            <small style="color: var(--text-light); display: block; margin-top: 0.4rem;">Centang satu atau beberapa UAKPB yang ingin dicetak. Jika lebih dari satu UAKPB dipilih, masing-masing dicetak pada halaman terpisah.</small>
+          </div>
+
           <div style="border: 1px solid var(--border); padding: 1rem; display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 2rem; background: #f8fafc; border-radius: 0.5rem;">
             <label style="cursor:pointer; display:flex; align-items:center; gap:0.5rem;">
               <input type="radio" name="periode_type" value="sd_tanggal" onchange="toggleLaporanPeriode()" checked> S/D Tanggal
@@ -1372,6 +1487,14 @@ $employeeId = $_SESSION['employee_id'];
         document.querySelector('input[name="sd_tanggal_val"]').value = today;
         document.querySelector('input[name="tanggal_isi"]').value = today;
         document.querySelector('input[name="tanggal_setuju"]').value = today;
+
+        if (uakpbLocations.length === 0) {
+          initGlobalUakpb().then(() => {
+            preselectLaporanUakpbIfEmpty();
+          });
+        } else {
+          preselectLaporanUakpbIfEmpty();
+        }
         return;
       }
       
@@ -2060,20 +2183,159 @@ $employeeId = $_SESSION['employee_id'];
       }
     }
 
+    let uakpbLocations = [];
+
     async function initGlobalUakpb() {
       try {
         const formData = new FormData();
         formData.append('action', 'get_uakpb');
         const res = await fetch('api.php', { method: 'POST', body: formData });
         const items = await res.json();
-        
+        uakpbLocations = Array.isArray(items) ? items : [];
+
         const sel = document.getElementById('global-uakpb-filter');
-        items.forEach(it => {
-          sel.innerHTML += `<option value="${it.id}">${it.name}</option>`;
+        const currentVal = sel.value || 'all';
+        sel.innerHTML = '<option value="all">-- Semua --</option>';
+        uakpbLocations.forEach(it => {
+          const opt = document.createElement('option');
+          opt.value = it.id;
+          opt.textContent = it.name;
+          sel.appendChild(opt);
         });
+        if ([...sel.options].some(o => o.value === currentVal)) {
+          sel.value = currentVal;
+        }
+
+        renderLaporanUakpbList(uakpbLocations);
       } catch(e) {
         console.error('Error fetching global uakpb', e);
+        const listEl = document.getElementById('lap-uakpb-list');
+        if (listEl) {
+          listEl.innerHTML = '<div style="padding: 0.75rem; text-align: center; color: var(--danger); font-size: 0.85rem;">Gagal memuat daftar UAKPB.</div>';
+        }
       }
+    }
+
+    function renderLaporanUakpbList(items) {
+      const listEl = document.getElementById('lap-uakpb-list');
+      if (!listEl) return;
+
+      listEl.innerHTML = '';
+      if (!items || items.length === 0) {
+        listEl.innerHTML = '<div style="padding: 0.75rem; text-align: center; color: var(--text-light); font-size: 0.85rem;">Tidak ada data UAKPB.</div>';
+        updateLaporanUakpbState();
+        return;
+      }
+
+      items.forEach(it => {
+        const label = document.createElement('label');
+        label.className = 'uakpb-check-item';
+        label.dataset.search = `${it.name || ''} ${it.code || ''}`.toLowerCase();
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'location_ids[]';
+        cb.value = it.id;
+        cb.className = 'lap-uakpb-checkbox';
+        cb.addEventListener('change', updateLaporanUakpbState);
+
+        const textWrap = document.createElement('span');
+        textWrap.className = 'uakpb-check-text';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'uakpb-check-name';
+        nameSpan.textContent = it.name || '-';
+        textWrap.appendChild(nameSpan);
+
+        if (it.code) {
+          const codeSpan = document.createElement('span');
+          codeSpan.className = 'uakpb-check-code';
+          codeSpan.textContent = it.code;
+          textWrap.appendChild(codeSpan);
+        }
+
+        label.appendChild(cb);
+        label.appendChild(textWrap);
+        listEl.appendChild(label);
+      });
+
+      updateLaporanUakpbState();
+    }
+
+    function filterLaporanUakpb() {
+      const q = (document.getElementById('lap-uakpb-search')?.value || '').trim().toLowerCase();
+      document.querySelectorAll('#lap-uakpb-list .uakpb-check-item').forEach(item => {
+        const hay = item.dataset.search || '';
+        item.style.display = !q || hay.includes(q) ? 'flex' : 'none';
+      });
+      updateLaporanUakpbState();
+    }
+
+    function toggleAllLaporanUakpb(checked) {
+      document.querySelectorAll('#lap-uakpb-list .uakpb-check-item').forEach(item => {
+        if (item.style.display !== 'none') {
+          const cb = item.querySelector('.lap-uakpb-checkbox');
+          if (cb) cb.checked = checked;
+        }
+      });
+      updateLaporanUakpbState();
+    }
+
+    function updateLaporanUakpbState() {
+      const allCbs = [...document.querySelectorAll('#lap-uakpb-list .lap-uakpb-checkbox')];
+      const totalCount = allCbs.length;
+      const checkedCount = allCbs.filter(cb => cb.checked).length;
+
+      allCbs.forEach(cb => {
+        const row = cb.closest('.uakpb-check-item');
+        if (row) row.classList.toggle('is-selected', cb.checked);
+      });
+
+      const countEl = document.getElementById('lap-uakpb-count');
+      if (countEl) {
+        countEl.textContent = `${checkedCount} dari ${totalCount} UAKPB dipilih`;
+      }
+
+      const selectAllEl = document.getElementById('lap-uakpb-select-all');
+      if (selectAllEl) {
+        const visibleCbs = [...document.querySelectorAll('#lap-uakpb-list .uakpb-check-item')]
+          .filter(item => item.style.display !== 'none')
+          .map(item => item.querySelector('.lap-uakpb-checkbox'))
+          .filter(Boolean);
+        const visibleChecked = visibleCbs.filter(cb => cb.checked).length;
+
+        selectAllEl.checked = visibleCbs.length > 0 && visibleChecked === visibleCbs.length;
+        selectAllEl.indeterminate = visibleChecked > 0 && visibleChecked < visibleCbs.length;
+      }
+    }
+
+    function preselectLaporanUakpbIfEmpty() {
+      const checked = document.querySelectorAll('#lap-uakpb-list .lap-uakpb-checkbox:checked');
+      if (checked.length === 0) {
+        const globalVal = document.getElementById('global-uakpb-filter').value;
+        if (globalVal && globalVal !== 'all') {
+          const targetCb = document.querySelector(`#lap-uakpb-list .lap-uakpb-checkbox[value="${CSS.escape(globalVal)}"]`);
+          if (targetCb) targetCb.checked = true;
+        }
+      }
+      updateLaporanUakpbState();
+    }
+
+    function syncLaporanUakpbFromGlobal() {
+      const globalVal = document.getElementById('global-uakpb-filter').value;
+      document.querySelectorAll('#lap-uakpb-list .lap-uakpb-checkbox').forEach(cb => {
+        cb.checked = globalVal === 'all' ? true : cb.value === globalVal;
+      });
+      updateLaporanUakpbState();
+    }
+
+    function validateLaporanForm(form) {
+      const checked = form.querySelectorAll('.lap-uakpb-checkbox:checked');
+      if (checked.length === 0) {
+        Swal.fire('Peringatan', 'Silakan pilih minimal 1 UAKPB yang akan dicetak.', 'warning');
+        return false;
+      }
+      return true;
     }
 
     function onGlobalUakpbChange() {
@@ -2081,6 +2343,7 @@ $employeeId = $_SESSION['employee_id'];
       if (document.getElementById('view-master').classList.contains('active')) loadMaster();
       if (document.getElementById('view-transaction-list').classList.contains('active')) loadDocumentList();
       if (document.getElementById('view-history').classList.contains('active')) loadHistory();
+      if (document.getElementById('view-laporan-rincian').classList.contains('active')) syncLaporanUakpbFromGlobal();
     }
 
     function appendGlobalLocationId(form) {
