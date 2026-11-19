@@ -252,12 +252,15 @@ switch ($action) {
 
         $conn->begin_transaction();
         try {
-            if ($type === 'opname') {
+            if ($type === 'opname' || $type === 'koreksi') {
                 // -------------------------------------------------------
-                // OPNAME FISIK: Simpan sebagai transaksi IN/OUT berdasarkan
-                // selisih (delta) antara stok fisik nyata vs stok buku.
+                // OPNAME FISIK & KOREKSI: Simpan sebagai transaksi IN/OUT berdasarkan
+                // selisih (delta) antara stok real/fisik nyata vs stok buku.
                 // Ini memastikan Laporan Rincian Persediaan otomatis sinkron.
                 // -------------------------------------------------------
+                $defaultSubtype = $type === 'opname' ? 'Hasil Opname Fisik' : 'Koreksi';
+                $effectiveSubtype = $subtype ?: $defaultSubtype;
+
                 $stmtInsert = $conn->prepare("INSERT INTO inv_transactions 
                     (item_id, type, transaction_subtype, doc_number, doc_date, book_date, transaction_date, reference_doc, notes, quantity, unit_price, total_price, user_id) 
                     VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)");
@@ -265,7 +268,10 @@ switch ($action) {
 
                 foreach ($items as $item) {
                     $itemId     = (int)$item['id'];
-                    $stokFisik  = (int)$item['qty'];   // input user = stok fisik nyata
+                    $stokFisik  = (int)$item['qty'];   // input user = stok real/fisik nyata
+                    if ($stokFisik < 0) {
+                        throw new Exception("Stok real tidak boleh kurang dari 0.");
+                    }
                     $price      = (float)$item['price'];
 
                     // Ambil stok buku saat ini (dengan lock agar aman concurrent)
@@ -273,6 +279,7 @@ switch ($action) {
                     $stmtCek->bind_param("i", $itemId);
                     $stmtCek->execute();
                     $rowItem = $stmtCek->get_result()->fetch_assoc();
+                    $stmtCek->close();
                     if (!$rowItem) throw new Exception("Barang tidak ditemukan (id={$itemId}).");
 
                     $stokBuku = (int)$rowItem['stock'];
@@ -294,19 +301,19 @@ switch ($action) {
 
                     // Insert transaksi selisih
                     $stmtInsert->bind_param("isssssssiddi",
-                        $itemId, $txTypeSave, $subtype, $docNum, $docDate, $bookDate, $refDoc, $notes,
+                        $itemId, $txTypeSave, $effectiveSubtype, $docNum, $docDate, $bookDate, $refDoc, $notes,
                         $qtySave, $price, $totalSave, $userId
                     );
                     $stmtInsert->execute();
 
-                    // Set stok master ke nilai fisik nyata
+                    // Set stok master ke nilai real/fisik nyata
                     $stmtUpdateStock->bind_param("ii", $stokFisik, $itemId);
                     $stmtUpdateStock->execute();
                 }
 
             } else {
                 // -------------------------------------------------------
-                // TRANSAKSI NORMAL (in / out / koreksi)
+                // TRANSAKSI NORMAL (in / out)
                 // -------------------------------------------------------
                 if ($type === 'out') {
                     foreach ($items as $item) {

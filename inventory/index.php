@@ -1104,13 +1104,6 @@ $employeeId = $_SESSION['employee_id'];
             <input type="text" id="tx-form-nodok" class="form-input" readonly style="background:#e2e8f0; font-weight:bold; color:var(--primary);">
             <small style="color:var(--text-light); display:block; margin-top:0.25rem;">(Dihasilkan otomatis)</small>
           </div>
-          <div class="form-group" style="flex: 1; min-width: 200px;" id="koreksi-radio-group" style="display:none;">
-            <label class="form-label">Jenis Transaksi Persediaan</label>
-            <div style="display:flex; gap:1rem; align-items:center; height: 42px;">
-              <label style="cursor:pointer;"><input type="radio" name="koreksi_type" value="in" checked onchange="handleKoreksiTypeChange()"> Masuk</label>
-              <label style="cursor:pointer;"><input type="radio" name="koreksi_type" value="out" onchange="handleKoreksiTypeChange()"> Keluar</label>
-            </div>
-          </div>
           <div class="form-group" style="flex: 1; min-width: 200px;">
             <label class="form-label">No. Bukti/BAST</label>
             <input type="text" id="tx-form-nobukti" class="form-input" placeholder="Misal: BAST/01/2026">
@@ -1687,6 +1680,10 @@ $employeeId = $_SESSION['employee_id'];
     }
 
     // FORM TRANSACTIONS (MASTER-DETAIL)
+    function isStockSetTransaction() {
+        return txType === 'opname' || txType === 'koreksi';
+    }
+
     function openTransactionForm() {
         document.getElementById('view-transaction-list').classList.remove('active');
         document.getElementById('view-transaction-form').classList.add('active');
@@ -1697,20 +1694,22 @@ $employeeId = $_SESSION['employee_id'];
         document.getElementById('tx-form-tglbuku').value = new Date().toISOString().split('T')[0];
         document.getElementById('tx-form-nobukti').value = '';
         document.getElementById('tx-form-keterangan').value = '';
-        
-        // Koreksi Mode
-        if (txType === 'koreksi') {
-          document.getElementById('koreksi-radio-group').style.display = 'block';
-          document.querySelector('input[name="koreksi_type"][value="in"]').checked = true;
-          currentFormTxType = 'in';
-        } else {
-          document.getElementById('koreksi-radio-group').style.display = 'none';
-          currentFormTxType = txType;
-        }
+        document.getElementById('tx-item-search').value = '';
+        document.getElementById('tx-item-id').value = '';
+        document.getElementById('tx-item-name').value = '';
+        document.getElementById('tx-item-code').value = '';
+        document.getElementById('tx-item-stock').value = '';
+        document.getElementById('tx-item-location-id').value = '';
+        document.getElementById('tx-item-qty').value = '';
+        document.getElementById('tx-stock-label').textContent = '';
 
-        const isOpname = txType === 'opname';
-        document.getElementById('tx-qty-label').textContent = isOpname ? 'Stok Fisik' : 'Jumlah';
-        document.getElementById('tx-item-qty').min = isOpname ? '0' : '1';
+        currentFormTxType = txType;
+
+        const isStockSet = isStockSetTransaction();
+        document.getElementById('tx-qty-label').textContent = txType === 'opname' ? 'Stok Fisik' : (txType === 'koreksi' ? 'Stok Real (Koreksi)' : 'Jumlah');
+        document.getElementById('tx-item-qty').min = isStockSet ? '0' : '1';
+        document.getElementById('tx-item-qty').max = '';
+        document.getElementById('tx-item-qty').placeholder = isStockSet ? 'Masukkan stok nyata (bisa 0)' : '';
         
         // Reset items
         txItems = [];
@@ -1718,6 +1717,7 @@ $employeeId = $_SESSION['employee_id'];
         
         // Reset Price Input Styles
         resetPriceInputStyle();
+        document.getElementById('tx-item-price').value = '0';
         
         // Auto generate No Dok
         generateDocNumber();
@@ -1730,18 +1730,6 @@ $employeeId = $_SESSION['employee_id'];
         priceInput.style.color = '';
         priceInput.style.fontWeight = '';
         priceInput.value = '';
-    }
-
-    function handleKoreksiTypeChange() {
-        currentFormTxType = document.querySelector('input[name="koreksi_type"]:checked').value;
-        txItems = [];
-        renderTxItems();
-        resetPriceInputStyle();
-        document.getElementById('tx-item-qty').max = '';
-        document.getElementById('tx-item-qty').value = '';
-        document.getElementById('tx-item-name').value = '';
-        document.getElementById('tx-item-search').value = '';
-        generateDocNumber();
     }
 
     async function generateDocNumber(overrideLocationId = null) {
@@ -1807,13 +1795,19 @@ $employeeId = $_SESSION['employee_id'];
                 if(currentFormTxType === 'out') {
                   document.getElementById('tx-item-qty').max = item.stock;
                 }
-                if(currentFormTxType === 'out' || txType === 'opname') {
+                if(currentFormTxType === 'out' || isStockSetTransaction()) {
                   const priceInput = document.getElementById('tx-item-price');
-                  priceInput.value = item.last_price || 0;
-                  priceInput.setAttribute('readonly', 'readonly');
-                  priceInput.style.background = '#f1f5f9';
-                  priceInput.style.color = 'var(--danger)';
-                  priceInput.style.fontWeight = 'bold';
+                  const lastPrice = parseFloat(item.last_price || 0);
+                  if (txType === 'koreksi' && lastPrice <= 0) {
+                    resetPriceInputStyle();
+                    priceInput.value = 0;
+                  } else {
+                    priceInput.value = item.last_price || 0;
+                    priceInput.setAttribute('readonly', 'readonly');
+                    priceInput.style.background = '#f1f5f9';
+                    priceInput.style.color = 'var(--danger)';
+                    priceInput.style.fontWeight = 'bold';
+                  }
                 } else {
                   resetPriceInputStyle();
                 }
@@ -1847,12 +1841,14 @@ $employeeId = $_SESSION['employee_id'];
       const name = document.getElementById('tx-item-name').value;
       const code = document.getElementById('tx-item-code').value;
       const stock = parseInt(document.getElementById('tx-item-stock').value || 0);
-      const qty = parseInt(document.getElementById('tx-item-qty').value || 0);
+      const rawQty = document.getElementById('tx-item-qty').value.trim();
+      const qty = parseInt(rawQty, 10);
       const price = parseFloat(document.getElementById('tx-item-price').value || 0);
       const locId = document.getElementById('tx-item-location-id').value;
+      const isStockSet = isStockSetTransaction();
       
-      if(!id || (txType !== 'opname' && qty <= 0) || (txType === 'opname' && qty < 0)) {
-        Swal.fire('Peringatan', txType === 'opname' ? 'Silakan pilih barang dan masukkan stok fisik minimal 0.' : 'Silakan pilih barang dan masukkan jumlah minimal 1.', 'warning');
+      if(!id || rawQty === '' || Number.isNaN(qty) || (!isStockSet && qty <= 0) || (isStockSet && qty < 0)) {
+        Swal.fire('Peringatan', isStockSet ? 'Silakan pilih barang dan masukkan stok real minimal 0.' : 'Silakan pilih barang dan masukkan jumlah minimal 1.', 'warning');
         return;
       }
       
@@ -1869,7 +1865,7 @@ $employeeId = $_SESSION['employee_id'];
       // Check if already in list
       const existing = txItems.find(i => i.id === id);
       if (existing) {
-        if (txType === 'opname') {
+        if (isStockSet) {
           existing.qty = qty;
           existing.price = price;
         } else if(txType === 'out' && (existing.qty + qty) > stock) {
@@ -1886,8 +1882,12 @@ $employeeId = $_SESSION['employee_id'];
       // Reset input
       document.getElementById('tx-item-search').value = '';
       document.getElementById('tx-item-id').value = '';
+      document.getElementById('tx-item-name').value = '';
+      document.getElementById('tx-item-code').value = '';
+      document.getElementById('tx-item-stock').value = '';
       document.getElementById('tx-item-location-id').value = '';
       document.getElementById('tx-item-qty').value = '';
+      resetPriceInputStyle();
       document.getElementById('tx-item-price').value = '0';
       document.getElementById('tx-stock-label').textContent = '';
       
