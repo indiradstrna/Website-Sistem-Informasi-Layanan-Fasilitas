@@ -1941,6 +1941,33 @@ window.exportPDF = function(subTypeParam = null, specificCategoryParam = null) {
         5: { cellWidth: 22 },
         6: { cellWidth: 'auto' }
       };
+    } else if (items[0]?.type === 'Zoom') {
+      const zoomLabelMap = { 'zoom_01': 'Zoom 1 (Kap. 300)', 'zoom_02': 'Zoom 2 (Kap. 300)' };
+      head = [['No', 'Tanggal', 'Pengusul', 'Unit', 'Peserta', 'Status', 'Akun Zoom / Kegiatan']];
+      body = items.map((r, i) => {
+        const acctLabel = zoomLabelMap[r.zoom_account_id] || r.details || r.zoom_account_id || '-';
+        const activityName = r.request_type || (r.purpose && r.purpose !== '-' ? r.purpose : '');
+        const detailStr = activityName ? `${acctLabel} - ${activityName}` : acctLabel;
+        const pesertaStr = r.participants !== '' && r.participants !== null && r.participants !== undefined ? `${r.participants} org` : '-';
+        return [
+          i + 1,
+          (r.created_at || r.date_start) ? new Date((r.created_at || r.date_start).includes(' ') ? (r.created_at || r.date_start).replace(' ', 'T') : (r.created_at || r.date_start)).toLocaleDateString('id-ID') : '-',
+          r.applicant_name,
+          r.applicant_unit,
+          pesertaStr,
+          (r.status || '').toUpperCase(),
+          detailStr
+        ];
+      });
+      colStyles = {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 26 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 24 },
+        6: { cellWidth: 'auto' }
+      };
     } else {
       head = [['No', 'Tanggal', 'Pengusul', 'Unit', 'Status', 'Keterangan / Detail']];
       body = items.map((r, i) => [
