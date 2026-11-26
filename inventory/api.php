@@ -44,6 +44,76 @@ if (!isset($_SESSION['user_id']) || strpos($_SESSION['role'], 'warehouse_admin')
 $userId = $_SESSION['user_id'];
 $userName = $_SESSION['full_name'];
 
+function ensureInvItemsImageColumn(mysqli $conn): void {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $colRes = $conn->query("SHOW COLUMNS FROM inv_items LIKE 'image'");
+        if ($colRes && $colRes->num_rows === 0) {
+            $conn->query("ALTER TABLE inv_items ADD COLUMN image VARCHAR(255) DEFAULT NULL");
+        }
+    } catch (\Throwable $e) {
+        // Abaikan jika tidak diizinkan mengubah struktur tabel
+    }
+}
+
+function saveUploadedInvItemImage(array $file, string $prefix = 'item'): string {
+    $err = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($err !== UPLOAD_ERR_OK) {
+        if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+            jsonResponse(false, 'Ukuran file foto terlalu besar (melebihi batas server).');
+        }
+        jsonResponse(false, 'Gagal mengunggah file foto (kode error: ' . intval($err) . ').');
+    }
+
+    $maxBytes = 5 * 1024 * 1024; // 5 MB
+    if (($file['size'] ?? 0) > $maxBytes) {
+        jsonResponse(false, 'Ukuran foto maksimal 5 MB.');
+    }
+
+    $origName = (string)($file['name'] ?? '');
+    $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+    $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    if (!in_array($ext, $allowedExts, true)) {
+        jsonResponse(false, 'Format foto tidak didukung. Gunakan JPG, PNG, WEBP, atau GIF.');
+    }
+
+    $imgInfo = @getimagesize($file['tmp_name']);
+    if ($imgInfo === false) {
+        jsonResponse(false, 'File yang diunggah bukan gambar yang valid.');
+    }
+
+    $uploadDir = __DIR__ . '/../uploads/inv_items/';
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+        jsonResponse(false, 'Gagal membuat folder penyimpanan foto barang.');
+    }
+
+    $safePrefix = preg_replace('/[^a-zA-Z0-9_-]/', '_', $prefix);
+    $newFileName = $safePrefix . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+    $destPath = $uploadDir . $newFileName;
+
+    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+        jsonResponse(false, 'Gagal menyimpan file foto ke server.');
+    }
+
+    return 'uploads/inv_items/' . $newFileName;
+}
+
+function deleteOldInvItemImage(?string $relPath): void {
+    $relPath = trim((string)$relPath);
+    if ($relPath === '' || preg_match('#^https?://#i', $relPath)) return;
+
+    $uploadDirReal = realpath(__DIR__ . '/../uploads/inv_items');
+    if (!$uploadDirReal) return;
+
+    $cleanRel = ltrim(str_replace('\\', '/', $relPath), '/');
+    $candidate = realpath(__DIR__ . '/../' . $cleanRel);
+    if ($candidate && strpos($candidate, $uploadDirReal) === 0 && is_file($candidate)) {
+        @unlink($candidate);
+    }
+}
+
 switch ($action) {
     case 'get_dashboard_stats':
         $locId = $_GET['location_id'] ?? $_POST['location_id'] ?? 'all';
@@ -65,9 +135,10 @@ switch ($action) {
         break;
 
     case 'get_items':
+        ensureInvItemsImageColumn($conn);
         $locId = $_GET['location_id'] ?? $_POST['location_id'] ?? 'all';
         $where = $locId !== 'all' ? "WHERE i.location_id = " . intval($locId) : "";
-        $res = $conn->query("SELECT i.id, i.item_code, i.name, i.stock, i.unit, 0 as min_stock, c.name as category_name 
+        $res = $conn->query("SELECT i.id, i.item_code, i.name, i.stock, i.unit, i.image, 0 as min_stock, c.name as category_name 
                              FROM inv_items i 
                              LEFT JOIN inv_categories c ON i.category_id = c.id 
                              $where
@@ -428,14 +499,199 @@ switch ($action) {
         $categoryId = $catRow ? $catRow['id'] : null;
         $catStmt->close();
 
-        $insStmt = $conn->prepare("INSERT INTO inv_items (item_code, name, category_id, unit, stock, location_id) VALUES (?, ?, ?, ?, 0, ?)");
-        $insStmt->bind_param("ssisi", $newItemCode, $name, $categoryId, $unit, $locId);
+        ensureInvItemsImageColumn($conn);
+        $imagePath = null;
+        if (!empty($_FILES['image']) && ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $imagePath = saveUploadedInvItemImage($_FILES['image'], 'item_' . $newItemCode);
+        }
+
+        $insStmt = $conn->prepare("INSERT INTO inv_items (item_code, name, category_id, unit, stock, location_id, image) VALUES (?, ?, ?, ?, 0, ?, ?)");
+        $insStmt->bind_param("ssisis", $newItemCode, $name, $categoryId, $unit, $locId, $imagePath);
         if ($insStmt->execute()) {
-            jsonResponse(true, 'Barang baru berhasil ditambahkan dengan kode: ' . $newItemCode);
+            jsonResponse(true, 'Barang baru berhasil ditambahkan dengan kode: ' . $newItemCode, ['image' => $imagePath]);
         } else {
+            if ($imagePath) deleteOldInvItemImage($imagePath);
             jsonResponse(false, 'Gagal menambahkan barang: ' . $conn->error);
         }
         $insStmt->close();
+        break;
+
+    case 'update_item_image':
+        ensureInvItemsImageColumn($conn);
+        $itemId = intval($_POST['item_id'] ?? 0);
+        $removeImage = ($_POST['remove_image'] ?? '0') === '1';
+
+        if ($itemId <= 0) {
+            jsonResponse(false, 'ID barang tidak valid.');
+        }
+
+        $stmtCurr = $conn->prepare("SELECT id, item_code, image FROM inv_items WHERE id = ? LIMIT 1");
+        $stmtCurr->bind_param("i", $itemId);
+        $stmtCurr->execute();
+        $currItem = $stmtCurr->get_result()->fetch_assoc();
+        $stmtCurr->close();
+
+        if (!$currItem) {
+            jsonResponse(false, 'Data barang tidak ditemukan.');
+        }
+
+        if ($removeImage) {
+            $stmtUpd = $conn->prepare("UPDATE inv_items SET image = NULL WHERE id = ?");
+            $stmtUpd->bind_param("i", $itemId);
+            if ($stmtUpd->execute()) {
+                $stmtUpd->close();
+                deleteOldInvItemImage($currItem['image'] ?? null);
+                jsonResponse(true, 'Foto barang berhasil dihapus.', ['image' => null]);
+            }
+            $err = $conn->error;
+            $stmtUpd->close();
+            jsonResponse(false, 'Gagal menghapus foto barang: ' . $err);
+        }
+
+        if (empty($_FILES['image']) || ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            jsonResponse(false, 'Silakan pilih file foto terlebih dahulu.');
+        }
+
+        $newImagePath = saveUploadedInvItemImage($_FILES['image'], 'item_' . ($currItem['item_code'] ?: $itemId));
+        $stmtUpd = $conn->prepare("UPDATE inv_items SET image = ? WHERE id = ?");
+        $stmtUpd->bind_param("si", $newImagePath, $itemId);
+        if ($stmtUpd->execute()) {
+            $stmtUpd->close();
+            deleteOldInvItemImage($currItem['image'] ?? null);
+            jsonResponse(true, 'Foto barang berhasil disimpan.', ['image' => $newImagePath]);
+        } else {
+            $err = $conn->error;
+            $stmtUpd->close();
+            deleteOldInvItemImage($newImagePath);
+            jsonResponse(false, 'Gagal memperbarui foto barang: ' . $err);
+        }
+        break;
+
+    case 'auto_fetch_item_image':
+        ensureInvItemsImageColumn($conn);
+        $itemId = intval($_POST['item_id'] ?? 0);
+        $customQuery = trim((string)($_POST['query'] ?? ''));
+
+        if ($itemId <= 0) {
+            jsonResponse(false, 'ID barang tidak valid.');
+        }
+
+        $stmtCurr = $conn->prepare("SELECT id, item_code, name, image FROM inv_items WHERE id = ? LIMIT 1");
+        $stmtCurr->bind_param("i", $itemId);
+        $stmtCurr->execute();
+        $currItem = $stmtCurr->get_result()->fetch_assoc();
+        $stmtCurr->close();
+
+        if (!$currItem) {
+            jsonResponse(false, 'Data barang tidak ditemukan.');
+        }
+
+        $searchQuery = $customQuery !== ''
+            ? $customQuery
+            : (trim(preg_replace('/\s+/', ' ', (string)$currItem['name'])) . ' foto produk');
+
+        $searchUrl = 'https://www.bing.com/images/async?q=' . rawurlencode($searchQuery) . '&first=0&count=8&mmasync=1';
+        $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+        $ch = curl_init($searchUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_USERAGENT => $ua,
+            CURLOPT_HTTPHEADER => ['Accept-Language: id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7'],
+        ]);
+        $html = (string)curl_exec($ch);
+        curl_close($ch);
+
+        if ($html === '') {
+            jsonResponse(false, 'Gagal menghubungi pencarian gambar internet.');
+        }
+
+        $candidates = [];
+        if (preg_match_all('#https://tse\d+\.mm\.bing\.net/th/id/(?:OIP|OIF)\.[^"\'\s<>]+#i', $html, $mOip)) {
+            foreach ($mOip[0] as $rawU) {
+                $u = html_entity_decode($rawU, ENT_QUOTES);
+                $u = preg_replace('/w=\d+&h=\d+/', 'w=360&h=360', $u);
+                if (!in_array($u, $candidates, true)) $candidates[] = $u;
+                if (count($candidates) >= 4) break;
+            }
+        }
+        if (preg_match_all('/murl&quot;:&quot;(https?:\/\/[^&"]+)&quot;/i', $html, $mMurl)) {
+            foreach ($mMurl[1] as $rawU) {
+                $u = html_entity_decode($rawU, ENT_QUOTES);
+                if (!in_array($u, $candidates, true)) $candidates[] = $u;
+                if (count($candidates) >= 7) break;
+            }
+        }
+
+        if (empty($candidates)) {
+            jsonResponse(false, 'Gambar tidak ditemukan untuk kata kunci tersebut.');
+        }
+
+        $savedBin = null;
+        $savedExt = null;
+        foreach ($candidates as $candUrl) {
+            $chImg = curl_init($candUrl);
+            curl_setopt_array($chImg, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_USERAGENT => $ua,
+            ]);
+            $bin = curl_exec($chImg);
+            $code = (int)curl_getinfo($chImg, CURLINFO_HTTP_CODE);
+            curl_close($chImg);
+
+            if ($code !== 200 || !is_string($bin) || strlen($bin) < 1800 || strlen($bin) > 2500000) {
+                continue;
+            }
+            $info = @getimagesizefromstring($bin);
+            if ($info === false) continue;
+
+            $mimeMap = [
+                'image/jpeg' => 'jpg',
+                'image/png'  => 'png',
+                'image/webp' => 'webp',
+                'image/gif'  => 'gif',
+            ];
+            $ext = $mimeMap[$info['mime'] ?? ''] ?? null;
+            if ($ext) {
+                $savedBin = $bin;
+                $savedExt = $ext;
+                break;
+            }
+        }
+
+        if (!$savedBin || !$savedExt) {
+            jsonResponse(false, 'Tidak berhasil mengunduh gambar yang valid.');
+        }
+
+        $uploadDir = __DIR__ . '/../uploads/inv_items/';
+        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+            jsonResponse(false, 'Gagal membuat folder penyimpanan foto barang.');
+        }
+
+        $newFileName = 'item_' . $itemId . '_' . time() . '.' . $savedExt;
+        if (file_put_contents($uploadDir . $newFileName, $savedBin) === false) {
+            jsonResponse(false, 'Gagal menyimpan file gambar.');
+        }
+
+        $newImagePath = 'uploads/inv_items/' . $newFileName;
+        $stmtUpd = $conn->prepare("UPDATE inv_items SET image = ? WHERE id = ?");
+        $stmtUpd->bind_param("si", $newImagePath, $itemId);
+        if ($stmtUpd->execute()) {
+            $stmtUpd->close();
+            deleteOldInvItemImage($currItem['image'] ?? null);
+            jsonResponse(true, 'Foto otomatis berhasil diambil & disimpan.', ['image' => $newImagePath]);
+        } else {
+            $err = $conn->error;
+            $stmtUpd->close();
+            deleteOldInvItemImage($newImagePath);
+            jsonResponse(false, 'Gagal memperbarui database foto: ' . $err);
+        }
         break;
 
     case 'get_uakpb':

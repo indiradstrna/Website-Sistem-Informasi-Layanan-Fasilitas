@@ -173,6 +173,35 @@ function makeNoteLog(string $actor, string $status, string $note): string {
     return "[$ts] [$actor] - " . strtoupper($status) . ": $content";
 }
 
+/**
+ * Jalankan callback update status dengan auto-migrasi kolom `status`
+ * dari ENUM lama ke VARCHAR(50) bila kolom belum mendukung nilai status baru
+ * (baik pada mode strict/error 1265 maupun non-strict yang memotong menjadi '').
+ */
+function executeStatusUpdateWithMigration(mysqli $conn, string $table, string $targetStatus, callable $runUpdate): array {
+    try {
+        $colRes = $conn->query("SHOW COLUMNS FROM `$table` LIKE 'status'");
+        if ($colRes && ($colRow = $colRes->fetch_assoc())) {
+            $colType = (string)($colRow['Type'] ?? '');
+            if (stripos($colType, 'enum(') === 0 && stripos($colType, "'" . $targetStatus . "'") === false) {
+                $conn->query("ALTER TABLE `$table` MODIFY COLUMN `status` VARCHAR(50) DEFAULT 'pending'");
+            }
+        }
+    } catch (\Throwable $e) {
+        // Lanjutkan ke eksekusi normal dan andalkan fallback exception di bawah jika gagal
+    }
+
+    try {
+        return $runUpdate();
+    } catch (mysqli_sql_exception $e) {
+        if ((int)$e->getCode() === 1265 || stripos($e->getMessage(), "column 'status'") !== false) {
+            $conn->query("ALTER TABLE `$table` MODIFY COLUMN `status` VARCHAR(50) DEFAULT 'pending'");
+            return $runUpdate();
+        }
+        throw $e;
+    }
+}
+
 // ============================================================
 // ===== TABLE MAP =====
 // ============================================================
@@ -400,7 +429,7 @@ switch ($action) {
         $startDT = $date_start . ' ' . substr($time_start, 0, 5);
         $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
         
-        $stmt = $conn->prepare("SELECT id FROM room_requests WHERE room_id = ? AND status NOT IN ('rejected','completed','returned','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id FROM room_requests WHERE room_id = ? AND status NOT IN ('rejected','completed','returned','canceled','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
         $stmt->bind_param("sss", $room_id, $endDT, $startDT);
         $stmt->execute();
         $resConf = $stmt->get_result();
@@ -470,7 +499,7 @@ switch ($action) {
         $endDT   = $date_end . ' ' . substr($time_end, 0, 5);
         
         // Pengecekan bentrok jadwal Akun Zoom (mencakup pending, waiting_manager_fmd, waiting_manager_fad, verified, approved, dll)
-        $stmt = $conn->prepare("SELECT id FROM zoom_requests WHERE zoom_account_id = ? AND status NOT IN ('rejected','completed','returned','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id FROM zoom_requests WHERE zoom_account_id = ? AND status NOT IN ('rejected','completed','returned','canceled','cancelled') AND status != '' AND CONCAT(DATE_FORMAT(date_start, '%Y-%m-%d'), ' ', SUBSTRING(time_start, 1, 5)) < ? AND CONCAT(DATE_FORMAT(date_end, '%Y-%m-%d'), ' ', SUBSTRING(time_end, 1, 5)) > ? LIMIT 1");
         $stmt->bind_param("sss", $zoom_account_id, $endDT, $startDT);
         $stmt->execute();
         $resConf = $stmt->get_result();
@@ -565,10 +594,7 @@ switch ($action) {
                 $stmtDet->close();
             }
 
-            // Notifikasi ke Group Admin Telegram & ke PIC Gudang (jika FMD) / Manajer Unit (jika Non-FMD)
-            notifyNewRequest('Item2', $newId, $applicant_name, $applicant_unit, $purpose);
-
-            // Kirim notifikasi chat ke user pemohon konfirmasi pengajuan berhasil
+            // 1) Kirim notifikasi konfirmasi ke user pemohon terlebih dahulu (jeda lebih cepat)
             $stmtUserWa = $conn->prepare("SELECT whatsapp_number, telegram_chat_id FROM users WHERE id = ?");
             if ($stmtUserWa) {
                 $stmtUserWa->bind_param("i", $userId);
@@ -587,7 +613,7 @@ switch ($action) {
                             $userMsg .= "Saat ini pengajuan sedang menunggu persetujuan dari Manajer Departemen Anda (*$applicant_unit*).\n\n";
                         }
                         $userMsg .= "_Pantau status di Dashboard SILATAS:_ https://silatas.biotrop.org/";
-                        sendWhatsAppFonnte($userMsg, $userWaRow['whatsapp_number']);
+                        sendWhatsAppFonnte($userMsg, $userWaRow['whatsapp_number'], ['mode' => 'user']);
                     }
                     if (!empty($userWaRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
                         $userTgMsg = "📦 <b>PENGAJUAN PERMINTAAN BARANG (#ITM-$newId)</b>\n\n";
@@ -603,6 +629,9 @@ switch ($action) {
                     }
                 }
             }
+
+            // 2) Notifikasi ke Group Admin Telegram & ke PIC Gudang / Manajer Unit (otomatis dijeda 1-3 menit setelah pesan user)
+            notifyNewRequest('Item2', $newId, $applicant_name, $applicant_unit, $purpose);
 
             jsonResponse(true, 'Permintaan barang berhasil diajukan.', ['id' => $newId]);
         } else {
@@ -783,9 +812,15 @@ switch ($action) {
         $newLog   = makeNoteLog($actorName, $newStatus, $noteInput);
         $finalNote = $dbPrevNote ? $dbPrevNote . "\n" . $newLog : $newLog;
 
-        $stmt = $conn->prepare("UPDATE `$table` SET status = ?, note = ? WHERE id = ?");
-        $stmt->bind_param("ssi", $newStatus, $finalNote, $id);
-        if ($stmt->execute()) {
+        $updateResult = executeStatusUpdateWithMigration($conn, $table, $newStatus, function() use ($conn, $table, $newStatus, $finalNote, $id) {
+            $stmt = $conn->prepare("UPDATE `$table` SET status = ?, note = ? WHERE id = ?");
+            $stmt->bind_param("ssi", $newStatus, $finalNote, $id);
+            $ok = $stmt->execute();
+            $err = $stmt->error;
+            $stmt->close();
+            return ['ok' => $ok, 'error' => $err];
+        });
+        if ($updateResult['ok']) {
             // ============================================================
             // AUTOMATIC INVENTORY DEDUCTION FOR REPAIR
             // ============================================================
@@ -835,26 +870,8 @@ switch ($action) {
                 notifyAssignedDriverNewTaskPendingApproval($conn, $id, true);
             }
 
-            // JIKA ITEM2 DAN READY_FOR_USER, PASTIKAN NOTIFIKASI AMBIL BARANG TERKIRIM KE USER
-            if ($type === 'Item2' && $newStatus === 'ready_for_user') {
-                $stmtReqUser = $conn->prepare("SELECT u.whatsapp_number, u.telegram_chat_id, r.applicant_name FROM item_requests r INNER JOIN users u ON r.user_id = u.id WHERE r.id = ?");
-                if ($stmtReqUser) {
-                    $stmtReqUser->bind_param("i", $id);
-                    $stmtReqUser->execute();
-                    $reqUserRow = $stmtReqUser->get_result()->fetch_assoc();
-                    $stmtReqUser->close();
-                    if ($reqUserRow && !empty($reqUserRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-                        $readyMsg = "📦 *BARANG SIAP DIAMBIL (#ITM-$id)*\n\n";
-                        $readyMsg .= "Halo *" . ($reqUserRow['applicant_name'] ?? 'User') . "*,\n";
-                        $readyMsg .= "Permintaan barang Anda telah disetujui dan saat ini sudah siap diambil di gudang.\n\n";
-                        $readyMsg .= "mohon ambil dalam estimasi waktu 10-15 menit atau hubungi petugas gudang untuk ambil \n";
-                        $readyMsg .= "1. Indra Septian 081212874982\n";
-                        $readyMsg .= "2. Moh. Wahyu Noorramdhany 085693459088\n\n";
-                        $readyMsg .= "_Pantau status di Dashboard SILATAS:_ https://silatas.biotrop.org/";
-                        sendWhatsAppFonnte($readyMsg, $reqUserRow['whatsapp_number']);
-                    }
-                }
-            }
+            // Catatan: Notifikasi ready_for_user untuk Item2 (beserta kontak petugas gudang & instruksi SELESAI BRG-ID)
+            // sudah dikirim melalui notifyStatusUpdate() di atas sehingga tidak dikirim dua kali (mencegah duplikasi spam WA).
 
             // JIKA ITEM2 (Permintaan Barang) DAN COMPLETED, OTOMATIS POTONG STOK GUDANG
             if ($type === 'Item2' && $newStatus === 'completed') {
@@ -865,7 +882,6 @@ switch ($action) {
         } else {
             jsonResponse(false, 'Gagal update status.');
         }
-        $stmt->close();
         break;
 
     // ============================================================
@@ -1071,7 +1087,7 @@ switch ($action) {
                             $teamInfo = count($techList) > 1 ? " (Tim: $technicianName)" : "";
                             if (!empty($techRow['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
                                 $msgTech = "🛠️ *TUGAS PERBAIKAN BARU (TEKNISI)*\n\nHalo *$singleTech*,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan *REP-$id*$teamInfo.\n\n*Pemohon:* $app\n*Jenis Perbaikan:* $repType\n*Lokasi:* $loc\n*Detail Kerusakan:* $issue\n*Prioritas:* $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
-                                sendWhatsAppFonnte($msgTech, $techRow['whatsapp_number']);
+                                sendWhatsAppFonnte($msgTech, $techRow['whatsapp_number'], ['mode' => 'user']);
                             }
                             if (!empty($techRow['telegram_chat_id']) && function_exists('sendTelegramPHP')) {
                                 $msgTechTg = "🛠️ <b>TUGAS PERBAIKAN BARU (TEKNISI)</b>\n\nHalo <b>$singleTech</b>,\nAnda telah ditugaskan untuk menangani pengajuan perbaikan <b>REP-$id</b>$teamInfo.\n\n<b>Pemohon:</b> $app\n<b>Jenis Perbaikan:</b> $repType\n<b>Lokasi:</b> $loc\n<b>Detail Kerusakan:</b> $issue\n<b>Prioritas:</b> $pri\n\nMohon cek Dashboard Anda untuk detail penugasan.";
@@ -1317,69 +1333,81 @@ switch ($action) {
         $ts = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d M Y H:i');
         $note = $rawNote . "\n[$ts] [Superadmin]: Data pengajuan telah diubah manual oleh Superadmin.";
 
-        if ($type === 'Vehicle') {
-            $dest = $_POST['destination'] ?? '';
-            $vid = empty($_POST['vehicle_id']) ? null : (int)$_POST['vehicle_id'];
-            $driver = $_POST['driver_name'] ?? '';
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, destination=?, vehicle_id=?, driver_name=? WHERE id=?");
-            $stmt->bind_param("ssssssssssisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $dest, $vid, $driver, $id);
-        } else if ($type === 'Room') {
-            $rid = empty($_POST['room_id']) ? null : (int)$_POST['room_id'];
-            $part = (int)($_POST['participants'] ?? 0);
-            $sn = $_POST['special_needs'] ?? '';
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, room_id=?, participants=?, special_needs=? WHERE id=?");
-            $stmt->bind_param("sssssssssiisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $rid, $part, $sn, $id);
-        } else if ($type === 'Dormitory') {
-            $did = empty($_POST['dormitory_id']) ? null : (int)$_POST['dormitory_id'];
-            $occ = $_POST['occupant_name'] ?? '';
-            $part = (int)($_POST['participants'] ?? 0);
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, dormitory_id=?, occupant_name=?, participants=? WHERE id=?");
-            $stmt->bind_param("sssssssssisii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $did, $occ, $part, $id);
-        } else if ($type === 'Zoom') {
-            $zid = !empty($_POST['zoom_account_id']) ? trim($_POST['zoom_account_id']) : null;
-            $part = (int)($_POST['participants'] ?? 0);
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, zoom_account_id=?, participants=? WHERE id=?");
-            $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $zid, $part, $id);
-        } else if ($type === 'Repair') {
-            $loc = $_POST['location_detail'] ?? '';
-            $iss = $_POST['issue_description'] ?? '';
-            $repair_type = $_POST['repair_type'] ?? 'TIK';
-            $tech = $_POST['technician_name'] ?? null;
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, repair_type=?, technician_name=?, status=?, note=?, incident_date=?, incident_time=?, location_detail=?, issue_description=? WHERE id=?");
-            $stmt->bind_param("ssssssssssi", $applicant_name, $applicant_unit, $repair_type, $tech, $status, $note, $date_start, $time_start, $loc, $iss, $id);
-        } else if ($type === 'Item') {
-            $item = $_POST['item_name'] ?? '';
-            $qty = (int)($_POST['item_quantity'] ?? 0);
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, loan_date=?, return_date=?, loan_time=?, return_time=?, item_name=?, item_quantity=? WHERE id=?");
-            $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $item, $qty, $id);
-        } else if ($type === 'Item2') {
-            $items_json = $_POST['items_json'] ?? '[]';
-            $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, items_json=? WHERE id=?");
-            $stmt->bind_param("ssssssi", $applicant_name, $applicant_unit, $purpose, $status, $note, $items_json, $id);
-            // Sync item_request_details jika valid json
-            $items = json_decode($items_json, true);
-            if (is_array($items)) {
-                $conn->query("DELETE FROM item_request_details WHERE request_id = $id");
-                $stmtDet = $conn->prepare("INSERT INTO item_request_details (request_id, item_id, item_name, quantity) VALUES (?,?,?,?)");
-                foreach ($items as $itm) {
-                    $iId   = (int)($itm['id'] ?? 0);
-                    $iName = trim($itm['name'] ?? '');
-                    $iQty  = max(1, (int)($itm['quantity'] ?? 1));
-                    if ($iName !== '') {
-                        $stmtDet->bind_param("iisi", $id, $iId, $iName, $iQty);
-                        $stmtDet->execute();
-                    }
-                }
-                $stmtDet->close();
+        $updateResult = executeStatusUpdateWithMigration($conn, $table, $status, function() use ($conn, $table, $type, $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $id) {
+            $stmt = null;
+            if ($type === 'Vehicle') {
+                $dest = $_POST['destination'] ?? '';
+                $vid = empty($_POST['vehicle_id']) ? null : (int)$_POST['vehicle_id'];
+                $driver = $_POST['driver_name'] ?? '';
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, destination=?, vehicle_id=?, driver_name=? WHERE id=?");
+                $stmt->bind_param("ssssssssssisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $dest, $vid, $driver, $id);
+            } else if ($type === 'Room') {
+                $rid = empty($_POST['room_id']) ? null : (int)$_POST['room_id'];
+                $part = (int)($_POST['participants'] ?? 0);
+                $sn = $_POST['special_needs'] ?? '';
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, room_id=?, participants=?, special_needs=? WHERE id=?");
+                $stmt->bind_param("sssssssssiisi", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $rid, $part, $sn, $id);
+            } else if ($type === 'Dormitory') {
+                $did = empty($_POST['dormitory_id']) ? null : (int)$_POST['dormitory_id'];
+                $occ = $_POST['occupant_name'] ?? '';
+                $part = (int)($_POST['participants'] ?? 0);
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, dormitory_id=?, occupant_name=?, participants=? WHERE id=?");
+                $stmt->bind_param("sssssssssisii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $did, $occ, $part, $id);
+            } else if ($type === 'Zoom') {
+                $zid = !empty($_POST['zoom_account_id']) ? trim($_POST['zoom_account_id']) : null;
+                $part = (int)($_POST['participants'] ?? 0);
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, date_start=?, date_end=?, time_start=?, time_end=?, zoom_account_id=?, participants=? WHERE id=?");
+                $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $zid, $part, $id);
+            } else if ($type === 'Repair') {
+                $loc = $_POST['location_detail'] ?? '';
+                $iss = $_POST['issue_description'] ?? '';
+                $repair_type = $_POST['repair_type'] ?? 'TIK';
+                $tech = $_POST['technician_name'] ?? null;
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, repair_type=?, technician_name=?, status=?, note=?, incident_date=?, incident_time=?, location_detail=?, issue_description=? WHERE id=?");
+                $stmt->bind_param("ssssssssssi", $applicant_name, $applicant_unit, $repair_type, $tech, $status, $note, $date_start, $time_start, $loc, $iss, $id);
+            } else if ($type === 'Item') {
+                $item = $_POST['item_name'] ?? '';
+                $qty = (int)($_POST['item_quantity'] ?? 0);
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, loan_date=?, return_date=?, loan_time=?, return_time=?, item_name=?, item_quantity=? WHERE id=?");
+                $stmt->bind_param("ssssssssssii", $applicant_name, $applicant_unit, $purpose, $status, $note, $date_start, $date_end, $time_start, $time_end, $item, $qty, $id);
+            } else if ($type === 'Item2') {
+                $items_json = $_POST['items_json'] ?? '[]';
+                $stmt = $conn->prepare("UPDATE `$table` SET applicant_name=?, applicant_unit=?, purpose=?, status=?, note=?, items_json=? WHERE id=?");
+                $stmt->bind_param("ssssssi", $applicant_name, $applicant_unit, $purpose, $status, $note, $items_json, $id);
             }
-        }
 
-        if ($stmt->execute()) {
+            if (!$stmt) {
+                return ['ok' => false, 'error' => 'Tipe tidak valid.'];
+            }
+            $ok = $stmt->execute();
+            $err = $stmt->error;
+            $stmt->close();
+            return ['ok' => $ok, 'error' => $err];
+        });
+
+        if ($updateResult['ok']) {
+            if ($type === 'Item2') {
+                $items_json = $_POST['items_json'] ?? '[]';
+                $items = json_decode($items_json, true);
+                if (is_array($items)) {
+                    $conn->query("DELETE FROM item_request_details WHERE request_id = $id");
+                    $stmtDet = $conn->prepare("INSERT INTO item_request_details (request_id, item_id, item_name, quantity) VALUES (?,?,?,?)");
+                    foreach ($items as $itm) {
+                        $iId   = (int)($itm['id'] ?? 0);
+                        $iName = trim($itm['name'] ?? '');
+                        $iQty  = max(1, (int)($itm['quantity'] ?? 1));
+                        if ($iName !== '') {
+                            $stmtDet->bind_param("iisi", $id, $iId, $iName, $iQty);
+                            $stmtDet->execute();
+                        }
+                    }
+                    $stmtDet->close();
+                }
+            }
             jsonResponse(true, 'Data berhasil diubah.');
         } else {
-            jsonResponse(false, 'Gagal mengubah data: ' . $stmt->error);
+            jsonResponse(false, 'Gagal mengubah data: ' . $updateResult['error']);
         }
-        $stmt->close();
         break;
 
     case 'superadmin_delete_request':

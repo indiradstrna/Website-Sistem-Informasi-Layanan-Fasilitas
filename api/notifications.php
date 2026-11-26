@@ -250,7 +250,7 @@ function notifyApprovers($conn, $newStatus, $type, $id, $msg) {
     $targetNumbers = array_values(array_unique(array_filter(array_map('trim', $targetNumbers))));
     if (!empty($targetNumbers) && function_exists('sendWhatsAppFonnte')) {
         $targets = implode(',', $targetNumbers);
-        sendWhatsAppFonnte($waMsg, $targets);
+        sendWhatsAppFonnte($waMsg, $targets, ['mode' => 'approver']);
     }
 
     $targetTelegramIds = array_values(array_unique(array_filter(array_map('trim', $targetTelegramIds))));
@@ -480,6 +480,8 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
                     ? '✅ DISETUJUI (SIAP DIKERJAKAN)'
                     : '✅ DISETUJUI'),
             'rejected'            => '❌ DITOLAK',
+            'canceled'            => '❌ DIBATALKAN',
+            'cancelled'           => '❌ DIBATALKAN',
             'verified'            => ($table === 'item_requests') ? '🔍 DISETUJUI MGR UNIT (PROSES PIC GUDANG)' : '🔍 DIVERIFIKASI',
             'ready_for_user'      => ($table === 'item_requests')
                 ? '📦 SIAP DIAMBIL DI GUDANG'
@@ -565,7 +567,7 @@ function notifyStatusUpdate($conn, $table, $id, $newStatus, $noteInput, $actorNa
             $waMsg = str_replace(['<b>','</b>','<i>','</i>'], ['*','*','_','_'], $msg);
             // Hapus sisa tag HTML jika ada
             $waMsg = strip_tags($waMsg);
-            sendWhatsAppFonnte($waMsg, $user['whatsapp_number']);
+            sendWhatsAppFonnte($waMsg, $user['whatsapp_number'], ['mode' => 'user']);
         }
         
         // Kirim notifikasi WA ke Approver
@@ -942,7 +944,7 @@ function fetchVehicleDriverNotificationData(mysqli $conn, int $id): ?array {
 function dispatchVehicleDriverMessages(array $drv, string $waMsg, string $tgMsg): bool {
     $sent = false;
     if (!empty($drv['whatsapp_number']) && function_exists('sendWhatsAppFonnte')) {
-        sendWhatsAppFonnte($waMsg, $drv['whatsapp_number']);
+        sendWhatsAppFonnte($waMsg, $drv['whatsapp_number'], ['mode' => 'user']);
         $sent = true;
     }
     if (!empty($drv['telegram_chat_id']) && function_exists('sendTelegramPHP')) {

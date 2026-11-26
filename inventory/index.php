@@ -738,6 +738,51 @@ $employeeId = $_SESSION['employee_id'];
       white-space: nowrap;
     }
 
+    /* ================= Master Item Thumbnails ================= */
+    .inv-item-thumb {
+      width: 46px;
+      height: 46px;
+      border-radius: 0.45rem;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      cursor: zoom-in;
+      display: block;
+      background: #f8fafc;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .inv-item-thumb:hover {
+      transform: scale(1.06);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    }
+    .inv-item-thumb-empty {
+      width: 46px;
+      height: 46px;
+      border-radius: 0.45rem;
+      border: 1px dashed #cbd5e1;
+      background: #f8fafc;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      text-align: center;
+      line-height: 1.1;
+    }
+    .photo-preview-box {
+      border: 1px dashed var(--border);
+      border-radius: 0.6rem;
+      padding: 0.75rem;
+      background: #f8fafc;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    .photo-preview-box img {
+      max-width: 100%;
+      max-height: 200px;
+      border-radius: 0.45rem;
+      object-fit: contain;
+    }
+
     /* ================= Responsive ================= */
     @media (max-width: 1100px) {
       .uakpb-filter { display: none; }
@@ -1013,12 +1058,14 @@ $employeeId = $_SESSION['employee_id'];
           <table id="table-master">
             <thead>
               <tr>
+                <th style="width: 70px;">Foto</th>
                 <th>Kode</th>
                 <th>Kategori</th>
                 <th>Nama Barang</th>
                 <th>Stok</th>
                 <th>Satuan</th>
                 <th>Min Stok</th>
+                <th style="width: 130px; text-align: center;">Foto Barang</th>
               </tr>
             </thead>
             <tbody>
@@ -1409,8 +1456,47 @@ $employeeId = $_SESSION['employee_id'];
           <label class="form-label">Satuan</label>
           <input type="text" id="new-item-unit" class="form-input" placeholder="Misal: buah, unit, pak">
         </div>
+        <div class="form-group">
+          <label class="form-label">Foto Barang (Opsional)</label>
+          <input type="file" id="new-item-image" class="form-input" accept="image/jpeg,image/png,image/webp,image/gif" onchange="previewNewMasterImage(this)">
+          <small style="color: var(--text-light); display: block; margin-top: 0.25rem;">Format JPG, PNG, WEBP, atau GIF (maks. 5 MB).</small>
+          <div id="new-item-image-preview" class="photo-preview-box" style="display:none;"></div>
+        </div>
         
         <button type="submit" class="btn btn-primary" style="width:100%; margin-top:1rem;">Simpan Barang</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- PHOTO UPLOAD / EDIT MODAL -->
+  <div class="modal-overlay" id="item-photo-modal">
+    <div class="modal-content" style="max-width: 460px;">
+      <button class="modal-close" onclick="closeItemPhotoModal()">&times;</button>
+      <h3 style="margin-top:0; margin-bottom: 0.4rem; font-size:1.2rem;">Foto Barang</h3>
+      <p id="photo-modal-item-label" style="margin-top:0; margin-bottom: 1.25rem; font-size: 0.875rem; color: var(--text-light); font-weight: 500;"></p>
+
+      <form id="form-item-photo" onsubmit="submitItemPhotoForm(event)">
+        <input type="hidden" id="photo-modal-item-id">
+        <div id="photo-modal-current-box" class="photo-preview-box" style="margin-bottom: 1rem;">
+          <span style="color: var(--text-light); font-size: 0.85rem;">Belum ada foto untuk barang ini.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Pilih Foto Baru (Upload Manual)</label>
+          <input type="file" id="edit-item-image" class="form-input" accept="image/jpeg,image/png,image/webp,image/gif" onchange="previewEditMasterImage(this)">
+          <small style="color: var(--text-light); display: block; margin-top: 0.25rem;">Format JPG, PNG, WEBP, atau GIF (maks. 5 MB).</small>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <button type="button" id="btn-auto-fetch-photo" class="btn" style="width: 100%; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.85rem;" onclick="autoFetchItemPhoto()">
+            🔍 Cari & Ambil Foto Otomatis dari Internet
+          </button>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+          <button type="button" id="btn-remove-item-photo" class="btn btn-danger" style="display:none;" onclick="removeItemPhoto()">Hapus Foto</button>
+          <button type="submit" id="btn-save-item-photo" class="btn btn-primary" style="flex: 1;">Simpan Foto</button>
+        </div>
       </form>
     </div>
   </div>
@@ -1618,18 +1704,35 @@ $employeeId = $_SESSION['employee_id'];
 
       // 3. Render Table
       if (paginatedItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 2rem;">Tidak ada data ditemukan</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem;">Tidak ada data ditemukan</td></tr>`;
       } else {
         let htmlStr = '';
         paginatedItems.forEach(i => {
+          const imgUrl = resolveInvImageUrl(i.image);
+          const safeCode = escapeInvHtml(i.item_code || '');
+          const safeCat = escapeInvHtml(i.category_name || '-');
+          const safeName = escapeInvHtml(i.name || '');
+          const safeUnit = escapeInvHtml(i.unit || '-');
+          const thumbHtml = imgUrl
+            ? `<img src="${escapeInvHtml(imgUrl)}" alt="${safeName}" class="inv-item-thumb" title="Klik untuk memperbesar" onclick="previewMasterPhoto(${Number(i.id)})" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="inv-item-thumb-empty" style="display:none;">No<br>Foto</div>`
+            : `<div class="inv-item-thumb-empty">No<br>Foto</div>`;
+          const btnLabel = imgUrl ? 'Ubah Foto' : '+ Foto';
+          const btnStyle = imgUrl
+            ? 'padding: 0.4rem 0.7rem; font-size: 0.78rem; background: #f0fdf4; color: var(--primary-dark); border: 1px solid #bbf7d0;'
+            : 'padding: 0.4rem 0.7rem; font-size: 0.78rem; background: #ffffff; color: var(--text); border: 1px solid var(--border);';
+
           htmlStr += `
             <tr>
-              <td>${i.item_code}</td>
-              <td>${i.category_name || '-'}</td>
-              <td>${i.name}</td>
+              <td>${thumbHtml}</td>
+              <td>${safeCode}</td>
+              <td>${safeCat}</td>
+              <td>${safeName}</td>
               <td><b>${i.stock}</b></td>
-              <td>${i.unit || '-'}</td>
+              <td>${safeUnit}</td>
               <td>${i.min_stock || 0}</td>
+              <td style="text-align: center;">
+                <button type="button" class="btn" style="${btnStyle}" onclick="openItemPhotoModal(${Number(i.id)})">${btnLabel}</button>
+              </td>
             </tr>
           `;
         });
@@ -2068,6 +2171,11 @@ $employeeId = $_SESSION['employee_id'];
       document.getElementById('sel-kelompok').disabled = true;
       document.getElementById('sel-skel').disabled = true;
       document.getElementById('sel-sskel').disabled = true;
+      const prevBox = document.getElementById('new-item-image-preview');
+      if (prevBox) {
+        prevBox.style.display = 'none';
+        prevBox.innerHTML = '';
+      }
     }
 
     async function loadBidang() {
@@ -2166,6 +2274,10 @@ $employeeId = $_SESSION['employee_id'];
       formData.append('name', name);
       formData.append('unit', unit);
       formData.append('location_id', locId);
+      const imageInput = document.getElementById('new-item-image');
+      if (imageInput && imageInput.files && imageInput.files[0]) {
+        formData.append('image', imageInput.files[0]);
+      }
 
       try {
         const res = await fetch('api.php', { method: 'POST', body: formData });
@@ -2180,6 +2292,196 @@ $employeeId = $_SESSION['employee_id'];
         }
       } catch (err) {
         Swal.fire('Error', 'Terjadi kesalahan jaringan.', 'error');
+      }
+    }
+
+    function escapeInvHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[s]));
+    }
+
+    function resolveInvImageUrl(imgPath) {
+      const p = String(imgPath ?? '').trim();
+      if (!p) return '';
+      if (/^(https?:\/\/|data:|\/)/i.test(p)) return p;
+      return '../' + p.replace(/^\.?\//, '');
+    }
+
+    function previewNewMasterImage(input) {
+      const box = document.getElementById('new-item-image-preview');
+      if (!box) return;
+      if (!input.files || !input.files[0]) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = e => {
+        box.style.display = 'block';
+        box.innerHTML = `<img src="${escapeInvHtml(e.target.result)}" alt="Preview Foto Barang">`;
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+
+    function previewMasterPhoto(itemId) {
+      const item = masterItems.find(x => Number(x.id) === Number(itemId));
+      if (!item || !item.image) return;
+      const url = resolveInvImageUrl(item.image);
+      Swal.fire({
+        title: item.name || 'Foto Barang',
+        text: item.item_code ? `Kode: ${item.item_code}` : '',
+        imageUrl: url,
+        imageAlt: item.name || 'Foto Barang',
+        confirmButtonText: 'Tutup',
+        confirmButtonColor: '#16a34a'
+      });
+    }
+
+    function openItemPhotoModal(itemId) {
+      const item = masterItems.find(x => Number(x.id) === Number(itemId));
+      if (!item) return;
+
+      document.getElementById('photo-modal-item-id').value = item.id;
+      document.getElementById('photo-modal-item-label').textContent = `${item.item_code || ''} - ${item.name || ''}`;
+      document.getElementById('edit-item-image').value = '';
+
+      const box = document.getElementById('photo-modal-current-box');
+      const removeBtn = document.getElementById('btn-remove-item-photo');
+      const imgUrl = resolveInvImageUrl(item.image);
+      if (imgUrl) {
+        box.innerHTML = `<img src="${escapeInvHtml(imgUrl)}" alt="${escapeInvHtml(item.name)}"><div style="font-size:0.75rem; color:var(--text-light); margin-top:0.35rem;">Foto saat ini</div>`;
+        removeBtn.style.display = 'inline-flex';
+      } else {
+        box.innerHTML = '<span style="color: var(--text-light); font-size: 0.85rem;">Belum ada foto untuk barang ini.</span>';
+        removeBtn.style.display = 'none';
+      }
+
+      document.getElementById('item-photo-modal').classList.add('active');
+    }
+
+    function closeItemPhotoModal() {
+      document.getElementById('item-photo-modal').classList.remove('active');
+      document.getElementById('form-item-photo').reset();
+    }
+
+    function previewEditMasterImage(input) {
+      const box = document.getElementById('photo-modal-current-box');
+      if (!box || !input.files || !input.files[0]) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        box.innerHTML = `<img src="${escapeInvHtml(e.target.result)}" alt="Preview Foto Baru"><div style="font-size:0.75rem; color:var(--primary); font-weight:600; margin-top:0.35rem;">Preview foto baru (belum disimpan)</div>`;
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+
+    async function submitItemPhotoForm(e) {
+      e.preventDefault();
+      const itemId = document.getElementById('photo-modal-item-id').value;
+      const fileInput = document.getElementById('edit-item-image');
+      if (!fileInput.files || !fileInput.files[0]) {
+        Swal.fire('Peringatan', 'Silakan pilih file foto terlebih dahulu.', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('btn-save-item-photo');
+      btn.disabled = true;
+      btn.textContent = 'Menyimpan...';
+
+      const formData = new FormData();
+      formData.append('action', 'update_item_image');
+      formData.append('item_id', itemId);
+      formData.append('image', fileInput.files[0]);
+
+      try {
+        const res = await fetch('api.php', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (json.success) {
+          const target = masterItems.find(x => Number(x.id) === Number(itemId));
+          if (target) target.image = json.data?.image || null;
+          renderMasterTable();
+          closeItemPhotoModal();
+          Swal.fire('Berhasil!', json.message, 'success');
+        } else {
+          Swal.fire('Gagal', json.message || 'Gagal menyimpan foto.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Terjadi kesalahan jaringan saat mengunggah foto.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Simpan Foto';
+      }
+    }
+
+    async function removeItemPhoto() {
+      const itemId = document.getElementById('photo-modal-item-id').value;
+      const confirmRes = await Swal.fire({
+        title: 'Hapus Foto Barang?',
+        text: 'Foto barang ini akan dihapus dari katalog.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal'
+      });
+      if (!confirmRes.isConfirmed) return;
+
+      const formData = new FormData();
+      formData.append('action', 'update_item_image');
+      formData.append('item_id', itemId);
+      formData.append('remove_image', '1');
+
+      try {
+        const res = await fetch('api.php', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (json.success) {
+          const target = masterItems.find(x => Number(x.id) === Number(itemId));
+          if (target) target.image = null;
+          renderMasterTable();
+          closeItemPhotoModal();
+          Swal.fire('Berhasil!', json.message, 'success');
+        } else {
+          Swal.fire('Gagal', json.message || 'Gagal menghapus foto.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Terjadi kesalahan jaringan.', 'error');
+      }
+    }
+
+    async function autoFetchItemPhoto() {
+      const itemId = document.getElementById('photo-modal-item-id').value;
+      const btn = document.getElementById('btn-auto-fetch-photo');
+      if (!itemId || !btn) return;
+
+      const origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Mencari foto di internet...';
+
+      const formData = new FormData();
+      formData.append('action', 'auto_fetch_item_image');
+      formData.append('item_id', itemId);
+
+      try {
+        const res = await fetch('api.php', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (json.success) {
+          const target = masterItems.find(x => Number(x.id) === Number(itemId));
+          if (target) target.image = json.data?.image || null;
+          renderMasterTable();
+          openItemPhotoModal(itemId);
+          Swal.fire('Berhasil!', json.message, 'success');
+        } else {
+          Swal.fire('Gagal', json.message || 'Gambar tidak ditemukan.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Terjadi kesalahan jaringan saat mencari foto.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
       }
     }
 

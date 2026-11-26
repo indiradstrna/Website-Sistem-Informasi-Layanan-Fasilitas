@@ -19,19 +19,44 @@ if (strpos($contentType, 'application/json') !== false) {
     $data = $_POST;
 }
 
-$sender = $data['sender'] ?? '';
-$message = trim($data['message'] ?? '');
+$sender = trim((string)($data['sender'] ?? ''));
+$message = trim((string)($data['message'] ?? ''));
 
-if (!$sender || !$message) {
+// Abaikan pesan kosong, pesan dari Grup WA (@g.us / isgroup), atau status broadcast
+$isGroup = !empty($data['isgroup']) && $data['isgroup'] !== 'false' && $data['isgroup'] !== '0';
+if (!$sender || !$message || $isGroup || stripos($sender, '@g.us') !== false || stripos($sender, 'broadcast') !== false) {
     http_response_code(200);
     exit;
 }
 
 // Hanya proses jika pesan dimulai dengan SETUJU, TOLAK, SELESAI, COMPLETED, atau SIAP
-if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED|SIAP)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z0])(?:\s*(\d+))?)?$/i', trim($message), $matches)) {
+if (!preg_match('/^(SETUJU|TOLAK|SELESAI|COMPLETED|SIAP)\s+([A-Z]+)-(\d+)(?:\s*([a-zA-Z0])(?:\s*(\d+))?)?$/i', $message, $matches)) {
     http_response_code(200); // Ignore non-command messages
     exit;
 }
+
+// Cegah eksekusi ganda jika webhook Fonnte me-retry pesan identik dalam 30 detik terakhir
+$dedupeFile = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'silatas_wa_webhook_dedupe.json';
+$dedupeKey  = md5(strtolower($sender . '|' . preg_replace('/\s+/', ' ', $message)));
+$nowTs      = time();
+$dedupeMap  = [];
+if (is_file($dedupeFile)) {
+    $rawDedupe = @file_get_contents($dedupeFile);
+    $parsedDedupe = $rawDedupe ? json_decode($rawDedupe, true) : null;
+    if (is_array($parsedDedupe)) {
+        foreach ($parsedDedupe as $k => $tsVal) {
+            if (($nowTs - (int)$tsVal) < 30) {
+                $dedupeMap[$k] = (int)$tsVal;
+            }
+        }
+    }
+}
+if (isset($dedupeMap[$dedupeKey])) {
+    http_response_code(200);
+    exit;
+}
+$dedupeMap[$dedupeKey] = $nowTs;
+@file_put_contents($dedupeFile, json_encode($dedupeMap), LOCK_EX);
 
 $actionTypeRaw = strtoupper($matches[1]);
 $isSiapCmd     = ($actionTypeRaw === 'SIAP');
@@ -42,7 +67,7 @@ $optLetter  = isset($matches[4]) ? strtoupper($matches[4]) : ''; // A
 $optNumber  = isset($matches[5]) && $matches[5] !== '' ? (int)$matches[5] : -1; // -1 means not provided
 
 // Normalisasi nomor WA (Hapus 62 atau 0 di depan untuk pencarian yang fleksibel)
-$cleanSender = preg_replace('/^(62|0)/', '', $sender);
+$cleanSender = preg_replace('/^(62|0)/', '', preg_replace('/\D+/', '', $sender));
 if (strlen($cleanSender) < 8) {
     http_response_code(200);
     exit;
@@ -57,7 +82,8 @@ $user = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$user) {
-    sendWhatsAppFonnte("Maaf, nomor Anda tidak terdaftar sebagai PIC/Approver di sistem SILATAS.", $sender);
+    // Jangan membalas otomatis ke nomor asing yang tidak terdaftar di database (mencegah risiko report/block)
+    file_put_contents(__DIR__ . '/webhook_log.txt', date('Y-m-d H:i:s') . " - IGNORED UNREGISTERED SENDER: {$sender}\n", FILE_APPEND);
     http_response_code(200);
     exit;
 }
@@ -128,7 +154,7 @@ if ($typeCode === 'ITM') {
 }
 
 if (!$table) {
-    sendWhatsAppFonnte("Maaf, format tipe pengajuan ($typeCode) tidak valid.", $sender);
+    sendWhatsAppFonnte("Maaf, format tipe pengajuan ($typeCode) tidak valid.", $sender, ['mode' => 'reply']);
     http_response_code(200);
     exit;
 }
@@ -138,7 +164,7 @@ $resReq = $conn->query("SELECT * FROM `$table` WHERE id = $reqId");
 $requestData = $resReq ? $resReq->fetch_assoc() : null;
 
 if (!$requestData) {
-    sendWhatsAppFonnte("Maaf, pengajuan dengan ID #$reqId tidak ditemukan.", $sender);
+    sendWhatsAppFonnte("Maaf, pengajuan dengan ID #$reqId tidak ditemukan.", $sender, ['mode' => 'reply']);
     http_response_code(200);
     exit;
 }
@@ -255,7 +281,7 @@ if ($table === 'item_requests') {
             $canProcess = true;
             $nextStatusApprove = 'verified'; // Masuk ke PIC Permintaan Barang
         } else {
-            sendWhatsAppFonnte("Maaf, pengajuan ini memerlukan persetujuan dari Manajer Departemen ($appUnit).", $sender);
+            sendWhatsAppFonnte("Maaf, pengajuan ini memerlukan persetujuan dari Manajer Departemen ($appUnit).", $sender, ['mode' => 'reply']);
             http_response_code(200);
             exit;
         }
@@ -295,12 +321,12 @@ if ($table === 'item_requests') {
 } else if ($currentStatus === 'pending') {
     if ($isPIC) {
         if ($typeCode === 'REP') {
-            sendWhatsAppFonnte("Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.", $sender);
+            sendWhatsAppFonnte("Maaf, pengajuan Perbaikan (Repair) tidak dapat diproses via WhatsApp karena memerlukan pemilihan Metode Penanganan dan pengeluaran Sparepart/Barang. Silakan login ke Dashboard Web SILATAS untuk memprosesnya.", $sender, ['mode' => 'reply']);
             http_response_code(200);
             exit;
         }
         if ($actionType === 'TOLAK') {
-            sendWhatsAppFonnte("Maaf, PIC tidak dapat menolak pengajuan. Semua pengajuan harus diteruskan ke Manager FMD. Balas SETUJU untuk meneruskan.", $sender);
+            sendWhatsAppFonnte("Maaf, PIC tidak dapat menolak pengajuan. Semua pengajuan harus diteruskan ke Manager FMD. Balas SETUJU untuk meneruskan.", $sender, ['mode' => 'reply']);
             http_response_code(200);
             exit;
         }
@@ -367,12 +393,12 @@ if ($table === 'item_requests') {
 
     if ($isSiapCmd) {
         if ($typeCode !== 'VEH' || $currentStatus !== 'approved') {
-            sendWhatsAppFonnte("Perintah SIAP hanya dapat digunakan untuk kendaraan (VEH) yang berstatus Approved.", $sender);
+            sendWhatsAppFonnte("Perintah SIAP hanya dapat digunakan untuk kendaraan (VEH) yang berstatus Approved.", $sender, ['mode' => 'reply']);
             http_response_code(200);
             exit;
         }
         if (!$isPIC && $role !== 'superadmin') {
-            sendWhatsAppFonnte("Perintah SIAP VEH-$reqId hanya dapat diproses oleh PIC Kendaraan.", $sender);
+            sendWhatsAppFonnte("Perintah SIAP VEH-$reqId hanya dapat diproses oleh PIC Kendaraan.", $sender, ['mode' => 'reply']);
             http_response_code(200);
             exit;
         }
@@ -406,7 +432,7 @@ if ($table === 'item_requests') {
             // ready_for_user atau in-progress pada VEH
             if ($isApplicant || $isAssignedDriver || $isPIC || $role === 'superadmin') {
                 if ($actionType === 'TOLAK' && $isAssignedDriver && $role !== 'superadmin') {
-                    sendWhatsAppFonnte("Maaf, Driver hanya dapat mengkonfirmasi penyelesaian tugas (balas: *SELESAI VEH-$reqId*).", $sender);
+                    sendWhatsAppFonnte("Maaf, Driver hanya dapat mengkonfirmasi penyelesaian tugas (balas: *SELESAI VEH-$reqId*).", $sender, ['mode' => 'reply']);
                     http_response_code(200);
                     exit;
                 }
@@ -426,7 +452,7 @@ if ($table === 'item_requests') {
 }
 
 if (!$canProcess) {
-    sendWhatsAppFonnte("Anda tidak memiliki hak akses atau pengajuan *$typeCode-$reqId* saat ini berada di tahap ('$currentStatus') yang bukan tanggung jawab Anda.", $sender);
+    sendWhatsAppFonnte("Anda tidak memiliki hak akses atau pengajuan *$typeCode-$reqId* saat ini berada di tahap ('$currentStatus') yang bukan tanggung jawab Anda.", $sender, ['mode' => 'reply']);
     http_response_code(200);
     exit;
 }
@@ -510,14 +536,14 @@ $params = ["ssi", $finalStatus, $finalNote, $reqId];
 
 if ($currentStatus === 'pending' && $typeCode === 'VEH' && $actionType === 'SETUJU') {
     if (!$selectedVehicleId || !$selectedDriverName) {
-         sendWhatsAppFonnte("❌ Gagal!\nMohon sertakan kode kendaraan & supir yang valid.\nContoh balas: *SETUJU VEH-$reqId A1*", $sender);
+         sendWhatsAppFonnte("❌ Gagal!\nMohon sertakan kode kendaraan & supir yang valid.\nContoh balas: *SETUJU VEH-$reqId A1*", $sender, ['mode' => 'reply']);
          exit;
     }
     $stmtStr = "UPDATE `$table` SET status = ?, note = ?, vehicle_id = ?, driver_name = ? WHERE id = ?";
     $params = ["ssssi", $finalStatus, $finalNote, $selectedVehicleId, $selectedDriverName, $reqId];
 } else if ($currentStatus === 'pending' && $typeCode === 'ROM' && $actionType === 'SETUJU') {
     if (!$selectedRoomId) {
-         sendWhatsAppFonnte("❌ Gagal!\nMohon sertakan kode ruangan yang valid.\nContoh balas: *SETUJU ROM-$reqId A*", $sender);
+         sendWhatsAppFonnte("❌ Gagal!\nMohon sertakan kode ruangan yang valid.\nContoh balas: *SETUJU ROM-$reqId A*", $sender, ['mode' => 'reply']);
          exit;
     }
     $stmtStr = "UPDATE `$table` SET status = ?, note = ?, room_id = ? WHERE id = ?";
@@ -540,7 +566,7 @@ if ($stmt->execute()) {
     }
 
     $reply = "✅ Berhasil!\nPengajuan *$typeCode-$reqId* telah diubah statusnya menjadi *$finalStatus*.";
-    sendWhatsAppFonnte($reply, $sender);
+    sendWhatsAppFonnte($reply, $sender, ['mode' => 'reply']);
     
     // Notifikasi ke Supir sebagai info tugas baru saat status masuk waiting_manager_fmd
     if ($typeCode === 'VEH' && $finalStatus === 'waiting_manager_fmd' && hasAssignedVehicleDriver($selectedDriverName)) {
@@ -550,7 +576,7 @@ if ($stmt->execute()) {
     // Panggil fungsi notifikasi agar dikirim ke Manager FMD / User / Approver berikutnya
     notifyStatusUpdate($conn, $table, $reqId, $finalStatus, $actionNote, $user['full_name']);
 } else {
-    sendWhatsAppFonnte("❌ Gagal mengupdate database server.", $sender);
+    sendWhatsAppFonnte("❌ Gagal mengupdate database server.", $sender, ['mode' => 'reply']);
 }
 
 $stmt->close();

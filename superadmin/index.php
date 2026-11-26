@@ -1591,7 +1591,7 @@ function renderCrudRows(data, page) {
     const st = r.status || '';
     if (st === 'pending') statusBadge = '<span class="badge" style="background:#fef3c7;color:#d97706;">Pending</span>';
     else if (st === 'approved') statusBadge = '<span class="badge" style="background:#dcfce7;color:#166534;">Approved</span>';
-    else if (st === 'rejected' || st === 'cancelled') statusBadge = '<span class="badge" style="background:#fee2e2;color:#b91c1c;">'+st+'</span>';
+    else if (st === 'rejected' || st === 'canceled' || st === 'cancelled') statusBadge = '<span class="badge" style="background:#fee2e2;color:#b91c1c;">'+st+'</span>';
     else statusBadge = '<span class="badge" style="background:#e0e7ff;color:#3730a3;">'+st+'</span>';
 
     return `<tr>
@@ -5935,6 +5935,7 @@ async function deleteMasterData(id) {
             <option value="waiting_bod">Waiting BOD</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
+            <option value="canceled">Canceled (Declined)</option>
             <option value="cancelled">Cancelled</option>
             <option value="in-progress">In Progress</option>
             <option value="ready_for_user">Ready for User</option>

@@ -138,44 +138,220 @@ function sendTelegramPHP(string $message, ?string $chatId = null): bool {
 }
 
 // ============================================================
-// WhatsApp Config (Fonnte)
+// WhatsApp Config (Fonnte) — Anti-Ban Staggered Queue
 // ============================================================
 define('FONNTE_TOKEN', $sysSettings['FONNTE_TOKEN'] ?? 'PsfPFiD5cUyvoT9eiyow'); // Token Fonnte Admin
 
-function sendWhatsAppFonnte(string $message, string $phone): bool {
-    $token = FONNTE_TOKEN;
-    if (empty($token) || empty($phone)) return false;
-    
-    $curl = curl_init();
+/**
+ * Normalisasi & filter daftar nomor WhatsApp (mendukung comma-separated).
+ * Mengabaikan ID grup (@g.us), broadcast, dan nomor dummy/tidak valid.
+ */
+function normalizeWhatsAppTargets(string $rawPhones): array {
+    $parts = explode(',', $rawPhones);
+    $valid = [];
 
-    curl_setopt_array($curl, array(
-      CURLOPT_URL => 'https://api.fonnte.com/send',
-      CURLOPT_RETURNTRANSFER => true,
-      CURLOPT_ENCODING => '',
-      CURLOPT_MAXREDIRS => 10,
-      CURLOPT_TIMEOUT => 0,
-      CURLOPT_FOLLOWLOCATION => true,
-      CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-      CURLOPT_CUSTOMREQUEST => 'POST',
-      CURLOPT_POSTFIELDS => array(
-        'target' => $phone,
-        'message' => $message,
-      ),
-      CURLOPT_HTTPHEADER => array(
-        "Authorization: $token"
-      ),
-    ));
+    foreach ($parts as $raw) {
+        $raw = trim($raw);
+        if ($raw === '' || stripos($raw, '@g.us') !== false || stripos($raw, 'broadcast') !== false) {
+            continue;
+        }
 
-    $response = curl_exec($curl);
-    if (curl_errno($curl)) {
-        $error_msg = curl_error($curl);
+        $digits = preg_replace('/\D+/', '', $raw);
+        if ($digits === '') {
+            continue;
+        }
+
+        if (strpos($digits, '620') === 0) {
+            $digits = '62' . substr($digits, 3);
+        } elseif (strpos($digits, '0') === 0) {
+            $digits = '62' . substr($digits, 1);
+        } elseif (strpos($digits, '8') === 0) {
+            $digits = '62' . $digits;
+        }
+
+        $len = strlen($digits);
+        if ($len < 10 || $len > 15) {
+            continue;
+        }
+        // Abaikan nomor dummy umum (misal 08123456789 / 0000000000)
+        if (preg_match('/^(0+|628123456789\d*)$/', $digits)) {
+            continue;
+        }
+
+        $valid[$digits] = $digits;
     }
-    curl_close($curl);
-    
-    // Add delay to prevent Fonnte rate limits on consecutive API calls
-    sleep(2);
-    
-    return true; 
+
+    return array_values($valid);
+}
+
+/**
+ * Hitung jeda pengiriman (detik) secara bertingkat lintas request agar:
+ * - Balasan langsung ke chat masuk ('reply') tetap responsif manusiawi (6-15 detik).
+ * - Info ke pemohon/driver/teknisi ('user') berjeda wajar (15-35 detik saat kosong, atau +60-95 detik setelah pesan sebelumnya).
+ * - Pesan ke PIC/Approver ('approver') diberi jeda aman 1-3 menit (+75-135 detik antar antrean).
+ */
+function reserveWhatsAppDelaySeconds(string $mode = 'normal'): int {
+    static $memNextSlot = 0;
+
+    $now = time();
+    $lockPath = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'silatas_wa_queue_state.json';
+    $fp = @fopen($lockPath, 'c+');
+    $lastSlot = $memNextSlot;
+
+    if ($fp) {
+        @flock($fp, LOCK_EX);
+        $raw = stream_get_contents($fp);
+        if ($raw) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded) && isset($decoded['next_slot'])) {
+                $lastSlot = max($lastSlot, (int)$decoded['next_slot']);
+            }
+        }
+    }
+
+    // Jika state lama tidak valid (misal jam sistem sempat dimundurkan), reset aman
+    if ($lastSlot > $now + 900) {
+        $lastSlot = $now;
+    }
+
+    $remaining = max(0, $lastSlot - $now);
+
+    if ($mode === 'reply') {
+        // Balasan langsung atas pesan WA yang baru saja dikirim oleh user/approver
+        $delay = random_int(6, 15);
+        $newSlot = max($lastSlot, $now + $delay + random_int(15, 25));
+    } elseif ($mode === 'approver') {
+        // Notifikasi yang membutuhkan tindak lanjut PIC / Manajer (1 - 3 menit)
+        if ($remaining === 0) {
+            $delay = random_int(55, 110);
+        } else {
+            $delay = $remaining + random_int(75, 135);
+        }
+        $delay = min($delay, 600) + ($delay > 600 ? random_int(10, 30) : 0);
+        $newSlot = $now + $delay;
+    } else {
+        // Mode 'user' / 'normal' (info pengajuan masuk, update status pemohon, tugas driver/teknisi)
+        if ($remaining === 0) {
+            $delay = random_int(15, 35);
+        } else {
+            $delay = $remaining + random_int(60, 100);
+        }
+        $delay = min($delay, 540) + ($delay > 540 ? random_int(8, 22) : 0);
+        $newSlot = $now + $delay;
+    }
+
+    $memNextSlot = $newSlot;
+
+    if ($fp) {
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode(['next_slot' => $newSlot, 'updated_at' => $now]));
+        fflush($fp);
+        @flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+
+    return $delay;
+}
+
+/**
+ * Merapikan pesan WA agar aman dari filter anti-spam/phishing nomor baru:
+ * - Mengubah skema link mentah https:// menjadi domain bersih (tanpa merusak instruksi balasan).
+ * - Memberikan variasi sapaan alami sesuai waktu setempat.
+ */
+function humanizeWhatsAppMessage(string $message, string $mode = 'normal'): string {
+    // Hindari clickable URL mentah di nomor baru agar tidak terdeteksi link-spam/phishing
+    $clean = preg_replace('#https?://(silatas\.biotrop\.org)/?#i', '$1', $message);
+
+    if ($mode !== 'reply') {
+        $hour = (int)(new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('G');
+        if ($hour >= 4 && $hour < 11) {
+            $timeGreeting = 'Selamat pagi';
+        } elseif ($hour >= 11 && $hour < 15) {
+            $timeGreeting = 'Selamat siang';
+        } elseif ($hour >= 15 && $hour < 19) {
+            $timeGreeting = 'Selamat sore';
+        } else {
+            $timeGreeting = 'Selamat malam';
+        }
+
+        $greetings = ['Halo', 'Yth.', $timeGreeting];
+        $picked = $greetings[random_int(0, count($greetings) - 1)];
+
+        // Variasikan sapaan awal "Halo " jika ada (hanya kemunculan pertama)
+        $clean = preg_replace('/\bHalo\s+/u', $picked . ' ', $clean, 1);
+
+        // Tambahkan penanda waktu mikro di bawah agar hash pesan tidak identik berulang
+        $refStamp = (new DateTime('now', new DateTimeZone('Asia/Jakarta')))->format('d/m H:i');
+        $clean = rtrim($clean) . "\n\n_Info Sistem SILATAS • {$refStamp}_";
+    }
+
+    return $clean;
+}
+
+function sendWhatsAppFonnte(string $message, string $phone, array $options = []): bool {
+    $token = trim((string)FONNTE_TOKEN);
+    if ($token === '' || trim($phone) === '' || trim($message) === '') {
+        return false;
+    }
+
+    $targets = normalizeWhatsAppTargets($phone);
+    if (empty($targets)) {
+        return false;
+    }
+
+    $mode = $options['mode'] ?? 'normal';
+    $allOk = true;
+
+    foreach ($targets as $targetPhone) {
+        $delaySec = isset($options['delay'])
+            ? max(5, (int)$options['delay'])
+            : reserveWhatsAppDelaySeconds($mode);
+
+        $finalMessage = humanizeWhatsAppMessage($message, $mode);
+
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => 'https://api.fonnte.com/send',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => array(
+                'target'      => $targetPhone,
+                'message'     => $finalMessage,
+                'delay'       => (string)$delaySec,
+                'typing'      => true,
+                'countryCode' => '62',
+            ),
+            CURLOPT_HTTPHEADER => array(
+                "Authorization: $token"
+            ),
+        ));
+
+        $response = curl_exec($curl);
+        $curlErr  = curl_errno($curl) ? curl_error($curl) : '';
+        curl_close($curl);
+
+        if ($curlErr !== '') {
+            error_log("[Fonnte] CURL Error to {$targetPhone}: {$curlErr}");
+            $allOk = false;
+            continue;
+        }
+
+        $decoded = json_decode((string)$response, true);
+        if (is_array($decoded) && isset($decoded['status']) && $decoded['status'] === false) {
+            $reason = $decoded['reason'] ?? $response;
+            error_log("[Fonnte] API Warning to {$targetPhone} (delay={$delaySec}s): {$reason}");
+            $allOk = false;
+        }
+    }
+
+    return $allOk;
 }
 
 // ============================================================

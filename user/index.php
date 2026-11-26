@@ -170,6 +170,167 @@ renderPageHead('Dashboard User');
   color: #94a3b8;
   font-size: 0.85rem;
 }
+
+/* ===== Katalog Barang Visual (Tabel + Grid + Lightbox) ===== */
+.catalog-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #f8fafc;
+}
+.catalog-view-btn {
+  border: none;
+  background: transparent;
+  padding: 0.48rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+.catalog-view-btn:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+.catalog-view-btn.active {
+  background: var(--primary, #16a34a);
+  color: #ffffff;
+}
+.catalog-thumb-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: zoom-in;
+  display: block;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.catalog-thumb-img:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+}
+.catalog-thumb-empty {
+  width: 52px;
+  height: 52px;
+  border-radius: 0.5rem;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 600;
+  gap: 2px;
+}
+.catalog-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+.catalog-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.catalog-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+.catalog-card-media {
+  position: relative;
+  height: 165px;
+  background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.catalog-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 0.35rem;
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+.catalog-card-media img:hover {
+  transform: scale(1.04);
+}
+.catalog-card-noimg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  gap: 0.35rem;
+}
+.catalog-card-stock-pill {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.catalog-card-body {
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+.catalog-card-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #1e293b;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.35rem;
+}
+.catalog-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(3px);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.catalog-lightbox-overlay.open {
+  display: flex;
+}
+.catalog-lightbox-box {
+  background: #ffffff;
+  border-radius: 0.85rem;
+  max-width: 520px;
+  width: 100%;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+  animation: slideDown 0.18s ease-out;
+}
 </style>
 
   <div class="topbar">
@@ -459,8 +620,8 @@ async function loadMyData(silent = false) {
     if (Array.isArray(invItemsFresh)) {
       ALL_INV_ITEMS = invItemsFresh;
       INV_ITEM_MAP = Object.fromEntries(ALL_INV_ITEMS.map(r => [r.id, r.name]));
-      if (window._currentView === 'item2' && typeof filterItem2Catalog === 'function') {
-        filterItem2Catalog();
+      if (window._currentView === 'item2' && typeof filterCatalog === 'function') {
+        filterCatalog(true);
       }
     }
     myVehicle = Array.isArray(v)   ? v   : [];
@@ -697,29 +858,42 @@ function renderServicePage(type) {
       <!-- Tab: Katalog -->
       <div id="tab-pane-katalog">
         <div style="padding: 1rem 1.25rem 0 1.25rem;">
-          <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
-            <div style="position: relative; flex:1; min-width:200px; max-width:350px;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:1rem; top:50%; transform:translateY(-50%); color:var(--color-slate-400);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="catalog-search" class="form-input" placeholder="Cari nama barang..." oninput="filterCatalog()" style="padding-left: 2.5rem;" />
+          <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; flex:1;">
+              <div style="position: relative; flex:1; min-width:200px; max-width:320px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:1rem; top:50%; transform:translateY(-50%); color:var(--color-slate-400);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="catalog-search" class="form-input" placeholder="Cari nama barang..." oninput="filterCatalog()" style="padding-left: 2.5rem;" />
+              </div>
+              <div style="flex:1; min-width:185px; max-width:280px;">
+                <select id="catalog-uakpb-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
+                  <option value="">-- Semua UAKPB --</option>
+                  ${(typeof ALL_INV_LOCATIONS !== 'undefined' ? ALL_INV_LOCATIONS : []).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
+                </select>
+              </div>
+              <div style="flex:1; min-width:185px; max-width:280px;">
+                <select id="catalog-skel-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
+                  <option value="">-- Semua Sub-Kelompok --</option>
+                  ${(typeof ALL_INV_SKEL !== 'undefined' ? ALL_INV_SKEL : []).map(s => `<option value="${s.code}">${s.name}</option>`).join('')}
+                </select>
+              </div>
             </div>
-            <div style="flex:1; min-width:200px; max-width:320px;">
-              <select id="catalog-uakpb-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
-                <option value="">-- Semua UAKPB --</option>
-                ${(typeof ALL_INV_LOCATIONS !== 'undefined' ? ALL_INV_LOCATIONS : []).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
-              </select>
-            </div>
-            <div style="flex:1; min-width:200px; max-width:320px;">
-              <select id="catalog-skel-filter" class="form-input" onchange="filterCatalog()" style="cursor:pointer;">
-                <option value="">-- Semua Sub-Kelompok --</option>
-                ${(typeof ALL_INV_SKEL !== 'undefined' ? ALL_INV_SKEL : []).map(s => `<option value="${s.code}">${s.name}</option>`).join('')}
-              </select>
+            <div class="catalog-view-toggle" role="group" aria-label="Mode Tampilan Katalog">
+              <button type="button" id="catalog-mode-table" class="catalog-view-btn ${catalogViewMode === 'table' ? 'active' : ''}" onclick="setCatalogViewMode('table')" title="Tampilan Tabel">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                Tabel
+              </button>
+              <button type="button" id="catalog-mode-grid" class="catalog-view-btn ${catalogViewMode === 'grid' ? 'active' : ''}" onclick="setCatalogViewMode('grid')" title="Tampilan Grid Foto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Grid Foto
+              </button>
             </div>
           </div>
         </div>
-        <div class="table-wrap" style="padding: 0; margin-top:0.75rem;">
+        <div id="catalog-table-wrap" class="table-wrap" style="padding: 0; margin-top:0.75rem; ${catalogViewMode === 'grid' ? 'display:none;' : ''}">
           <table id="catalog-grid" style="width:100%;">
             <thead>
               <tr>
+                <th style="width:72px;">Foto</th>
                 <th>Nama Barang</th>
                 <th style="width:180px;">UAKPB</th>
                 <th style="width:90px;">Stok</th>
@@ -732,6 +906,7 @@ function renderServicePage(type) {
             </tbody>
           </table>
         </div>
+        <div id="catalog-card-container" class="catalog-card-grid" style="${catalogViewMode === 'grid' ? '' : 'display:none;'}"></div>
         <div id="catalog-pagination" style="padding: 0.75rem 1.25rem; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--color-slate-100);"></div>
       </div>
 
@@ -1709,9 +1884,19 @@ function buildForm(type) {
             </tr>
           </thead>
           <tbody>
-            ${window.item2Cart.map((item, index) => `
+            ${window.item2Cart.map((item, index) => {
+              const masterItm = (ALL_INV_ITEMS || []).find(x => x.id == item.id);
+              const cartImgUrl = resolveCatalogImgUrl(item.image || masterItm?.image);
+              return `
               <tr style="border-bottom:1px solid var(--color-slate-100);">
-                <td style="padding:0.5rem;">${item.name}</td>
+                <td style="padding:0.5rem;">
+                  <div style="display:flex; align-items:center; gap:0.6rem;">
+                    ${cartImgUrl
+                      ? `<img src="${escapeCatalogHtml(cartImgUrl)}" alt="${escapeCatalogHtml(item.name)}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; border:1px solid #e2e8f0; flex-shrink:0;" onerror="this.style.display='none'">`
+                      : ''}
+                    <span>${escapeCatalogHtml(item.name)}</span>
+                  </div>
+                </td>
                 <td style="padding:0.5rem;">
                   <input type="number" class="form-input" style="padding:0.25rem; height:auto;" min="1" value="${item.quantity}" onchange="updateCartQty(${index}, this.value)" />
                 </td>
@@ -1720,8 +1905,8 @@ function buildForm(type) {
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </button>
                 </td>
-              </tr>
-            `).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div>`;
@@ -1746,7 +1931,7 @@ function addToCart(itemId) {
     if (existing) {
       existing.quantity += 1;
     } else {
-      window.item2Cart.push({ id: item.id, name: item.name, quantity: 1 });
+      window.item2Cart.push({ id: item.id, name: item.name, quantity: 1, image: item.image || '' });
     }
     
     const badge = document.getElementById('cart-badge');
@@ -1786,51 +1971,208 @@ function updateItem2Id() {
 
 let currentCatalogPage = 1;
 const CATALOG_ITEMS_PER_PAGE = 10;
+const CATALOG_GRID_ITEMS_PER_PAGE = 12;
+let catalogViewMode = 'table'; // 'table' | 'grid'
 let filteredCatalogItems = null;
+
+function escapeCatalogHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, s => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[s]));
+}
+
+function resolveCatalogImgUrl(imgPath) {
+  const p = String(imgPath ?? '').trim();
+  if (!p) return '';
+  if (/^(https?:\/\/|data:|\/)/i.test(p)) return p;
+  return '../' + p.replace(/^\.?\//, '');
+}
+
+function setCatalogViewMode(mode) {
+  catalogViewMode = mode === 'grid' ? 'grid' : 'table';
+  const tblWrap = document.getElementById('catalog-table-wrap');
+  const gridWrap = document.getElementById('catalog-card-container');
+  const btnTbl = document.getElementById('catalog-mode-table');
+  const btnGrid = document.getElementById('catalog-mode-grid');
+
+  if (tblWrap) tblWrap.style.display = catalogViewMode === 'table' ? '' : 'none';
+  if (gridWrap) gridWrap.style.display = catalogViewMode === 'grid' ? '' : 'none';
+  if (btnTbl) btnTbl.classList.toggle('active', catalogViewMode === 'table');
+  if (btnGrid) btnGrid.classList.toggle('active', catalogViewMode === 'grid');
+
+  renderCatalogPage(1);
+}
+
+function ensureCatalogLightbox() {
+  let el = document.getElementById('catalog-lightbox-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'catalog-lightbox-overlay';
+    el.className = 'catalog-lightbox-overlay';
+    el.addEventListener('click', function(e) {
+      if (e.target === el) closeCatalogImagePreview();
+    });
+    document.body.appendChild(el);
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && el.classList.contains('open')) {
+        closeCatalogImagePreview();
+      }
+    });
+  }
+  return el;
+}
+
+function openCatalogImagePreview(itemId) {
+  const item = (ALL_INV_ITEMS || []).find(x => Number(x.id) === Number(itemId));
+  if (!item) return;
+  const imgUrl = resolveCatalogImgUrl(item.image);
+  if (!imgUrl) return;
+
+  const overlay = ensureCatalogLightbox();
+  const safeName = escapeCatalogHtml(item.name || '');
+  const safeLoc = escapeCatalogHtml(item.location_name || '-');
+  const safeUnit = escapeCatalogHtml(item.unit || '-');
+  const stockNum = Number(item.stock || 0);
+
+  overlay.innerHTML = `
+    <div class="catalog-lightbox-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:0.9rem 1.15rem; border-bottom:1px solid #f1f5f9;">
+        <div style="font-weight:700; font-size:0.95rem; color:#1e293b;">Detail Foto Barang</div>
+        <button type="button" onclick="closeCatalogImagePreview()" style="background:none; border:none; cursor:pointer; color:#64748b; padding:0.2rem; line-height:1; font-size:1.3rem;">&times;</button>
+      </div>
+      <div style="background:#f8fafc; padding:1rem; display:flex; align-items:center; justify-content:center; max-height:62vh;">
+        <img src="${escapeCatalogHtml(imgUrl)}" alt="${safeName}" style="max-width:100%; max-height:56vh; object-fit:contain; border-radius:0.5rem;" />
+      </div>
+      <div style="padding:1rem 1.15rem; display:flex; flex-direction:column; gap:0.65rem;">
+        <div style="font-weight:700; font-size:1rem; color:#0f172a;">${safeName}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; font-size:0.8rem;">
+          <span style="background:#f1f5f9; color:#475569; padding:3px 8px; border-radius:4px; font-weight:600; border:1px solid #e2e8f0;">${safeLoc}</span>
+          <span style="font-weight:700; color:${stockNum > 0 ? '#059669' : '#e11d48'};">Stok: ${stockNum} ${safeUnit}</span>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.25rem;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeCatalogImagePreview()">Tutup</button>
+          <button type="button" class="btn btn-${stockNum > 0 ? 'primary' : 'outline'} btn-sm" onclick="addToCart(${Number(item.id)}); closeCatalogImagePreview();" ${stockNum <= 0 ? 'disabled' : ''}>
+            ${stockNum > 0 ? '+ Tambah ke Keranjang' : 'Stok Habis'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  overlay.classList.add('open');
+}
+
+function closeCatalogImagePreview() {
+  const el = document.getElementById('catalog-lightbox-overlay');
+  if (el) el.classList.remove('open');
+}
 
 function renderCatalogPage(page = 1) {
   currentCatalogPage = page;
   const tbody = document.getElementById('catalog-grid-body');
+  const cardContainer = document.getElementById('catalog-card-container');
   const pag = document.getElementById('catalog-pagination');
-  if (!tbody) return;
+  if (!tbody && !cardContainer) return;
   
   if (!filteredCatalogItems) {
       filteredCatalogItems = ALL_INV_ITEMS || [];
   }
 
-  const totalPages = Math.ceil(filteredCatalogItems.length / CATALOG_ITEMS_PER_PAGE) || 1;
+  const perPage = catalogViewMode === 'grid' ? CATALOG_GRID_ITEMS_PER_PAGE : CATALOG_ITEMS_PER_PAGE;
+  const totalPages = Math.ceil(filteredCatalogItems.length / perPage) || 1;
   if (currentCatalogPage > totalPages) currentCatalogPage = totalPages;
   if (currentCatalogPage < 1) currentCatalogPage = 1;
 
-  const start = (currentCatalogPage - 1) * CATALOG_ITEMS_PER_PAGE;
-  const end = start + CATALOG_ITEMS_PER_PAGE;
+  const start = (currentCatalogPage - 1) * perPage;
+  const end = start + perPage;
   const pageItems = filteredCatalogItems.slice(start, end);
 
+  const emptyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
   if (pageItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</td></tr>';
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 2rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</td></tr>';
+    }
+    if (cardContainer) {
+      cardContainer.innerHTML = '<div style="grid-column: 1 / -1; text-align:center; padding: 2.5rem 1rem; color: var(--color-slate-500);">Tidak ada data barang ditemukan.</div>';
+    }
     if(pag) pag.innerHTML = '';
     return;
   }
 
-  tbody.innerHTML = pageItems.map(item => `
-    <tr style="transition:background .15s;" onmouseover="this.style.background='var(--color-slate-50)'" onmouseout="this.style.background=''">
-      <td style="font-weight:600; font-size:0.875rem; color:var(--color-slate-800);">${item.name}</td>
-      <td style="font-size:0.75rem; color:var(--color-slate-600);">
-        <span style="background:var(--color-slate-100); padding:3px 7px; border-radius:4px; font-weight:600; font-size:0.72rem; display:inline-block; border:1px solid var(--color-slate-200);">
-          ${item.location_name || '-'}
-        </span>
-      </td>
-      <td>
-        <span style="font-weight:700; color:${item.stock > 0 ? 'var(--color-emerald-600)' : 'var(--color-rose-600)'}">${item.stock}</span>
-      </td>
-      <td style="font-size:0.8rem; color:var(--color-slate-500);">${item.unit || '-'}</td>
-      <td style="text-align:center;">
-        <button class="btn btn-${item.stock > 0 ? 'primary' : 'outline'} btn-sm" style="font-size:0.78rem; font-weight:600;" onclick="addToCart(${item.id})" ${item.stock <= 0 ? 'disabled' : ''}>
-          ${item.stock > 0 ? '+ Tambah ke Keranjang' : 'Stok Habis'}
-        </button>
-      </td>
-    </tr>
-  `).join('');
+  if (tbody) {
+    tbody.innerHTML = pageItems.map(item => {
+      const imgUrl = resolveCatalogImgUrl(item.image);
+      const safeName = escapeCatalogHtml(item.name || '');
+      const safeLoc = escapeCatalogHtml(item.location_name || '-');
+      const safeUnit = escapeCatalogHtml(item.unit || '-');
+      const thumbHtml = imgUrl
+        ? `<img src="${escapeCatalogHtml(imgUrl)}" alt="${safeName}" class="catalog-thumb-img" title="Klik untuk perbesar foto" onclick="openCatalogImagePreview(${Number(item.id)})" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div class="catalog-thumb-empty" style="display:none;">${emptyIconSvg}<span>No Foto</span></div>`
+        : `<div class="catalog-thumb-empty">${emptyIconSvg}<span>No Foto</span></div>`;
+
+      return `
+      <tr style="transition:background .15s;" onmouseover="this.style.background='var(--color-slate-50)'" onmouseout="this.style.background=''">
+        <td>${thumbHtml}</td>
+        <td style="font-weight:600; font-size:0.875rem; color:var(--color-slate-800);">${safeName}</td>
+        <td style="font-size:0.75rem; color:var(--color-slate-600);">
+          <span style="background:var(--color-slate-100); padding:3px 7px; border-radius:4px; font-weight:600; font-size:0.72rem; display:inline-block; border:1px solid var(--color-slate-200);">
+            ${safeLoc}
+          </span>
+        </td>
+        <td>
+          <span style="font-weight:700; color:${item.stock > 0 ? 'var(--color-emerald-600)' : 'var(--color-rose-600)'}">${item.stock}</span>
+        </td>
+        <td style="font-size:0.8rem; color:var(--color-slate-500);">${safeUnit}</td>
+        <td style="text-align:center;">
+          <button class="btn btn-${item.stock > 0 ? 'primary' : 'outline'} btn-sm" style="font-size:0.78rem; font-weight:600;" onclick="addToCart(${Number(item.id)})" ${item.stock <= 0 ? 'disabled' : ''}>
+            ${item.stock > 0 ? '+ Tambah ke Keranjang' : 'Stok Habis'}
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  if (cardContainer) {
+    cardContainer.innerHTML = pageItems.map(item => {
+      const imgUrl = resolveCatalogImgUrl(item.image);
+      const safeName = escapeCatalogHtml(item.name || '');
+      const safeLoc = escapeCatalogHtml(item.location_name || '-');
+      const safeUnit = escapeCatalogHtml(item.unit || '-');
+      const hasStock = Number(item.stock) > 0;
+      const pillStyle = hasStock
+        ? 'background:#dcfce7; color:#15803d; border:1px solid #86efac;'
+        : 'background:#ffe4e6; color:#be123c; border:1px solid #fda4af;';
+      const mediaHtml = imgUrl
+        ? `<img src="${escapeCatalogHtml(imgUrl)}" alt="${safeName}" title="Klik untuk perbesar foto" onclick="openCatalogImagePreview(${Number(item.id)})" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div class="catalog-card-noimg" style="display:none;">${emptyIconSvg}<span>Belum ada foto</span></div>`
+        : `<div class="catalog-card-noimg">${emptyIconSvg}<span>Belum ada foto</span></div>`;
+
+      return `
+      <div class="catalog-card">
+        <div class="catalog-card-media">
+          ${mediaHtml}
+          <span class="catalog-card-stock-pill" style="${pillStyle}">
+            ${hasStock ? `Stok: ${item.stock} ${safeUnit}` : 'Stok Habis'}
+          </span>
+        </div>
+        <div class="catalog-card-body">
+          <div>
+            <span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px; font-weight:600; font-size:0.68rem; border:1px solid #e2e8f0; display:inline-block;">
+              ${safeLoc}
+            </span>
+          </div>
+          <div class="catalog-card-title" title="${safeName}">${safeName}</div>
+          <div style="margin-top:auto; padding-top:0.35rem;">
+            <button class="btn btn-${hasStock ? 'primary' : 'outline'} btn-sm" style="width:100%; font-size:0.78rem; font-weight:600;" onclick="addToCart(${Number(item.id)})" ${!hasStock ? 'disabled' : ''}>
+              ${hasStock ? '+ Tambah ke Keranjang' : 'Stok Habis'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   if (pag) {
     const totalShowing = Math.min(end, filteredCatalogItems.length);
@@ -1846,7 +2188,7 @@ function renderCatalogPage(page = 1) {
 }
 
 let searchTimeout;
-function filterCatalog() {
+function filterCatalog(keepPage = false) {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     const searchVal = (document.getElementById('catalog-search')?.value || '').toLowerCase();
@@ -1859,8 +2201,8 @@ function filterCatalog() {
       const matchSkel = !skelFilter || (item.item_code || '').startsWith(skelFilter);
       return matchSearch && matchUakpb && matchSkel;
     });
-    renderCatalogPage(1);
-  }, 200);
+    renderCatalogPage(keepPage ? currentCatalogPage : 1);
+  }, keepPage ? 0 : 200);
 }
 
 // ===== ITEM2 TAB SWITCH =====
