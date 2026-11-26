@@ -707,8 +707,8 @@ async function loadAllData(silent = false) {
                  type === 'Item'    ? `${item.item_name} (${item.item_quantity})` :
                  type === 'Item2'   ? `Permintaan Barang (${item.items_json ? (() => { try{ return JSON.parse(item.items_json).length; } catch(e){ return 0; } })() : 0} jenis)` : '-',
         date_start: type === 'Item' ? item.loan_date : type === 'Repair' ? item.incident_date : type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[0] : '') : item.date_start,
-        raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.incident_time || ''),
-        raw_time_end:   item.time_end   || '',
+        raw_time_start: type === 'Item2' ? (item.created_at ? item.created_at.split(' ')[1].substring(0,5) : '') : (item.time_start || item.loan_time || item.incident_time || ''),
+        raw_time_end:   item.time_end || item.return_time || '',
         raw_date_end:   item.return_date || item.date_end || '',
         driver_name:    item.driver_name || '',
         technician_name: item.technician_name || '',
@@ -722,8 +722,10 @@ async function loadAllData(silent = false) {
         dormitory_id:    item.dormitory_id   || '',
         occupant_name:   item.occupant_name  || '',
         location_detail: item.location_detail || '',
+        issue_description: item.issue_description || '',
         repair_type:     item.repair_type    || '',
         item_name:       item.item_name      || '',
+        item_quantity:   item.item_quantity  ?? '',
         passenger_name:  item.passenger_name || '',
         departure:       item.departure      || '',
         destination:     item.destination    || '',
@@ -5928,6 +5930,7 @@ async function deleteMasterData(id) {
           <label class="form-label">Status</label>
           <select id="crud-status" class="form-select">
             <option value="pending">Pending</option>
+            <option value="waiting_manager_unit">Waiting Manager Unit</option>
             <option value="verified">Verified</option>
             <option value="waiting_manager_fmd">Waiting Manager FMD</option>
             <option value="waiting_manager_fad">Waiting Manager FAD</option>
